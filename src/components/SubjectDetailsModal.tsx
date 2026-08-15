@@ -33,7 +33,10 @@ export const SubjectDetailsModal: React.FC<Props> = ({ visible, onClose, subject
             <Text style={{ fontSize: 24, color: colors.primary }}>‹</Text>
             <Text style={{ fontSize: 16, color: colors.primary, marginLeft: 5 }}>Voltar</Text>
           </TouchableOpacity>
-          <Text style={styles.title} numberOfLines={1}>{subject.name}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: subject.color || colors.primary, marginRight: 8 }} />
+            <Text style={styles.title} numberOfLines={1}>{subject.name}</Text>
+          </View>
           <View style={{ width: 60 }} />
         </View>
 

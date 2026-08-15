@@ -225,16 +225,19 @@ export default function App() {
     const today = new Date().toISOString().split('T')[0];
     
     events.forEach(e => {
+      const subject = e.subjectId ? subjects.find(s => s.id === e.subjectId) : null;
+      const dotColor = subject?.color || CategoryColors[e.category];
+
       if (e.recurrence === 'none') {
         if (!marks[e.date]) marks[e.date] = { dots: [] };
-        if (marks[e.date].dots.length < 3) marks[e.date].dots.push({ color: CategoryColors[e.category] });
+        if (marks[e.date].dots.length < 3) marks[e.date].dots.push({ color: dotColor });
       } else {
         // For daily and weekly, mark the next 365 days from the event start date
         let currentDate = parseISO(e.date);
         for (let i = 0; i < 365; i++) {
           const dateStr = format(currentDate, 'yyyy-MM-dd');
           if (!marks[dateStr]) marks[dateStr] = { dots: [] };
-          if (marks[dateStr].dots.length < 3) marks[dateStr].dots.push({ color: CategoryColors[e.category] });
+          if (marks[dateStr].dots.length < 3) marks[dateStr].dots.push({ color: dotColor });
           
           currentDate = addDays(currentDate, e.recurrence === 'daily' ? 1 : 7);
         }
@@ -412,7 +415,7 @@ export default function App() {
                             height: height - 2, // 2px margin
                             left: 70, // Align right next to timeLabel
                             right: 15,
-                            backgroundColor: CategoryColors[event.category], 
+                            backgroundColor: event.subjectId ? subjects.find(s => s.id === event.subjectId)?.color || CategoryColors[event.category] : CategoryColors[event.category], 
                             opacity: event.isCompleted ? 0.6 : 0.95,
                             borderWidth: 1,
                             borderColor: colors.surface,

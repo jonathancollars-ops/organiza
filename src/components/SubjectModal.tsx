@@ -41,8 +41,10 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
   const [alerts, setAlerts] = useState<number[]>([0]);
   const [customAlertVal, setCustomAlertVal] = useState('');
   const [customAlertUnit, setCustomAlertUnit] = useState<number>(1);
-  const [workloadHours, setWorkloadHours] = useState('60');
   const [passGrade, setPassGrade] = useState(7.0);
+
+  const weeklyClasses = classCount * Object.keys(selectedDays).length;
+  const maxAbsences = weeklyClasses * 5; // Assumindo semestre de 20 semanas (25% = 5)
 
   React.useEffect(() => {
     if (visible) {
@@ -53,7 +55,6 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
       setAlerts([0]);
       setCustomAlertVal('');
       setCustomAlertUnit(1);
-      setWorkloadHours('60');
       setPassGrade(7.0);
     }
   }, [visible]);
@@ -97,13 +98,16 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
   const handleSave = () => {
     if (!name.trim() || Object.keys(selectedDays).length === 0) return;
 
+    // Generate random distinct color (HSL provides more vibrant/distinct results)
+    const randomColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`;
+
     const subject: Subject = {
       id: Date.now().toString(),
       name,
-      color: CategoryColors['Faculdade/Aulas'],
+      color: randomColor,
       passGrade,
-      workloadHours: parseInt(workloadHours) || 60,
-      maxAbsences: Math.floor((parseInt(workloadHours) || 60) * 0.25)
+      workloadHours: weeklyClasses,
+      maxAbsences
     };
 
     const events: AppEvent[] = [];
@@ -174,17 +178,14 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
 
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.label}>Carga Horária (h)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Ex: 60"
-                placeholderTextColor={colors.textSecondary}
-                keyboardType="numeric"
-                value={workloadHours}
-                onChangeText={setWorkloadHours}
-              />
+              <Text style={styles.label}>Carga Horária (Semana)</Text>
+              <View style={[styles.input, { paddingVertical: 0, justifyContent: 'center' }]}>
+                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 18, textAlign: 'center' }}>
+                  {weeklyClasses} {weeklyClasses === 1 ? 'tempo' : 'tempos'}
+                </Text>
+              </View>
               <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: -10 }}>
-                Máx. de faltas: {Math.floor((parseInt(workloadHours) || 60) * 0.25)}h (25%)
+                Máx. de faltas: {maxAbsences} (25%)
               </Text>
             </View>
             <View style={{ flex: 1 }}>

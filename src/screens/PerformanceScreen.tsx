@@ -97,10 +97,13 @@ export const PerformanceScreen: React.FC<Props> = ({ subjects, events, attendanc
               >
                 {/* Header */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }}>
-                  <Text style={[styles.subjectName, { color: colors.text, flex: 1 }]}>
-                    {subject.name}
-                    {subject.isArchived && <Text style={{ fontSize: 13, color: colors.textSecondary }}> (Arquivada)</Text>}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: subject.color || colors.primary, marginRight: 8 }} />
+                    <Text style={[styles.subjectName, { color: colors.text, flex: 1 }]} numberOfLines={1}>
+                      {subject.name}
+                      {subject.isArchived && <Text style={{ fontSize: 13, color: colors.textSecondary }}> (Arquivada)</Text>}
+                    </Text>
+                  </View>
                   {!subject.isArchived && (
                     <TouchableOpacity
                       style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.background, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}

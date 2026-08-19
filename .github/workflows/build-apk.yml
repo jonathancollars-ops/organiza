@@ -37,12 +37,12 @@ jobs:
       - name: ⚙️ Generate Native Android Project (Expo Prebuild)
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: 🔨 Build Android APK via Gradle
+      - name: 🔨 Build Standalone Release APK via Gradle
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
-          cp app/build/outputs/apk/debug/app-debug.apk ../organiza.apk
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../organiza.apk
           cd ..
 
       - name: 📤 Upload APK Artifact

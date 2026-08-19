@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, TextInput, Alert, Switch } from 'react-native';
-import Slider from '@react-native-community/slider';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, TextInput, Alert, Switch, Platform, KeyboardAvoidingView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
 import { AppEvent, ThemeType, Subject } from '../types';
-import { getThemeColors, CategoryColors } from '../theme';
+import { getThemeColors, getContrastTextColor } from '../theme';
+import { generateId, getLocalDateString } from '../utils';
+import * as Haptics from 'expo-haptics';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSave: (event: AppEvent) => void;
   subjects: Subject[];
-  events: AppEvent[]; // Adicionado para buscar horários
+  events: AppEvent[];
   theme: ThemeType;
   initialDate?: string;
   isDateLocked?: boolean;
@@ -46,13 +48,12 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
   const [isExtraPoint, setIsExtraPoint] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Initialize values when opened
   useEffect(() => {
     if (visible) {
       if (subjects.length > 0) {
         setSelectedSubjectId(subjects[0].id);
       }
-      setDate(initialDate || new Date().toISOString().split('T')[0]);
+      setDate(initialDate || getLocalDateString());
       setStartMinutes(480);
       setDurationMinutes(60);
       setExamType('Prova');
@@ -79,11 +80,11 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
     );
 
     if (classEvent) {
-      const [h, m] = classEvent.startTime.split(':').map(Number);
-      setStartMinutes(h * 60 + m);
+      const [h, m] = (classEvent.startTime || '08:00').split(':').map(Number);
+      setStartMinutes((h || 0) * 60 + (m || 0));
       
-      const [eh, em] = classEvent.endTime.split(':').map(Number);
-      const diff = (eh * 60 + em) - (h * 60 + m);
+      const [eh, em] = (classEvent.endTime || '10:00').split(':').map(Number);
+      const diff = ((eh || 0) * 60 + (em || 0)) - ((h || 0) * 60 + (m || 0));
       if (diff > 0) {
         setDurationMinutes(diff);
       }
@@ -106,6 +107,7 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
   };
 
   const toggleAlert = (val: number) => {
+    Haptics.selectionAsync();
     if (alerts.includes(val)) {
       setAlerts(alerts.filter(a => a !== val));
     } else {
@@ -113,32 +115,9 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
     }
   };
 
-  const addCustomAlert = () => {
-    const val = parseInt(customAlertVal, 10);
-    if (!isNaN(val) && val > 0) {
-      const totalMin = val * customAlertUnit;
-      if (!alerts.includes(totalMin)) {
-        setAlerts([...alerts, totalMin]);
-      }
-    }
-    setCustomAlertVal('');
-  };
-
   const handleSave = () => {
     if (!selectedSubjectId || !date) return;
-
-    // Validate if the selected date has a class
-    const targetDay = new Date(date + 'T12:00:00').getDay();
-    const hasClass = events.some(e => 
-      e.subjectId === selectedSubjectId && 
-      e.recurrence === 'weekly' && 
-      new Date(e.date + 'T12:00:00').getDay() === targetDay
-    );
-
-    if (!hasClass) {
-      Alert.alert('Dia Inválido', 'Esta matéria não possui aulas no dia da semana selecionado. Por favor, escolha um dia em que há aula.');
-      return;
-    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const subject = subjects.find(s => s.id === selectedSubjectId);
     if (!subject) return;
@@ -159,7 +138,7 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
     const autoTitle = `${prefix}${nextNum} - ${subject.name}`;
 
     const newEvent: AppEvent = {
-      id: Date.now().toString(),
+      id: generateId('evt_eval'),
       title: autoTitle,
       category: 'Provas/Trabalhos',
       date,
@@ -168,7 +147,7 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
       recurrence: 'none',
       alerts: alerts,
       isCompleted: false,
-      isImportant: true, // Exams are important by default
+      isImportant: true,
       isNotified: alerts.length > 0,
       subjectId: subject.id,
       weight: parseFloat(weight) || 1,
@@ -181,101 +160,130 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity onPress={onClose} style={styles.headerActionBtn} activeOpacity={0.7}>
             <Text style={styles.cancelText}>Cancelar</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Nova Avaliação</Text>
-          <TouchableOpacity onPress={handleSave}>
+          <TouchableOpacity
+            onPress={handleSave}
+            style={[styles.headerActionBtn, { opacity: (!selectedSubjectId || !date) ? 0.4 : 1 }]}
+            activeOpacity={0.7}
+            disabled={!selectedSubjectId || !date}
+          >
             <Text style={styles.saveText}>Salvar</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.content}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {subjects.length === 0 ? (
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>
-                Você precisa cadastrar uma Matéria/Aula primeiro antes de adicionar provas.
+            <View style={{ padding: 30, alignItems: 'center' }}>
+              <Text style={{ fontSize: 36, marginBottom: 12 }}>📚</Text>
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 15, lineHeight: 22 }}>
+                Você precisa cadastrar uma Matéria/Aula primeiro antes de agendar provas ou trabalhos.
               </Text>
             </View>
           ) : (
             <>
               <Text style={styles.label}>Matéria</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-                {subjects.map(sub => (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={[
-                      styles.badge,
-                      { 
-                        backgroundColor: selectedSubjectId === sub.id ? colors.primary : 'transparent', 
-                        borderColor: colors.primary, 
-                        borderWidth: 1 
-                      }
-                    ]}
-                    onPress={() => setSelectedSubjectId(sub.id)}
-                  >
-                    <Text style={{ color: selectedSubjectId === sub.id ? '#000' : colors.text }}>{sub.name}</Text>
-                  </TouchableOpacity>
-                ))}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 18 }}>
+                {subjects.map(sub => {
+                  const isSelected = selectedSubjectId === sub.id;
+                  const chipColor = sub.color || colors.primary;
+                  return (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={[
+                        styles.badge,
+                        { 
+                          backgroundColor: isSelected ? chipColor : colors.surfaceSubtle, 
+                          borderColor: isSelected ? chipColor : colors.border, 
+                          borderWidth: 1 
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedSubjectId(sub.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        color: isSelected ? getContrastTextColor(chipColor) : colors.text,
+                        fontWeight: '700'
+                      }}>
+                        {sub.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
 
               <Text style={styles.label}>Tipo de Avaliação</Text>
-              <View style={[styles.row, { marginBottom: 20 }]}>
-                {['Prova', 'Trabalho'].map(type => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[
-                      styles.badge,
-                      { 
-                        backgroundColor: examType === type ? colors.primary : 'transparent', 
-                        borderColor: colors.primary, 
-                        borderWidth: 1 
-                      }
-                    ]}
-                    onPress={() => setExamType(type as any)}
-                  >
-                    <Text style={{ color: examType === type ? '#000' : colors.text }}>{type}</Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={[styles.row, { marginBottom: 18 }]}>
+                {['Prova', 'Trabalho'].map(type => {
+                  const isSelected = examType === type;
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      style={[
+                        styles.badge,
+                        { 
+                          backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle, 
+                          borderColor: isSelected ? colors.primary : colors.border, 
+                          borderWidth: 1,
+                          flex: 1,
+                          alignItems: 'center'
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setExamType(type as any);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        color: isSelected ? getContrastTextColor(colors.primary) : colors.text,
+                        fontWeight: '700'
+                      }}>
+                        {type === 'Prova' ? '📝 Prova' : '📁 Trabalho'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               <Text style={styles.label}>Data</Text>
               {isDateLocked ? (
-                <View style={[styles.input, { backgroundColor: colors.background, opacity: 0.7 }]}>
-                  <Text style={{ color: colors.text }}>{date.split('-').reverse().join('/')} (Bloqueado nesta visão)</Text>
+                <View style={[styles.input, { backgroundColor: colors.surfaceSubtle, opacity: 0.8 }]}>
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>{date.split('-').reverse().join('/')} (Bloqueado nesta visão)</Text>
                 </View>
               ) : (
                 <View>
                   <TouchableOpacity 
                     style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]} 
-                    onPress={() => setShowCalendar(!showCalendar)}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setShowCalendar(!showCalendar);
+                    }}
+                    activeOpacity={0.7}
                   >
-                    <Text style={{ color: colors.text, fontSize: 16 }}>{date.split('-').reverse().join('/')}</Text>
-                    <Text style={{ color: colors.primary }}>📅 Escolher</Text>
+                    <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600' }}>{date.split('-').reverse().join('/')}</Text>
+                    <Text style={{ color: colors.primary, fontWeight: '700' }}>📅 Escolher</Text>
                   </TouchableOpacity>
                   
                   {showCalendar && (
-                    <View style={{ marginBottom: 20, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+                    <View style={{ marginBottom: 16, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
                       <Calendar
                         current={date}
                         onDayPress={(day: any) => {
-                          const targetDay = new Date(day.dateString + 'T12:00:00').getDay();
-                          const hasClass = events.some(e => 
-                            e.subjectId === selectedSubjectId && 
-                            e.recurrence === 'weekly' && 
-                            new Date(e.date + 'T12:00:00').getDay() === targetDay
-                          );
-                          if (!hasClass) {
-                            Alert.alert('Dia Inválido', 'Esta matéria não possui aulas neste dia da semana.');
-                            return;
-                          }
+                          Haptics.selectionAsync();
                           setDate(day.dateString);
                           setShowCalendar(false);
                         }}
                         markedDates={{
-                          [date]: { selected: true, selectedColor: colors.primary, selectedTextColor: '#000' }
+                          [date]: { selected: true, selectedColor: colors.primary, selectedTextColor: getContrastTextColor(colors.primary) }
                         }}
                         theme={{
                           calendarBackground: colors.surface,
@@ -291,19 +299,23 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
               )}
 
               <TouchableOpacity 
-                style={{ marginBottom: 15, paddingVertical: 5 }} 
-                onPress={() => setShowAdvanced(!showAdvanced)}
+                style={{ marginBottom: 14, paddingVertical: 6 }} 
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setShowAdvanced(!showAdvanced);
+                }}
+                activeOpacity={0.7}
               >
-                <Text style={{ color: colors.primary, fontWeight: 'bold' }}>
-                  {showAdvanced ? 'Ocultar Opções Avançadas' : '⚙️ Opções Avançadas de Notas'}
+                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 14 }}>
+                  {showAdvanced ? '▲ Ocultar Opções Avançadas' : '⚙️ Opções Avançadas de Notas'}
                 </Text>
               </TouchableOpacity>
 
               {showAdvanced && (
-                <>
+                <View style={[styles.advancedBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={[styles.row, { justifyContent: 'space-between' }]}>
                     <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={{ color: colors.textSecondary, marginBottom: 5 }}>Peso</Text>
+                      <Text style={{ color: colors.textSecondary, marginBottom: 6, fontWeight: '600', fontSize: 13 }}>Peso</Text>
                       <TextInput
                         style={styles.input}
                         keyboardType="numeric"
@@ -314,7 +326,7 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
                       />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.textSecondary, marginBottom: 5 }}>Nota Máxima</Text>
+                      <Text style={{ color: colors.textSecondary, marginBottom: 6, fontWeight: '600', fontSize: 13 }}>Nota Máxima</Text>
                       <TextInput
                         style={styles.input}
                         keyboardType="numeric"
@@ -326,117 +338,73 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
                     </View>
                   </View>
                   
-                  <View style={[styles.row, { alignItems: 'center', marginBottom: 20 }]}>
+                  <View style={[styles.row, { alignItems: 'center', marginTop: 6 }]}>
                     <Switch
                       value={isExtraPoint}
-                      onValueChange={setIsExtraPoint}
-                      trackColor={{ true: colors.primary }}
+                      onValueChange={(val) => {
+                        Haptics.selectionAsync();
+                        setIsExtraPoint(val);
+                      }}
+                      trackColor={{ false: colors.border, true: colors.primary }}
                       thumbColor={isExtraPoint ? '#fff' : '#f4f3f4'}
                     />
-                    <Text style={{ color: colors.text, marginLeft: 10, flex: 1 }}>É Ponto Extra? (Soma direto na média)</Text>
+                    <Text style={{ color: colors.text, marginLeft: 10, flex: 1, fontWeight: '700', fontSize: 13 }}>
+                      Ponto Extra (Soma direto na média)
+                    </Text>
                   </View>
-                </>
+                </View>
               )}
 
-              <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 20, padding: 15, backgroundColor: colors.surface, borderRadius: 12 }]}>
+              <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 18, padding: 16, backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border }]}>
                 <View>
-                  <Text style={[styles.label, { marginBottom: 5, marginTop: 0 }]}>Horário Herdados</Text>
-                  <Text style={{ color: colors.textSecondary }}>O horário será o mesmo da aula.</Text>
+                  <Text style={[styles.label, { marginBottom: 4, marginTop: 0 }]}>Horário Herdado</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Baseado no horário da matéria</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 18 }}>
+                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 17 }}>
                     {formatTime(startMinutes)}
                   </Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
                     Duração: {formatDuration(durationMinutes)}
                   </Text>
                 </View>
               </View>
 
-              <Text style={styles.label}>Notificações</Text>
+              <Text style={styles.label}>Notificações & Lembretes</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.horizontalScroll, { marginBottom: 15 }]}>
-                {ALERT_OPTIONS.map(option => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.badge,
-                      { 
-                        backgroundColor: alerts.includes(option.value) ? colors.primary : 'transparent', 
-                        borderColor: colors.primary, 
-                        borderWidth: 1 
-                      }
-                    ]}
-                    onPress={() => toggleAlert(option.value)}
-                  >
-                    <Text style={{ color: alerts.includes(option.value) ? '#000' : colors.text }}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {ALERT_OPTIONS.map(option => {
+                  const isSelected = alerts.includes(option.value);
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.badge,
+                        { 
+                          backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle, 
+                          borderColor: isSelected ? colors.primary : colors.border, 
+                          borderWidth: 1 
+                        }
+                      ]}
+                      onPress={() => toggleAlert(option.value)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        color: isSelected ? getContrastTextColor(colors.primary) : colors.text,
+                        fontWeight: '700'
+                      }}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
-
-              <Text style={{ color: colors.textSecondary, marginBottom: 8, fontSize: 13 }}>Personalizado:</Text>
-              <View style={[styles.row, { marginBottom: 15, alignItems: 'center' }]}>
-                <TextInput
-                  style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 10, color: colors.text, borderColor: colors.border }]}
-                  placeholder="Ex: 5"
-                  placeholderTextColor={colors.textSecondary}
-                  keyboardType="numeric"
-                  value={customAlertVal}
-                  onChangeText={setCustomAlertVal}
-                />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1, marginRight: 10 }}>
-                  <TouchableOpacity 
-                    style={[styles.badge, { backgroundColor: customAlertUnit === 1 ? colors.primary : colors.surface, borderWidth: 1, borderColor: colors.primary }]}
-                    onPress={() => setCustomAlertUnit(1)}
-                  >
-                    <Text style={{ color: customAlertUnit === 1 ? '#000' : colors.text }}>Min</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.badge, { backgroundColor: customAlertUnit === 60 ? colors.primary : colors.surface, borderWidth: 1, borderColor: colors.primary }]}
-                    onPress={() => setCustomAlertUnit(60)}
-                  >
-                    <Text style={{ color: customAlertUnit === 60 ? '#000' : colors.text }}>Hora</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.badge, { backgroundColor: customAlertUnit === 1440 ? colors.primary : colors.surface, borderWidth: 1, borderColor: colors.primary }]}
-                    onPress={() => setCustomAlertUnit(1440)}
-                  >
-                    <Text style={{ color: customAlertUnit === 1440 ? '#000' : colors.text }}>Dia</Text>
-                  </TouchableOpacity>
-                </ScrollView>
-                <TouchableOpacity 
-                  style={[styles.badge, { backgroundColor: colors.primary, justifyContent: 'center', height: 44, borderRadius: 8, marginRight: 0 }]} 
-                  onPress={addCustomAlert}
-                >
-                  <Text style={{ color: '#000', fontWeight: 'bold' }}>+</Text>
-                </TouchableOpacity>
-              </View>
-
-              {alerts.filter(a => !ALERT_OPTIONS.find(o => o.value === a)).length > 0 && (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                  {alerts.filter(a => !ALERT_OPTIONS.find(o => o.value === a)).map(val => {
-                    let label = `${val} min`;
-                    if (val % 1440 === 0) label = `${val/1440} dia(s)`;
-                    else if (val % 60 === 0) label = `${val/60} hora(s)`;
-                    return (
-                      <TouchableOpacity
-                        key={val}
-                        style={[styles.badge, { backgroundColor: colors.surface, borderColor: '#ef4444', borderWidth: 1, marginRight: 8, marginBottom: 8 }]}
-                        onPress={() => toggleAlert(val)}
-                      >
-                        <Text style={{ color: '#ef4444' }}>{label} ✕</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
 
               <View style={{ height: 40 }} />
             </>
           )}
         </ScrollView>
-      </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 };
@@ -450,55 +418,69 @@ const getStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 50,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  headerActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   title: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: colors.text,
+    letterSpacing: -0.5
   },
   cancelText: {
-    fontSize: 16,
-    color: '#ef4444',
+    fontSize: 15,
+    color: colors.danger,
+    fontWeight: '600',
   },
   saveText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '800',
     color: colors.primary,
   },
   content: {
-    padding: 20,
+    padding: 18,
   },
   label: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 10,
-    marginTop: 15,
+    marginBottom: 8,
+    marginTop: 14,
   },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
     color: colors.text,
-    marginBottom: 15,
+    marginBottom: 14,
     backgroundColor: colors.surface,
   },
   row: {
     flexDirection: 'row',
   },
   badge: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
-    marginRight: 10,
+    marginRight: 8,
   },
   horizontalScroll: {
     flexDirection: 'row',
+  },
+  advancedBox: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
   }
 });
+

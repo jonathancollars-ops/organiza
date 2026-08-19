@@ -8,96 +8,118 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
 export const NotificationService = {
   async requestPermissions() {
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#00FFAA',
-      });
-    }
+    try {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#00FFAA',
+        });
+      }
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      return finalStatus === 'granted';
+    } catch (e) {
+      console.warn('Erro ao solicitar permissões de notificação', e);
+      return false;
     }
-    return finalStatus === 'granted';
   },
 
   async scheduleEventNotifications(event: AppEvent) {
-    // First, cancel any existing notifications for this event
-    await this.cancelEventNotifications(event.id);
+    try {
+      // First, cancel any existing notifications for this event
+      await this.cancelEventNotifications(event.id);
 
-    if (event.isNotified === false || event.alerts.length === 0) return;
+      if (event.isNotified === false || !event.alerts || event.alerts.length === 0) return;
+      if (!event.date || !event.startTime) return;
 
-    const eventDate = parseISO(`${event.date.split('T')[0]}T${event.startTime}:00`);
-
-    for (const minutesBefore of event.alerts) {
-      const triggerDate = subMinutes(eventDate, minutesBefore);
-      const hour = triggerDate.getHours();
-      const minute = triggerDate.getMinutes();
+      const datePart = event.date.split('T')[0];
+      const timePart = event.startTime.includes(':') ? event.startTime : '08:00';
+      const eventDate = parseISO(`${datePart}T${timePart}:00`);
       
-      const content = {
-        title: event.title,
-        body: event.description ? event.description : `Começa em ${minutesBefore} minutos!`,
-        data: { eventId: event.id },
-        sound: true,
-      };
+      if (isNaN(eventDate.getTime())) return;
 
-      if (event.recurrence === 'daily') {
-        // Daily recurring notification
-        await Notifications.scheduleNotificationAsync({
-          content,
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DAILY,
-            hour,
-            minute,
-            channelId: 'default',
-          },
-        });
-      } else if (event.recurrence === 'weekly') {
-        // Weekly recurring notification
-        // Note: date-fns getDay returns 0-6 (Sun-Sat). Expo requires 1-7 (Sun-Sat).
-        const triggerWeekday = triggerDate.getDay() + 1;
-        await Notifications.scheduleNotificationAsync({
-          content,
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-            weekday: triggerWeekday,
-            hour,
-            minute,
-            channelId: 'default',
-          },
-        });
-      } else {
-        // One-time notification
-        if (triggerDate.getTime() > Date.now()) {
+      for (const minutesBefore of event.alerts) {
+        const triggerDate = subMinutes(eventDate, minutesBefore);
+        if (isNaN(triggerDate.getTime())) continue;
+
+        const hour = triggerDate.getHours();
+        const minute = triggerDate.getMinutes();
+        
+        const content = {
+          title: event.title,
+          body: event.description ? event.description : `Começa em ${minutesBefore === 0 ? 'agora' : `${minutesBefore} minutos`}!`,
+          data: { eventId: event.id },
+          sound: true,
+        };
+
+        if (event.recurrence === 'daily') {
+          // Daily recurring notification
           await Notifications.scheduleNotificationAsync({
             content,
             trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
-              date: triggerDate.getTime(),
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour,
+              minute,
               channelId: 'default',
             },
           });
+        } else if (event.recurrence === 'weekly') {
+          // Weekly recurring notification
+          // Note: date-fns getDay returns 0-6 (Sun-Sat). Expo requires 1-7 (Sun-Sat).
+          const triggerWeekday = triggerDate.getDay() + 1;
+          await Notifications.scheduleNotificationAsync({
+            content,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+              weekday: triggerWeekday,
+              hour,
+              minute,
+              channelId: 'default',
+            },
+          });
+        } else {
+          // One-time notification
+          if (triggerDate.getTime() > Date.now()) {
+            await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate.getTime(),
+                channelId: 'default',
+              },
+            });
+          }
         }
       }
+    } catch (err) {
+      console.warn('Falha ao agendar notificações do evento', event.id, err);
     }
   },
 
   async cancelEventNotifications(eventId: string) {
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    for (const notif of scheduled) {
-      if (notif.content.data?.eventId === eventId) {
-        await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const notif of scheduled) {
+        if (notif.content.data?.eventId === eventId) {
+          await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+        }
       }
+    } catch (e) {
+      console.warn('Falha ao cancelar notificações', eventId, e);
     }
   }
 };

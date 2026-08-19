@@ -1,14 +1,19 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
-import { Subject, AppEvent, ThemeType } from '../types';
-import { getThemeColors, CategoryColors } from '../theme';
+import { Subject, AppEvent, ThemeType, Semester } from '../types';
+import { getThemeColors, getContrastTextColor } from '../theme';
+import { generateId, getLocalDateString } from '../utils';
+import * as Haptics from 'expo-haptics';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSave: (subject: Subject, events: AppEvent[]) => void;
   theme: ThemeType;
+  semesters?: Semester[];
+  currentSemesterId?: string;
 }
 
 const DAYS = [
@@ -29,7 +34,7 @@ const ALERT_OPTIONS = [
   { label: '1 semana antes', value: 10080 },
 ];
 
-export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme }) => {
+export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme, semesters = [], currentSemesterId }) => {
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
 
@@ -37,6 +42,7 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
   const [classDuration, setClassDuration] = useState(50);
   const [classCount, setClassCount] = useState(2);
   const [selectedDays, setSelectedDays] = useState<{ [dayId: number]: { h: number; m: number } }>({});
+  const [selectedSemesterId, setSelectedSemesterId] = useState<string | undefined>(currentSemesterId);
   
   const [alerts, setAlerts] = useState<number[]>([0]);
   const [customAlertVal, setCustomAlertVal] = useState('');
@@ -52,14 +58,16 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
       setClassDuration(50);
       setClassCount(2);
       setSelectedDays({});
+      setSelectedSemesterId(currentSemesterId);
       setAlerts([0]);
       setCustomAlertVal('');
       setCustomAlertUnit(1);
       setPassGrade(7.0);
     }
-  }, [visible]);
+  }, [visible, currentSemesterId]);
 
   const toggleDay = (dayId: number) => {
+    Haptics.selectionAsync();
     const newDays = { ...selectedDays };
     if (newDays[dayId] !== undefined) {
       delete newDays[dayId];
@@ -77,6 +85,7 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
   };
 
   const toggleAlert = (val: number) => {
+    Haptics.selectionAsync();
     if (alerts.includes(val)) {
       setAlerts(alerts.filter(a => a !== val));
     } else {
@@ -97,22 +106,32 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
 
   const handleSave = () => {
     if (!name.trim() || Object.keys(selectedDays).length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    // Generate random distinct color (HSL provides more vibrant/distinct results)
-    const randomColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`;
+    // Generate vibrant distinct HSL color
+    const randomColor = `hsl(${Math.floor(Math.random() * 360)}, 75%, 60%)`;
+
+    const subjectId = generateId('subj');
 
     const subject: Subject = {
-      id: Date.now().toString(),
-      name,
+      id: subjectId,
+      name: name.trim(),
       color: randomColor,
       passGrade,
       workloadHours: weeklyClasses,
-      maxAbsences
+      maxAbsences,
+      semesterId: selectedSemesterId,
+      gradeGroups: [{
+        id: generateId('group'),
+        name: 'Avaliações',
+        weight: 1,
+        items: []
+      }]
     };
 
     const events: AppEvent[] = [];
     const today = new Date();
-    today.setHours(0,0,0,0);
+    today.setHours(0, 0, 0, 0);
     const totalDurationMinutes = classDuration * classCount;
 
     Object.entries(selectedDays).forEach(([dayStr, timeObj]) => {
@@ -122,7 +141,7 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
       while (dateCursor.getDay() !== dayId) {
         dateCursor.setDate(dateCursor.getDate() + 1);
       }
-      const dateStr = dateCursor.toISOString().split('T')[0];
+      const dateStr = getLocalDateString(dateCursor);
 
       const startMinutes = timeObj.h * 60 + timeObj.m;
       const endMinutes = startMinutes + totalDurationMinutes;
@@ -134,13 +153,14 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
       };
 
       events.push({
-        id: Date.now().toString() + Math.random().toString(),
-        title: name,
+        id: generateId('evt_class'),
+        title: name.trim(),
         category: 'Faculdade/Aulas',
         date: dateStr,
         startTime: formatTime(startMinutes),
         endTime: formatTime(endMinutes),
         recurrence: 'weekly',
+        recurrenceDays: [dayId],
         alerts: alerts,
         isCompleted: false,
         isImportant: false,
@@ -154,18 +174,19 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity onPress={onClose} style={styles.headerActionBtn} activeOpacity={0.7}>
             <Text style={styles.cancelText}>Cancelar</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Nova Matéria / Aula</Text>
-          <TouchableOpacity onPress={handleSave}>
+          <Text style={styles.title}>Nova Matéria</Text>
+          <TouchableOpacity onPress={handleSave} style={styles.headerActionBtn} activeOpacity={0.8}>
             <Text style={styles.saveText}>Salvar</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.content}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Text style={styles.label}>Nome da Matéria</Text>
           <TextInput
             style={styles.input}
@@ -176,11 +197,47 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
             autoFocus
           />
 
+          {semesters.length > 0 && (
+            <View style={{ marginBottom: 15 }}>
+              <Text style={styles.label}>Semestre</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {semesters.map(sem => {
+                  const isSelected = selectedSemesterId === sem.id;
+                  return (
+                    <TouchableOpacity
+                      key={sem.id}
+                      style={[
+                        styles.badge,
+                        {
+                          backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle,
+                          borderColor: isSelected ? colors.primary : colors.border,
+                          borderWidth: 1
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedSemesterId(sem.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        color: isSelected ? getContrastTextColor(colors.primary) : colors.text,
+                        fontWeight: '700'
+                      }}>
+                        {sem.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>Carga Horária (Semana)</Text>
               <View style={[styles.input, { paddingVertical: 0, justifyContent: 'center' }]}>
-                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 18, textAlign: 'center' }}>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 17, textAlign: 'center' }}>
                   {weeklyClasses} {weeklyClasses === 1 ? 'tempo' : 'tempos'}
                 </Text>
               </View>
@@ -191,7 +248,7 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Média para Passar</Text>
               <View style={[styles.input, { paddingVertical: 0, justifyContent: 'center' }]}>
-                <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 18, textAlign: 'center' }}>
+                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 17, textAlign: 'center' }}>
                   {passGrade.toFixed(1)}
                 </Text>
               </View>
@@ -212,10 +269,10 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
             />
           </View>
 
-          <View style={{ marginBottom: 20 }}>
-            <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 10 }]}>
-              <Text style={[styles.label, { marginBottom: 0 }]}>Duração de cada tempo</Text>
-              <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 18 }}>
+          <View style={[styles.sliderCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 6 }]}>
+              <Text style={[styles.label, { marginBottom: 0, marginTop: 0 }]}>Duração de cada tempo</Text>
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 16 }}>
                 {classDuration} min
               </Text>
             </View>
@@ -232,10 +289,10 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
             />
           </View>
 
-          <View style={{ marginBottom: 20 }}>
-            <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 10 }]}>
-              <Text style={[styles.label, { marginBottom: 0 }]}>Quantidade de tempos</Text>
-              <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 18 }}>
+          <View style={[styles.sliderCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 6 }]}>
+              <Text style={[styles.label, { marginBottom: 0, marginTop: 0 }]}>Quantidade de tempos</Text>
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 16 }}>
                 {classCount}
               </Text>
             </View>
@@ -250,7 +307,7 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
               maximumTrackTintColor={colors.border}
               thumbTintColor={colors.primary}
             />
-            <Text style={{ color: colors.textSecondary, marginTop: 5, fontSize: 13 }}>
+            <Text style={{ color: colors.textSecondary, marginTop: 4, fontSize: 12, fontWeight: '500' }}>
               Duração total da aula: {(classDuration * classCount) / 60 >= 1 ? `${Math.floor((classDuration * classCount) / 60)}h ` : ''}{(classDuration * classCount) % 60}m
             </Text>
           </View>
@@ -265,14 +322,15 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
                   style={[
                     styles.badge,
                     { 
-                      backgroundColor: isSelected ? colors.primary : 'transparent', 
-                      borderColor: colors.primary, 
+                      backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle, 
+                      borderColor: isSelected ? colors.primary : colors.border, 
                       borderWidth: 1 
                     }
                   ]}
                   onPress={() => toggleDay(day.id)}
+                  activeOpacity={0.7}
                 >
-                  <Text style={{ color: isSelected ? '#000' : colors.text }}>{day.label}</Text>
+                  <Text style={{ color: isSelected ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>{day.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -282,13 +340,13 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
             const dayId = parseInt(dayStr, 10);
             const dayLabel = DAYS.find(d => d.id === dayId)?.label;
             return (
-              <View key={dayId} style={{ marginBottom: 20, padding: 15, backgroundColor: colors.surface, borderRadius: 12 }}>
-                <Text style={{ color: colors.text, fontWeight: 'bold', fontSize: 16, marginBottom: 15 }}>
+              <View key={dayId} style={[styles.timePickerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15, marginBottom: 12 }}>
                   Horário ({dayLabel})
                 </Text>
                 
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-                  <Text style={{ color: colors.text, width: 40 }}>Hora</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: colors.textSecondary, width: 40, fontWeight: '600', fontSize: 13 }}>Hora</Text>
                   <Slider
                     style={{ flex: 1, height: 40 }}
                     minimumValue={0}
@@ -300,13 +358,13 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
                     maximumTrackTintColor={colors.border}
                     thumbTintColor={colors.primary}
                   />
-                  <Text style={{ color: colors.primary, fontWeight: 'bold', width: 40, textAlign: 'right' }}>
+                  <Text style={{ color: colors.primary, fontWeight: '800', width: 40, textAlign: 'right', fontSize: 16 }}>
                     {timeObj.h.toString().padStart(2, '0')}
                   </Text>
                 </View>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ color: colors.text, width: 40 }}>Min</Text>
+                  <Text style={{ color: colors.textSecondary, width: 40, fontWeight: '600', fontSize: 13 }}>Min</Text>
                   <Slider
                     style={{ flex: 1, height: 40 }}
                     minimumValue={0}
@@ -318,7 +376,7 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
                     maximumTrackTintColor={colors.border}
                     thumbTintColor={colors.primary}
                   />
-                  <Text style={{ color: colors.primary, fontWeight: 'bold', width: 40, textAlign: 'right' }}>
+                  <Text style={{ color: colors.primary, fontWeight: '800', width: 40, textAlign: 'right', fontSize: 16 }}>
                     {timeObj.m.toString().padStart(2, '0')}
                   </Text>
                 </View>
@@ -334,55 +392,56 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
                 style={[
                   styles.badge,
                   { 
-                    backgroundColor: alerts.includes(option.value) ? colors.primary : 'transparent', 
-                    borderColor: colors.primary, 
+                    backgroundColor: alerts.includes(option.value) ? colors.primary : colors.surfaceSubtle, 
+                    borderColor: alerts.includes(option.value) ? colors.primary : colors.border, 
                     borderWidth: 1 
                   }
                 ]}
                 onPress={() => toggleAlert(option.value)}
+                activeOpacity={0.7}
               >
-                <Text style={{ color: alerts.includes(option.value) ? '#000' : colors.text }}>
+                <Text style={{ color: alerts.includes(option.value) ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>
                   {option.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
-          <Text style={{ color: colors.textSecondary, marginBottom: 8, fontSize: 13 }}>Personalizado:</Text>
+          <Text style={{ color: colors.textSecondary, marginBottom: 8, fontSize: 13, fontWeight: '600' }}>Personalizado:</Text>
           <View style={[styles.row, { marginBottom: 15, alignItems: 'center' }]}>
             <TextInput
-              style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 10, color: colors.text, borderColor: colors.border }]}
+              style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 8, color: colors.text, borderColor: colors.border }]}
               placeholder="Ex: 5"
               placeholderTextColor={colors.textSecondary}
               keyboardType="numeric"
               value={customAlertVal}
               onChangeText={setCustomAlertVal}
             />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1, marginRight: 10 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1, marginRight: 8 }}>
               <TouchableOpacity 
-                style={[styles.badge, { backgroundColor: customAlertUnit === 1 ? colors.primary : colors.surface, borderWidth: 1, borderColor: colors.primary }]}
+                style={[styles.badge, { backgroundColor: customAlertUnit === 1 ? colors.primary : colors.surfaceSubtle, borderWidth: 1, borderColor: customAlertUnit === 1 ? colors.primary : colors.border }]}
                 onPress={() => setCustomAlertUnit(1)}
               >
-                <Text style={{ color: customAlertUnit === 1 ? '#000' : colors.text }}>Min</Text>
+                <Text style={{ color: customAlertUnit === 1 ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>Min</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.badge, { backgroundColor: customAlertUnit === 60 ? colors.primary : colors.surface, borderWidth: 1, borderColor: colors.primary }]}
+                style={[styles.badge, { backgroundColor: customAlertUnit === 60 ? colors.primary : colors.surfaceSubtle, borderWidth: 1, borderColor: customAlertUnit === 60 ? colors.primary : colors.border }]}
                 onPress={() => setCustomAlertUnit(60)}
               >
-                <Text style={{ color: customAlertUnit === 60 ? '#000' : colors.text }}>Hora</Text>
+                <Text style={{ color: customAlertUnit === 60 ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>Hora</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.badge, { backgroundColor: customAlertUnit === 1440 ? colors.primary : colors.surface, borderWidth: 1, borderColor: colors.primary }]}
+                style={[styles.badge, { backgroundColor: customAlertUnit === 1440 ? colors.primary : colors.surfaceSubtle, borderWidth: 1, borderColor: customAlertUnit === 1440 ? colors.primary : colors.border }]}
                 onPress={() => setCustomAlertUnit(1440)}
               >
-                <Text style={{ color: customAlertUnit === 1440 ? '#000' : colors.text }}>Dia</Text>
+                <Text style={{ color: customAlertUnit === 1440 ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>Dia</Text>
               </TouchableOpacity>
             </ScrollView>
             <TouchableOpacity 
-              style={[styles.badge, { backgroundColor: colors.primary, justifyContent: 'center', height: 44, borderRadius: 8, marginRight: 0 }]} 
+              style={[styles.badge, { backgroundColor: colors.primary, justifyContent: 'center', height: 44, borderRadius: 12, marginRight: 0 }]} 
               onPress={addCustomAlert}
             >
-              <Text style={{ color: '#000', fontWeight: 'bold' }}>+</Text>
+              <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 16 }}>+</Text>
             </TouchableOpacity>
           </View>
 
@@ -395,10 +454,10 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
                 return (
                   <TouchableOpacity
                     key={val}
-                    style={[styles.badge, { backgroundColor: colors.surface, borderColor: '#ef4444', borderWidth: 1, marginRight: 8, marginBottom: 8 }]}
+                    style={[styles.badge, { backgroundColor: colors.dangerLight, borderColor: colors.danger, borderWidth: 1, marginRight: 8, marginBottom: 8 }]}
                     onPress={() => toggleAlert(val)}
                   >
-                    <Text style={{ color: '#ef4444' }}>{label} ✕</Text>
+                    <Text style={{ color: theme === 'light' ? colors.dangerDark : colors.danger, fontWeight: '700' }}>{label} ✕</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -407,7 +466,8 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme 
 
           <View style={{ height: 40 }} />
         </ScrollView>
-      </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 };
@@ -421,55 +481,75 @@ const getStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 50,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  headerActionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   title: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: colors.text,
+    letterSpacing: -0.5
   },
   cancelText: {
-    fontSize: 16,
-    color: '#ef4444',
+    fontSize: 15,
+    color: colors.danger,
+    fontWeight: '600',
   },
   saveText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 15,
+    fontWeight: '800',
     color: colors.primary,
   },
   content: {
-    padding: 20,
+    padding: 18,
   },
   label: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 10,
-    marginTop: 15,
+    marginBottom: 8,
+    marginTop: 14,
   },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
     color: colors.text,
-    marginBottom: 15,
+    marginBottom: 14,
     backgroundColor: colors.surface,
+  },
+  sliderCard: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  timePickerCard: {
+    marginBottom: 14,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
   },
   row: {
     flexDirection: 'row',
   },
   badge: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
-    marginRight: 10,
+    marginRight: 8,
   },
   horizontalScroll: {
     flexDirection: 'row',
   }
 });
+

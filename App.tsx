@@ -1,21 +1,48 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState, useMemo } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, Switch } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
-import { AppEvent, ThemeType, Subject, AttendanceRecord } from './src/types';
+import {
+  AppEvent,
+  ThemeType,
+  Subject,
+  AttendanceRecord,
+  StudyTask,
+  StudySession,
+  StudyStreak,
+  Semester,
+  AppSettings,
+  GamificationData
+} from './src/types';
 import { StorageService } from './src/services/storage';
 import { AttendanceService } from './src/services/AttendanceService';
 import { NotificationService } from './src/services/notifications';
-import { getThemeColors, CategoryColors } from './src/theme';
+import { getThemeColors, CategoryColors, getContrastTextColor } from './src/theme';
+import { generateId } from './src/utils/id';
+
 import { EventModal } from './src/components/EventModal';
 import { EventTypeModal } from './src/components/EventTypeModal';
 import { SubjectModal } from './src/components/SubjectModal';
 import { ExamModal } from './src/components/ExamModal';
 import { PendingAttendanceModal } from './src/components/PendingAttendanceModal';
 import { SubjectDetailsModal } from './src/components/SubjectDetailsModal';
-import { PerformanceScreen } from './src/screens/PerformanceScreen';
+import { TeamsConfigModal } from './src/components/TeamsConfigModal';
+import { SettingsModal } from './src/components/SettingsModal';
+import { OnboardingModal } from './src/components/OnboardingModal';
+
+import { TodaySummaryWidget } from './src/components/TodaySummaryWidget';
+import { AnalyticsAndAACCModal } from './src/components/AnalyticsAndAACCModal';
+import { AchievementsModal } from './src/components/AchievementsModal';
+import { GroupProjectsModal } from './src/components/GroupProjectsModal';
+
+import { GradesScreen } from './src/screens/GradesScreen';
+import { AttendanceScreen } from './src/screens/AttendanceScreen';
+import { ScheduleGridScreen } from './src/screens/ScheduleGridScreen';
+import { StudyScreen } from './src/screens/StudyScreen';
+
 import { format, parseISO, addDays, getDay } from 'date-fns';
 import * as Haptics from 'expo-haptics';
+
 // Configurar idioma do calendário para Português
 LocaleConfig.locales['pt-br'] = {
   monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
@@ -27,53 +54,132 @@ LocaleConfig.locales['pt-br'] = {
 LocaleConfig.defaultLocale = 'pt-br';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<'agenda' | 'performance'>('agenda');
+  const [currentTab, setCurrentTab] = useState<'agenda' | 'grade' | 'estudos' | 'faltas' | 'notas'>('agenda');
   const [theme, setTheme] = useState<ThemeType>('dark');
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [attendances, setAttendances] = useState<AttendanceRecord[]>([]);
-  
+  const [tasks, setTasks] = useState<StudyTask[]>([]);
+  const [studySessions, setStudySessions] = useState<StudySession[]>([]);
+  const [streak, setStreak] = useState<StudyStreak>({ currentStreak: 0, longestStreak: 0, lastStudyDate: '' });
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [gamification, setGamification] = useState<GamificationData | null>(null);
+  const [settings, setSettings] = useState<AppSettings>({
+    theme: 'dark',
+    pomodoroFocusMin: 25,
+    pomodoroBreakMin: 5,
+    pomodoroLongBreakMin: 15,
+    defaultPassGrade: 7.0,
+    examWeekMode: false,
+    soundEnabled: true,
+    hapticsEnabled: true,
+  });
+
+  // Modal Visibility States
   const [eventTypeVisible, setEventTypeVisible] = useState(false);
   const [subjectVisible, setSubjectVisible] = useState(false);
   const [examVisible, setExamVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-  
+  const [teamsModalVisible, setTeamsModalVisible] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [onboardingVisible, setOnboardingVisible] = useState(false);
+  const [analyticsModalVisible, setAnalyticsModalVisible] = useState(false);
+  const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
+  const [groupProjectsModalVisible, setGroupProjectsModalVisible] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // Selection states
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  
+
   const colors = getThemeColors(theme);
-  
+
   useEffect(() => {
+    RNStatusBar.setHidden(true, 'none');
     loadData();
     NotificationService.requestPermissions();
-    
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+
+    const timer = setInterval(async () => {
+      setCurrentTime(new Date());
+
+      // Re-check for new pending attendances every minute using optimized AttendanceService
+      const savedEvents = await StorageService.getEvents();
+      const savedAttendances = await StorageService.getAttendances();
+      const updatedAttendances = await AttendanceService.generatePendingAttendances(savedEvents, savedAttendances);
+
+      if (updatedAttendances.length > savedAttendances.length) {
+        setAttendances(updatedAttendances);
+        setAttendanceModalVisible(true);
+      }
+    }, 60000);
+
     return () => clearInterval(timer);
   }, []);
 
   const loadData = async () => {
-    const savedTheme = await StorageService.getTheme();
-    const savedEvents = await StorageService.getEvents();
-    const savedSubjects = await StorageService.getSubjects();
-    const savedAttendances = await StorageService.getAttendances();
-    
-    // Check for new pending attendances
-    const updatedAttendances = await AttendanceService.generatePendingAttendances(savedEvents, savedAttendances);
+    try {
+      const [
+        savedTheme,
+        savedEvents,
+        savedSubjects,
+        savedAttendances,
+        savedTasks,
+        savedSessions,
+        savedSemesters,
+        savedSettings,
+        savedGamification,
+        savedStreak
+      ] = await Promise.all([
+        StorageService.getTheme(),
+        StorageService.getEvents(),
+        StorageService.getSubjects(),
+        StorageService.getAttendances(),
+        StorageService.getTasks(),
+        StorageService.getStudySessions(),
+        StorageService.getSemesters(),
+        StorageService.getSettings(),
+        StorageService.getGamificationData(),
+        StorageService.getStreak(),
+      ]);
 
-    setTheme(savedTheme);
-    setEvents(savedEvents);
-    setSubjects(savedSubjects);
-    setAttendances(updatedAttendances);
+      // Check for pending attendances
+      const updatedAttendances = await AttendanceService.generatePendingAttendances(savedEvents, savedAttendances);
+
+      setTheme(savedTheme);
+      setEvents(savedEvents);
+      setSubjects(savedSubjects);
+      setAttendances(updatedAttendances);
+      setTasks(savedTasks);
+      setStudySessions(savedSessions);
+      setSemesters(savedSemesters);
+      setSettings(savedSettings);
+      setGamification(savedGamification);
+      setStreak(savedStreak);
+    } catch (err) {
+      console.error('Error loading app data:', err);
+    } finally {
+      setIsInitializing(false);
+    }
   };
 
-  const toggleTheme = async () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(newTheme);
-    await StorageService.saveTheme(newTheme);
+  const handleThemeToggle = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Cycle dark -> amoled -> light -> dark
+    const nextTheme: ThemeType = theme === 'dark' ? 'amoled' : theme === 'amoled' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    await StorageService.saveTheme(nextTheme);
+    const updatedSettings = { ...settings, theme: nextTheme };
+    setSettings(updatedSettings);
+    await StorageService.saveSettings(updatedSettings);
+  };
+
+  const handleTabChange = (tab: 'agenda' | 'grade' | 'estudos' | 'faltas' | 'notas') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCurrentTab(tab);
   };
 
   const handleSaveEvent = async (event: AppEvent) => {
@@ -85,20 +191,19 @@ export default function App() {
       newEvents.push(event);
     }
     setEvents(newEvents);
-    
+
     // Auto-link to Grade Engine if it's an exam
-    let updatedSubjects = [...subjects];
+    const updatedSubjects = [...subjects];
     if (event.category === 'Provas/Trabalhos' && event.subjectId && !editingEvent) {
       const subjectIndex = subjects.findIndex(s => s.id === event.subjectId);
       if (subjectIndex !== -1) {
         const subject = subjects[subjectIndex];
         let gradeGroups = subject.gradeGroups || [];
-        
-        // Automaticamente joga na primeira ou cria "Avaliações"
+
         let actualTargetGroupId = '';
         if (gradeGroups.length === 0) {
           const defaultGroup = {
-            id: `group_${Date.now()}`,
+            id: generateId('group'),
             name: 'Avaliações',
             weight: 1,
             items: []
@@ -110,14 +215,14 @@ export default function App() {
         }
 
         const newGradeItem = {
-          id: `item_${Date.now()}`,
+          id: generateId('item'),
           name: event.title,
           weight: event.weight || 1,
           maxGrade: event.maxGrade || 10,
           eventId: event.id
         };
 
-        const newGradeGroups = gradeGroups.map(g => 
+        const newGradeGroups = gradeGroups.map(g =>
           g.id === actualTargetGroupId ? { ...g, items: [...g.items, newGradeItem] } : g
         );
 
@@ -130,12 +235,12 @@ export default function App() {
     setModalVisible(false);
     setExamVisible(false);
     setEditingEvent(null);
-    
+
     try {
       await StorageService.saveEvents(newEvents);
       await NotificationService.scheduleEventNotifications(event);
     } catch (error) {
-      console.error("Erro ao salvar evento ou notificação", error);
+      console.error('Erro ao salvar evento ou notificação', error);
     }
   };
 
@@ -143,7 +248,7 @@ export default function App() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const updatedSubjects = [...subjects, subject];
     const updatedEvents = [...events, ...newEvents];
-    
+
     setSubjects(updatedSubjects);
     setEvents(updatedEvents);
     setSubjectVisible(false);
@@ -151,12 +256,31 @@ export default function App() {
     try {
       await StorageService.saveSubjects(updatedSubjects);
       await StorageService.saveEvents(updatedEvents);
-      // schedule notifications for all
       for (const ev of newEvents) {
         await NotificationService.scheduleEventNotifications(ev);
       }
     } catch (error) {
-      console.error("Erro ao salvar materia", error);
+      console.error('Erro ao salvar materia', error);
+    }
+  };
+
+  const handleDeleteSubject = async (subjectId: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    const updatedSubjects = subjects.filter(s => s.id !== subjectId);
+    const updatedEvents = events.filter(e => e.subjectId !== subjectId);
+    const updatedAttendances = attendances.filter(a => a.subjectId !== subjectId);
+
+    setSubjects(updatedSubjects);
+    setEvents(updatedEvents);
+    setAttendances(updatedAttendances);
+    setDetailsModalVisible(false);
+
+    try {
+      await StorageService.saveSubjects(updatedSubjects);
+      await StorageService.saveEvents(updatedEvents);
+      await StorageService.saveAttendances(updatedAttendances);
+    } catch (error) {
+      console.error('Erro ao excluir materia', error);
     }
   };
 
@@ -168,8 +292,9 @@ export default function App() {
     setEditingEvent(null);
     try {
       await StorageService.saveEvents(newEvents);
+      await NotificationService.cancelEventNotifications(eventId);
     } catch (error) {
-      console.error("Erro ao deletar evento", error);
+      console.error('Erro ao deletar evento', error);
     }
   };
 
@@ -180,13 +305,15 @@ export default function App() {
     await StorageService.saveEvents(newEvents);
   };
 
-  // Generate hours for the timeline (07:00 to 23:00)
-  const hours = Array.from({ length: 17 }, (_, i) => i + 7);
-
   const todaysEvents = useMemo(() => {
     const targetDate = selectedDate || format(new Date(), 'yyyy-MM-dd');
-    
+
     return events.filter(e => {
+      // Filtrar se modo semana de provas estiver ativo
+      if (settings.examWeekMode && e.category !== 'Provas/Trabalhos' && e.category !== 'Faculdade/Aulas') {
+        return false;
+      }
+
       // Filtrar aulas canceladas e matérias arquivadas
       if (e.subjectId) {
         const subject = subjects.find(s => s.id === e.subjectId);
@@ -205,41 +332,54 @@ export default function App() {
         const currentDay = getDay(parseISO(targetDate));
         return startDay === currentDay;
       }
+      if (e.recurrence === 'monthly') {
+        const startDayOfMonth = parseISO(e.date).getDate();
+        const currentDayOfMonth = parseISO(targetDate).getDate();
+        return startDayOfMonth === currentDayOfMonth;
+      }
       return e.date === targetDate;
     }).sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [events, selectedDate]);
+  }, [events, selectedDate, subjects, attendances, settings.examWeekMode]);
 
   const nextTask = useMemo(() => {
     if (selectedDate) return null; // Only show on "today" view
     const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
-    
+
     return todaysEvents.find(e => {
-      const [h, m] = e.startTime.split(':').map(Number);
-      return (h * 60 + m) > currentMins;
+      const [h, m] = (e.startTime || '08:00').split(':').map(Number);
+      return ((h || 0) * 60 + (m || 0)) > currentMins;
     });
   }, [todaysEvents, selectedDate, currentTime]);
 
-  // Transform events into calendar markers
   const markedDates = useMemo(() => {
     const marks: any = {};
-    const today = new Date().toISOString().split('T')[0];
-    
+
     events.forEach(e => {
+      if (e.subjectId) {
+        const subject = subjects.find(s => s.id === e.subjectId);
+        if (subject?.isArchived) return;
+      }
+
       const subject = e.subjectId ? subjects.find(s => s.id === e.subjectId) : null;
-      const dotColor = subject?.color || CategoryColors[e.category];
+      const dotColor = subject?.color || CategoryColors[e.category] || colors.primary;
 
       if (e.recurrence === 'none') {
         if (!marks[e.date]) marks[e.date] = { dots: [] };
-        if (marks[e.date].dots.length < 3) marks[e.date].dots.push({ color: dotColor });
+        if (marks[e.date].dots && marks[e.date].dots.length < 3) {
+          marks[e.date].dots.push({ color: dotColor });
+        }
       } else {
-        // For daily and weekly, mark the next 365 days from the event start date
         let currentDate = parseISO(e.date);
-        for (let i = 0; i < 365; i++) {
+        if (isNaN(currentDate.getTime())) return;
+
+        const maxSteps = e.recurrence === 'daily' ? 180 : e.recurrence === 'weekly' ? 30 : 6;
+        for (let i = 0; i < maxSteps; i++) {
           const dateStr = format(currentDate, 'yyyy-MM-dd');
           if (!marks[dateStr]) marks[dateStr] = { dots: [] };
-          if (marks[dateStr].dots.length < 3) marks[dateStr].dots.push({ color: dotColor });
-          
-          currentDate = addDays(currentDate, e.recurrence === 'daily' ? 1 : 7);
+          if (marks[dateStr].dots && marks[dateStr].dots.length < 3) {
+            marks[dateStr].dots.push({ color: dotColor });
+          }
+          currentDate = addDays(currentDate, e.recurrence === 'daily' ? 1 : e.recurrence === 'weekly' ? 7 : 30);
         }
       }
     });
@@ -249,80 +389,214 @@ export default function App() {
         ...marks[selectedDate],
         selected: true,
         selectedColor: colors.primary,
+        selectedTextColor: getContrastTextColor(colors.primary)
       };
     }
     return marks;
-  }, [events, selectedDate, colors.primary]);
+  }, [events, selectedDate, colors.primary, subjects]);
+
+  if (isInitializing) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar hidden={true} />
+        <View style={{ alignItems: 'center' }}>
+          <View style={[styles.logoIconBadge, { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.primaryLight, marginBottom: 12, marginRight: 0 }]}>
+            <Text style={{ fontSize: 28 }}>🎓</Text>
+          </View>
+          <Text style={[styles.title, { color: colors.text, fontSize: 24, marginBottom: 8 }]}>Organiza</Text>
+          <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 12 }} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-      
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Organiza</Text>
-        <TouchableOpacity onPress={toggleTheme}>
-          <Text style={{ fontSize: 24 }}>{theme === 'dark' ? '☀️' : '🌙'}</Text>
-        </TouchableOpacity>
+      <StatusBar hidden={true} />
+
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, marginRight: 8 }}>
+          <View style={[styles.logoIconBadge, { backgroundColor: colors.primaryLight }]}>
+            <Text style={{ fontSize: 16 }}>🎓</Text>
+          </View>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>Organiza</Text>
+          {settings.examWeekMode && (
+            <View style={[styles.examModeBadge, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}>
+              <Text style={{ color: colors.danger, fontSize: 10, fontWeight: 'bold' }}>🎯 MODO PROVAS</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.headerRight}>
+          {/* Level / Conquistas button */}
+          <TouchableOpacity
+            style={[styles.levelHeaderBtn, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}
+            onPress={async () => {
+              Haptics.selectionAsync();
+              const latestStreak = await StorageService.getStreak();
+              setStreak(latestStreak);
+              setAchievementsModalVisible(true);
+            }}
+            accessibilityLabel="Conquistas e Nível"
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>
+              Nv. {gamification?.level || 1} 🎓
+            </Text>
+          </TouchableOpacity>
+
+          {/* Group Projects button */}
+          <TouchableOpacity
+            style={[styles.iconBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setGroupProjectsModalVisible(true);
+            }}
+            accessibilityLabel="Trabalhos em Grupo"
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 15 }}>👥</Text>
+          </TouchableOpacity>
+
+          {/* Analytics / AACC button */}
+          <TouchableOpacity
+            style={[styles.iconBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setAnalyticsModalVisible(true);
+            }}
+            accessibilityLabel="Estatísticas e AACC"
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 15 }}>📈</Text>
+          </TouchableOpacity>
+
+          {/* Teams & AI button */}
+          <TouchableOpacity
+            style={[styles.iconBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+            onPress={() => setTeamsModalVisible(true)}
+            accessibilityLabel="Configurações do Microsoft Teams e IA"
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 16 }}>🤖</Text>
+          </TouchableOpacity>
+
+          {/* Settings button */}
+          <TouchableOpacity
+            style={[styles.iconBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+            onPress={() => setSettingsModalVisible(true)}
+            accessibilityLabel="Configurações do App"
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 16 }}>⚙️</Text>
+          </TouchableOpacity>
+
+          {/* Theme Toggle button */}
+          <TouchableOpacity
+            style={[styles.iconBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+            onPress={handleThemeToggle}
+            accessibilityLabel="Alterar Tema"
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 16 }}>
+              {theme === 'dark' ? '🌙' : theme === 'amoled' ? '🖤' : '☀️'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
+      {/* Main Tab Content */}
       {currentTab === 'agenda' ? (
         <>
           {attendances.filter(a => a.status === 'pending').length > 0 && (
-            <TouchableOpacity 
-              style={{ backgroundColor: '#ef4444', padding: 15, borderRadius: 10, marginHorizontal: 20, marginTop: 10, flexDirection: 'row', alignItems: 'center' }}
+            <TouchableOpacity
+              style={[styles.pendingBanner, { backgroundColor: colors.danger }]}
               onPress={() => setAttendanceModalVisible(true)}
+              activeOpacity={0.85}
             >
-              <Text style={{ fontSize: 24, marginRight: 10 }}>⚠️</Text>
+              <Text style={{ fontSize: 20, marginRight: 10 }}>⚠️</Text>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Faltas Pendentes</Text>
-                <Text style={{ color: '#fff', fontSize: 12 }}>Você tem {attendances.filter(a => a.status === 'pending').length} aula(s) aguardando confirmação.</Text>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>Faltas Pendentes de Confirmação</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12 }}>
+                  Você tem {attendances.filter(a => a.status === 'pending').length} aula(s) aguardando confirmação.
+                </Text>
               </View>
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 18 }}>›</Text>
             </TouchableOpacity>
           )}
 
+          {/* Widget Inteligente "Resumo do Dia" */}
+          <TodaySummaryWidget
+            events={events}
+            subjects={subjects}
+            selectedDate={selectedDate || new Date().toISOString().split('T')[0]}
+            theme={theme}
+            gamification={gamification || undefined}
+            onOpenStudy={(subId) => {
+              if (subId) setSelectedSubjectId(subId);
+              setCurrentTab('estudos');
+            }}
+            onOpenExamDetails={(examEvent) => {
+              setEditingEvent(examEvent);
+              setModalVisible(true);
+            }}
+          />
+
           {!selectedDate ? (
             <View style={styles.calendarContainer}>
-              <Calendar
-                current={new Date().toISOString().split('T')[0]}
-                onDayPress={(day: any) => setSelectedDate(day.dateString)}
-                markingType={'multi-dot'}
-                markedDates={{
-                  ...markedDates,
-                  [new Date().toISOString().split('T')[0]]: {
-                    ...(markedDates[new Date().toISOString().split('T')[0]] || {}),
-                    selected: true,
-                    selectedColor: colors.primary,
-                    selectedTextColor: '#000'
-                  }
-                }}
-                enableSwipeMonths={true}
-                hideArrows={true}
-                theme={{
-                  calendarBackground: colors.background,
-                  textSectionTitleColor: colors.textSecondary,
-                  selectedDayBackgroundColor: colors.primary,
-                  selectedDayTextColor: '#000',
-                  todayTextColor: '#000',
-                  todayBackgroundColor: colors.primary,
-                  dayTextColor: colors.text,
-                  textDisabledColor: colors.border,
-                  monthTextColor: colors.text,
-                }}
-              />
-              <Text style={[styles.hintText, { color: colors.textSecondary, marginBottom: 15 }]}>
-                Clique em um dia para ver os horários. Deslize para trocar o mês.
+              <View style={[styles.calendarCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Calendar
+                  current={new Date().toISOString().split('T')[0]}
+                  onDayPress={(day: any) => setSelectedDate(day.dateString)}
+                  markingType={'multi-dot'}
+                  markedDates={{
+                    ...markedDates,
+                    [new Date().toISOString().split('T')[0]]: {
+                      ...(markedDates[new Date().toISOString().split('T')[0]] || {}),
+                      selected: true,
+                      selectedColor: colors.primary,
+                      selectedTextColor: getContrastTextColor(colors.primary)
+                    }
+                  }}
+                  enableSwipeMonths={true}
+                  hideArrows={false}
+                  theme={{
+                    calendarBackground: 'transparent',
+                    textSectionTitleColor: colors.textSecondary,
+                    selectedDayBackgroundColor: colors.primary,
+                    selectedDayTextColor: getContrastTextColor(colors.primary),
+                    todayTextColor: colors.primary,
+                    todayBackgroundColor: 'transparent',
+                    dayTextColor: colors.text,
+                    textDisabledColor: colors.borderHighlight,
+                    monthTextColor: colors.text,
+                    arrowColor: colors.primary,
+                    textMonthFontWeight: 'bold',
+                    textDayFontSize: 14,
+                    textMonthFontSize: 16,
+                  }}
+                />
+              </View>
+              <Text style={[styles.hintText, { color: colors.textSecondary }]}>
+                Toque em um dia para ver a linha do tempo detalhada.
               </Text>
 
               {nextTask && (
-                <View style={{ marginBottom: 15 }}>
-                  <Text style={[styles.highlightsTitle, { color: colors.text }]}>⏳ Próxima Tarefa</Text>
-                  <TouchableOpacity 
-                    style={[styles.highlightCard, { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 2 }]}
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[styles.highlightsTitle, { color: colors.text }]}>⏳ Próxima Atividade</Text>
+                  <TouchableOpacity
+                    style={[styles.highlightCard, { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1.5 }]}
                     onPress={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
+                    activeOpacity={0.8}
                   >
                     <View style={styles.highlightHeader}>
-                      <Text style={[styles.highlightDate, { color: colors.primary }]}>{nextTask.startTime} - {nextTask.endTime}</Text>
-                      <Text style={[styles.highlightCategory, { color: CategoryColors[nextTask.category] }]}>{nextTask.category}</Text>
+                      <View style={[styles.timeBadge, { backgroundColor: colors.primaryLight }]}>
+                        <Text style={[styles.highlightDate, { color: colors.primary }]}>{nextTask.startTime} - {nextTask.endTime}</Text>
+                      </View>
+                      <View style={[styles.categoryBadge, { backgroundColor: (CategoryColors[nextTask.category] || colors.primary) + '20' }]}>
+                        <Text style={[styles.highlightCategory, { color: CategoryColors[nextTask.category] || colors.primary }]}>{nextTask.category}</Text>
+                      </View>
                     </View>
                     <Text style={[styles.highlightEventTitle, { color: colors.text }]}>{nextTask.title}</Text>
                   </TouchableOpacity>
@@ -332,35 +606,43 @@ export default function App() {
               {todaysEvents.length > 0 && (
                 <View style={styles.highlightsContainer}>
                   <Text style={[styles.highlightsTitle, { color: colors.text }]}>📌 Atividades de Hoje</Text>
-                  <ScrollView style={{ flex: 1 }}>
-                    {todaysEvents.map(event => (
-                      <TouchableOpacity 
-                        key={event.id} 
-                        style={[styles.highlightCard, { backgroundColor: colors.surface, borderColor: CategoryColors[event.category] }]}
-                        onPress={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
-                      >
-                        <View style={styles.highlightHeader}>
-                          <Text style={[styles.highlightDate, { color: colors.primary }]}>{event.startTime} - {event.endTime}</Text>
-                          <Text style={[styles.highlightCategory, { color: CategoryColors[event.category] }]}>{event.category}</Text>
-                        </View>
-                        <Text style={[styles.highlightEventTitle, { color: colors.text }]}>{event.title}</Text>
-                      </TouchableOpacity>
-                    ))}
+                  <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                    {todaysEvents.map(event => {
+                      const categoryColor = CategoryColors[event.category] || colors.primary;
+                      return (
+                        <TouchableOpacity
+                          key={event.id}
+                          style={[styles.highlightCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                          onPress={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.highlightHeader}>
+                            <Text style={[styles.highlightDate, { color: colors.text }]}>{event.startTime} - {event.endTime}</Text>
+                            <View style={[styles.categoryBadge, { backgroundColor: categoryColor + '18' }]}>
+                              <Text style={[styles.highlightCategory, { color: categoryColor }]}>{event.category}</Text>
+                            </View>
+                          </View>
+                          <Text style={[styles.highlightEventTitle, { color: colors.text }]}>{event.title}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <View style={{ height: 40 }} />
                   </ScrollView>
                 </View>
               )}
             </View>
           ) : (
             <View style={{ flex: 1 }}>
-              <TouchableOpacity 
-                style={[styles.backBtn, { borderColor: colors.border }]} 
+              <TouchableOpacity
+                style={[styles.backBtn, { borderColor: colors.border, backgroundColor: colors.surface }]}
                 onPress={() => setSelectedDate(null)}
+                activeOpacity={0.7}
               >
-                <Text style={{ color: colors.primary, fontWeight: 'bold' }}>← Voltar ao Calendário</Text>
-                <Text style={{ color: colors.text }}> Dia {selectedDate.split('-').reverse().join('/')}</Text>
+                <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 14 }}>← Voltar ao Calendário</Text>
+                <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}> Dia {selectedDate.split('-').reverse().join('/')}</Text>
               </TouchableOpacity>
 
-              <ScrollView style={styles.timeline}>
+              <ScrollView style={styles.timeline} showsVerticalScrollIndicator={false}>
                 <View style={{ height: 24 * 80, paddingBottom: 80 }}>
                   {/* Grid / Hour Labels */}
                   {Array.from({ length: 24 }).map((_, hour) => (
@@ -378,47 +660,47 @@ export default function App() {
                       right: 0,
                       top: (currentTime.getHours() + currentTime.getMinutes() / 60) * 80,
                       height: 2,
-                      backgroundColor: '#ef4444',
+                      backgroundColor: colors.danger,
                       zIndex: 10,
                       flexDirection: 'row',
                       alignItems: 'center'
                     }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginLeft: -4 }} />
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger, marginLeft: -5 }} />
                     </View>
                   )}
 
                   {/* Events */}
-                  {todaysEvents.map((event, index) => {
-                    const [startH, startM] = event.startTime.split(':').map(Number);
-                    const topOffset = (startH + startM / 60) * 80;
-                    
+                  {todaysEvents.map(event => {
+                    const [startH, startM] = (event.startTime || '08:00').split(':').map(Number);
+                    const topOffset = ((startH || 0) + (startM || 0) / 60) * 80;
+
                     let durationHours = 1;
                     if (event.endTime) {
                       const [endH, endM] = event.endTime.split(':').map(Number);
-                      durationHours = (endH + endM / 60) - (startH + startM / 60);
+                      durationHours = ((endH || 0) + (endM || 0) / 60) - ((startH || 0) + (startM || 0) / 60);
                       if (durationHours < 0) durationHours += 24;
                     }
-                    
-                    const height = Math.max(durationHours * 80, 20); // min height 20px
-                    
-                    // Simple overlap visual trick: offset slightly if overlapping
-                    // We'll just add a border and slight opacity
-                    
+
+                    const height = Math.max(durationHours * 80, 28);
+                    const eventBgColor = event.subjectId
+                      ? subjects.find(s => s.id === event.subjectId)?.color || CategoryColors[event.category] || colors.primary
+                      : CategoryColors[event.category] || colors.primary;
+
+                    const contrastTextColor = getContrastTextColor(eventBgColor);
+
                     return (
-                      <TouchableOpacity 
-                        key={event.id} 
+                      <TouchableOpacity
+                        key={event.id}
                         style={[
-                          styles.eventCard, 
-                          { 
+                          styles.eventCard,
+                          {
                             position: 'absolute',
                             top: topOffset,
-                            height: height - 2, // 2px margin
-                            left: 70, // Align right next to timeLabel
+                            height: height - 4,
+                            left: 70,
                             right: 15,
-                            backgroundColor: event.subjectId ? subjects.find(s => s.id === event.subjectId)?.color || CategoryColors[event.category] : CategoryColors[event.category], 
-                            opacity: event.isCompleted ? 0.6 : 0.95,
-                            borderWidth: 1,
-                            borderColor: colors.surface,
+                            backgroundColor: eventBgColor,
+                            opacity: event.isCompleted ? 0.65 : 0.96,
                             zIndex: 5
                           }
                         ]}
@@ -427,13 +709,14 @@ export default function App() {
                           setEditingEvent(event);
                           setModalVisible(true);
                         }}
+                        activeOpacity={0.85}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.eventTitle, { color: '#000' }]} numberOfLines={1}>
+                          <Text style={[styles.eventTitle, { color: contrastTextColor, textDecorationLine: event.isCompleted ? 'line-through' : 'none' }]} numberOfLines={1}>
                             {event.isCompleted ? '✓ ' : ''}{event.title}
                           </Text>
-                          {height >= 40 && (
-                            <Text style={{ fontSize: 12, color: '#000', opacity: 0.8 }}>
+                          {height >= 42 && (
+                            <Text style={{ fontSize: 11, color: contrastTextColor, opacity: 0.88, fontWeight: '500' }}>
                               {event.startTime} - {event.endTime} • {event.category}
                             </Text>
                           )}
@@ -447,46 +730,126 @@ export default function App() {
             </View>
           )}
         </>
+      ) : currentTab === 'notas' ? (
+        <GradesScreen
+          subjects={subjects}
+          events={events}
+          attendances={attendances}
+          theme={theme}
+          semesters={semesters}
+          onSubjectPress={(id) => {
+            setSelectedSubjectId(id);
+            setDetailsModalVisible(true);
+          }}
+          onArchiveSubject={async (id) => {
+            const updated = subjects.map(s => s.id === id ? { ...s, isArchived: !s.isArchived } : s);
+            setSubjects(updated);
+            await StorageService.saveSubjects(updated);
+          }}
+        />
+      ) : currentTab === 'grade' ? (
+        <ScheduleGridScreen
+          subjects={subjects}
+          events={events}
+          theme={theme}
+          semesters={semesters}
+        />
+      ) : currentTab === 'estudos' ? (
+        <StudyScreen
+          subjects={subjects}
+          tasks={tasks}
+          onUpdateTasks={async (updatedTasks) => {
+            setTasks(updatedTasks);
+            await StorageService.saveTasks(updatedTasks);
+          }}
+          sessions={studySessions}
+          onAddSession={async (session) => {
+            const updated = [...studySessions, session];
+            setStudySessions(updated);
+            await StorageService.saveStudySessions(updated);
+          }}
+          theme={theme}
+          focusMinutesDefault={settings.pomodoroFocusMin}
+          breakMinutesDefault={settings.pomodoroBreakMin}
+          onOpenAchievements={() => setAchievementsModalVisible(true)}
+          onOpenAnalytics={() => setAnalyticsModalVisible(true)}
+        />
       ) : (
-        <>
-          <PerformanceScreen 
-            subjects={subjects} 
-            events={events} 
-            attendances={attendances} 
-            theme={theme} 
-            onSubjectPress={(id) => {
-              setSelectedSubjectId(id);
-              setDetailsModalVisible(true);
-            }}
-            onArchiveSubject={async (id) => {
-              const newSubjects = subjects.map(s => s.id === id ? { ...s, isArchived: true } : s);
-              setSubjects(newSubjects);
-              await StorageService.saveSubjects(newSubjects);
-            }}
-          />
-        </>
+        <AttendanceScreen
+          subjects={subjects}
+          events={events}
+          attendances={attendances}
+          theme={theme}
+          semesters={semesters}
+          onSubjectPress={(id) => {
+            setSelectedSubjectId(id);
+            setDetailsModalVisible(true);
+          }}
+          onUpdateAttendance={async (subjectId, eventId, status, dateStr) => {
+            const existingIndex = attendances.findIndex(a => a.eventId === eventId && a.date === dateStr);
+            let newAttendances = [...attendances];
+            if (existingIndex >= 0) {
+              newAttendances[existingIndex].status = status;
+            } else {
+              newAttendances.push({
+                id: generateId('att'),
+                subjectId,
+                eventId,
+                date: dateStr,
+                status
+              });
+            }
+            setAttendances(newAttendances);
+            await StorageService.saveAttendances(newAttendances);
+          }}
+        />
       )}
 
       {/* Bottom Navigation */}
       <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentTab('agenda')}>
-          <Text style={{ fontSize: 24 }}>📅</Text>
-          <Text style={{ color: currentTab === 'agenda' ? colors.primary : colors.textSecondary, fontSize: 12, fontWeight: currentTab === 'agenda' ? 'bold' : 'normal', marginTop: 4 }}>Agenda</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentTab('performance')}>
-          <Text style={{ fontSize: 24 }}>📊</Text>
-          <Text style={{ color: currentTab === 'performance' ? colors.primary : colors.textSecondary, fontSize: 12, fontWeight: currentTab === 'performance' ? 'bold' : 'normal', marginTop: 4 }}>Desempenho</Text>
-        </TouchableOpacity>
+        {[
+          { id: 'agenda', icon: '📅', label: 'Agenda' },
+          { id: 'grade', icon: '🗓️', label: 'Grade' },
+          { id: 'estudos', icon: '📚', label: 'Estudos' },
+          { id: 'faltas', icon: '✅', label: 'Faltas' },
+          { id: 'notas', icon: '📊', label: 'Notas' }
+        ].map(tab => {
+          const isActive = currentTab === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={[
+                styles.navItem,
+                isActive && [styles.navItemActive, { backgroundColor: colors.primaryLight }]
+              ]}
+              onPress={() => handleTabChange(tab.id as any)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 20 }}>{tab.icon}</Text>
+              <Text style={{
+                color: isActive ? colors.primary : colors.textSecondary,
+                fontSize: 11,
+                fontWeight: isActive ? '700' : '500',
+                marginTop: 2
+              }}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      <TouchableOpacity 
-        style={[styles.fab, { backgroundColor: colors.primary }]} 
+      {/* Floating Action Button */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
         onPress={() => setEventTypeVisible(true)}
+        accessibilityLabel="Adicionar novo item"
+        activeOpacity={0.85}
       >
-        <Text style={styles.fabIcon}>+</Text>
+        <Text style={[styles.fabIcon, { color: getContrastTextColor(colors.primary) }]}>+</Text>
       </TouchableOpacity>
 
+      {/* Modals */}
       <EventTypeModal
         visible={eventTypeVisible}
         onClose={() => setEventTypeVisible(false)}
@@ -504,6 +867,7 @@ export default function App() {
         onClose={() => setSubjectVisible(false)}
         onSave={handleSaveSubject}
         theme={theme}
+        semesters={semesters}
       />
 
       <ExamModal
@@ -517,7 +881,7 @@ export default function App() {
         isDateLocked={!!selectedDate}
       />
 
-      <EventModal 
+      <EventModal
         visible={modalVisible}
         onClose={() => {
           setModalVisible(false);
@@ -555,40 +919,328 @@ export default function App() {
         events={events}
         attendances={attendances}
         theme={theme}
+        semesters={semesters}
         onUpdateSubject={async (updatedSubject) => {
           const newSubjects = subjects.map(s => s.id === updatedSubject.id ? updatedSubject : s);
           setSubjects(newSubjects);
           await StorageService.saveSubjects(newSubjects);
         }}
+        onDeleteSubject={handleDeleteSubject}
+        onAddManualAttendance={async (subjectId, dateStr, status) => {
+          const subjectEvents = events.filter(e => e.subjectId === subjectId);
+          const fallbackEventId = subjectEvents.length > 0 ? subjectEvents[0].id : generateId('evt_manual');
+
+          const existingIndex = attendances.findIndex(a => a.subjectId === subjectId && a.date === dateStr);
+          let newAttendances = [...attendances];
+
+          if (existingIndex >= 0) {
+            newAttendances[existingIndex].status = status;
+          } else {
+            newAttendances.push({
+              id: generateId('att'),
+              subjectId,
+              eventId: fallbackEventId,
+              date: dateStr,
+              status
+            });
+          }
+
+          setAttendances(newAttendances);
+          await StorageService.saveAttendances(newAttendances);
+        }}
+      />
+
+      <TeamsConfigModal
+        visible={teamsModalVisible}
+        onClose={() => setTeamsModalVisible(false)}
+        theme={theme}
+        events={events}
+        attendances={attendances}
+        subjects={subjects}
+        onSyncSuccess={(updatedEvents, updatedAttendances, updatedSubjects) => {
+          setEvents(updatedEvents);
+          setAttendances(updatedAttendances);
+          setSubjects(updatedSubjects);
+        }}
+      />
+
+      <SettingsModal
+        visible={settingsModalVisible}
+        onClose={() => setSettingsModalVisible(false)}
+        theme={theme}
+        onThemeChange={(newTheme) => {
+          setTheme(newTheme);
+          StorageService.saveTheme(newTheme);
+        }}
+        settings={settings}
+        onUpdateSettings={(newSettings) => setSettings(newSettings)}
+        semesters={semesters}
+        onUpdateSemesters={(newSemesters) => setSemesters(newSemesters)}
+        onOpenGuide={() => setOnboardingVisible(true)}
+        onRestoreSuccess={() => loadData()}
+      />
+
+      <OnboardingModal
+        visible={onboardingVisible}
+        onClose={() => setOnboardingVisible(false)}
+        theme={theme}
+      />
+
+      {/* Novas Funcionalidades: Estatísticas e AACC */}
+      <AnalyticsAndAACCModal
+        visible={analyticsModalVisible}
+        onClose={() => setAnalyticsModalVisible(false)}
+        theme={theme}
+        subjects={subjects}
+        studySessions={studySessions}
+        attendances={attendances}
+      />
+
+      {/* Gamificação & Conquistas */}
+      <AchievementsModal
+        visible={achievementsModalVisible}
+        onClose={() => setAchievementsModalVisible(false)}
+        theme={theme}
+        studySessions={studySessions}
+        streak={streak}
+        attendances={attendances}
+      />
+
+      {/* Trabalhos em Grupo & Kanban */}
+      <GroupProjectsModal
+        visible={groupProjectsModalVisible}
+        onClose={() => setGroupProjectsModalVisible(false)}
+        theme={theme}
+        subjects={subjects}
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15 },
-  title: { fontSize: 28, fontWeight: 'bold' },
-  calendarContainer: { flex: 1, padding: 10 },
-  hintText: { textAlign: 'center', marginTop: 20, fontSize: 16 },
-  backBtn: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1 },
-  timeline: { flex: 1 },
-  hourRow: { flexDirection: 'row', minHeight: 80, borderBottomWidth: 1 },
-  timeLabel: { width: 60, textAlign: 'center', paddingTop: 10, fontSize: 14, fontWeight: '500' },
-  eventsContainer: { flex: 1, padding: 10 },
-  emptySlot: { flex: 1 },
-  eventCard: { borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  eventTitle: { color: '#000', fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
-  eventTime: { color: 'rgba(0,0,0,0.7)', fontSize: 12 },
-  fab: { position: 'absolute', bottom: 90, right: 30, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-  fabIcon: { fontSize: 32, color: '#000', fontWeight: '300' },
-  highlightsContainer: { flex: 1, marginTop: 10, borderTopWidth: 1, borderTopColor: '#333', paddingTop: 15 },
-  highlightsTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  highlightCard: { padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 10 },
-  highlightHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  highlightDate: { fontWeight: 'bold' },
-  highlightCategory: { fontSize: 12, fontWeight: '600' },
-  highlightEventTitle: { fontSize: 16, fontWeight: '500' },
-  bottomNav: { flexDirection: 'row', height: 65, borderTopWidth: 1, paddingBottom: 10, paddingTop: 5 },
-  navItem: { flex: 1, justifyContent: 'center', alignItems: 'center' }
+  container: {
+    flex: 1,
+    paddingTop: Platform.OS === 'android' ? 6 : 0
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1
+  },
+  logoIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  levelHeaderBtn: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  teamsBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1
+  },
+  teamsBtnText: {
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    flexShrink: 1
+  },
+  examModeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginLeft: 8
+  },
+  pendingBanner: {
+    padding: 14,
+    borderRadius: 14,
+    marginHorizontal: 15,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  calendarContainer: {
+    flex: 1,
+    padding: 12
+  },
+  calendarCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 6,
+    overflow: 'hidden'
+  },
+  hintText: {
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+    fontSize: 12
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1
+  },
+  timeline: {
+    flex: 1
+  },
+  hourRow: {
+    flexDirection: 'row',
+    minHeight: 80,
+    borderBottomWidth: 1
+  },
+  timeLabel: {
+    width: 60,
+    textAlign: 'center',
+    paddingTop: 10,
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  eventsContainer: {
+    flex: 1,
+    padding: 10
+  },
+  eventCard: {
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2
+  },
+  eventTitle: {
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 2
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 84,
+    right: 22,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8
+  },
+  fabIcon: {
+    fontSize: 32,
+    fontWeight: '700',
+    lineHeight: 34
+  },
+  highlightsContainer: {
+    flex: 1,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(150,150,150,0.15)',
+    paddingTop: 10
+  },
+  highlightsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8
+  },
+  highlightCard: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8
+  },
+  highlightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6
+  },
+  timeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
+  categoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
+  highlightDate: {
+    fontWeight: '700',
+    fontSize: 12
+  },
+  highlightCategory: {
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  highlightEventTitle: {
+    fontSize: 15,
+    fontWeight: '600'
+  },
+  bottomNav: {
+    flexDirection: 'row',
+    height: 64,
+    borderTopWidth: 1,
+    paddingBottom: 6,
+    paddingTop: 4,
+    paddingHorizontal: 6,
+    alignItems: 'center'
+  },
+  navItem: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 4,
+    borderRadius: 12
+  },
+  navItemActive: {
+    borderRadius: 12
+  }
 });
+

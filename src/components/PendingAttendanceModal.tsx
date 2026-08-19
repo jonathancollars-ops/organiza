@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AttendanceRecord, Subject, AppEvent, ThemeType } from '../types';
-import { getThemeColors } from '../theme';
+import { getThemeColors, getContrastTextColor } from '../theme';
+import * as Haptics from 'expo-haptics';
 
 interface Props {
   visible: boolean;
@@ -17,19 +19,24 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
 
+  const handleUpdateStatus = (id: string, status: 'present' | 'absent' | 'cancelled') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onUpdateStatus(id, status);
+  };
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <Text style={styles.title}>Faltas Pendentes</Text>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.closeText}>Fechar</Text>
+          <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtn}>
+            <Text style={styles.closeText}>✕ Fechar</Text>
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.content}>
-          <Text style={{ color: colors.textSecondary, marginBottom: 20 }}>
-            Você tem aulas que já aconteceram mas não registrou presença. Por favor, atualize seu status:
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <Text style={{ color: colors.textSecondary, marginBottom: 18, fontSize: 14, lineHeight: 20 }}>
+            Você tem aulas passadas sem registro de presença. Atualize seu status para manter o histórico preciso:
           </Text>
 
           {pendingAttendances.map(att => {
@@ -40,35 +47,42 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
             return (
               <View key={att.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={{ marginBottom: 15 }}>
-                  <Text style={[styles.subjectName, { color: colors.text }]}>{subject.name}</Text>
-                  <Text style={{ color: colors.primary, fontWeight: 'bold' }}>
-                    Dia {att.date.split('-').reverse().join('/')}
-                  </Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
-                    Horário: {event.startTime} - {event.endTime}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <View style={[styles.subjectDot, { backgroundColor: subject.color || colors.primary }]} />
+                    <Text style={[styles.subjectName, { color: colors.text }]} numberOfLines={1}>
+                      {subject.name}
+                    </Text>
+                  </View>
+                  <View style={[styles.dateBadge, { backgroundColor: colors.surfaceSubtle }]}>
+                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                      📅 {att.date.split('-').reverse().join('/')} • {event.startTime} - {event.endTime}
+                    </Text>
+                  </View>
                 </View>
 
                 <View style={styles.buttonRow}>
                   <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: '#22c55e' }]}
-                    onPress={() => onUpdateStatus(att.id, 'present')}
+                    style={[styles.actionBtn, { backgroundColor: colors.successLight, borderColor: colors.success }]}
+                    onPress={() => handleUpdateStatus(att.id, 'present')}
+                    activeOpacity={0.7}
                   >
-                    <Text style={styles.btnText}>Presente</Text>
+                    <Text style={[styles.btnText, { color: theme === 'light' ? colors.successDark : colors.success }]}>✓ Presente</Text>
                   </TouchableOpacity>
                   
                   <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: '#ef4444' }]}
-                    onPress={() => onUpdateStatus(att.id, 'absent')}
+                    style={[styles.actionBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}
+                    onPress={() => handleUpdateStatus(att.id, 'absent')}
+                    activeOpacity={0.7}
                   >
-                    <Text style={styles.btnText}>Faltei</Text>
+                    <Text style={[styles.btnText, { color: theme === 'light' ? colors.dangerDark : colors.danger }]}>✕ Faltei</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: colors.border }]}
-                    onPress={() => onUpdateStatus(att.id, 'cancelled')}
+                    style={[styles.actionBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                    onPress={() => handleUpdateStatus(att.id, 'cancelled')}
+                    activeOpacity={0.7}
                   >
-                    <Text style={[styles.btnText, { color: colors.text }]}>Cancelada</Text>
+                    <Text style={[styles.btnText, { color: colors.textSecondary }]}>Cancelada</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -76,7 +90,7 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
           })}
           <View style={{ height: 40 }} />
         </ScrollView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 };
@@ -90,49 +104,73 @@ const getStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    paddingTop: 50,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   title: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#ef4444',
+    fontWeight: '800',
+    color: colors.danger,
+    letterSpacing: -0.5
+  },
+  closeBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   closeText: {
-    fontSize: 16,
+    fontSize: 15,
     color: colors.primary,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   content: {
-    padding: 20,
+    padding: 18,
   },
   card: {
-    padding: 15,
-    borderRadius: 12,
+    padding: 18,
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 15,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2
+  },
+  subjectDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
   },
   subjectName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 17,
+    fontWeight: '700',
+    flex: 1
+  },
+  dateBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 4,
   },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 6
   },
   actionBtn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 10,
+    borderWidth: 1,
     alignItems: 'center',
-    marginHorizontal: 4,
   },
   btnText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
+    fontWeight: '700',
+    fontSize: 13,
   }
 });
+

@@ -55,8 +55,13 @@ jobs:
           tag_name: v1.0.0-build-${{ github.run_number }}
           name: Organiza App (Build #${{ github.run_number }})
           body: |
-            📱 **Organiza APK**
-            - Correções de layout nas abas de Faltas, Notas e Grade
-            - Semestres em formato pílula compacto
-            - Barra de notificações oculta
+            📱 **Organiza App v1.0.0 (Build #${{ github.run_number }})**
+
+            ✨ **Novidades desta versão:**
+            - 🤖 **IA On-Device (Google AI Edge / Gemma 2B):** Suporte a IA offline integrada com armazenamento sandboxed (auto-excluído na desinstalação).
+            - 📋 **Central Universal de IA:** Importação de mensagens e avisos do WhatsApp, Classroom, E-mail, Planilha e Teams.
+            - 📊 **Google Sheets 100% Automático:** Sincronização e detecção de aulas canceladas/provas direto ao abrir o app.
+            - 🎓 **Assistente de Notas com IA:** Configuração de pesos e fórmulas de cálculo a partir de texto em português.
+            - 📅 **Agendamento de Provas Inteligente:** Seleção de datas futuras com validação rigorosa dos dias de aula.
+            - 🎨 **Layout Otimizado:** Pílulas compactas de semestres nas telas de Faltas, Notas e Grade Horária.
           files: ./organiza.apk

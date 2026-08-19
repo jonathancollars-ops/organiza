@@ -26,7 +26,7 @@ import { SubjectModal } from './src/components/SubjectModal';
 import { ExamModal } from './src/components/ExamModal';
 import { PendingAttendanceModal } from './src/components/PendingAttendanceModal';
 import { SubjectDetailsModal } from './src/components/SubjectDetailsModal';
-import { TeamsConfigModal } from './src/components/TeamsConfigModal';
+import { AIImportModal } from './src/components/AIImportModal';
 import { SettingsModal } from './src/components/SettingsModal';
 import { OnboardingModal } from './src/components/OnboardingModal';
 
@@ -82,7 +82,7 @@ export default function App() {
   const [modalVisible, setModalVisible] = useState(false);
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-  const [teamsModalVisible, setTeamsModalVisible] = useState(false);
+  const [aiModalVisible, setAiModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [onboardingVisible, setOnboardingVisible] = useState(false);
   const [analyticsModalVisible, setAnalyticsModalVisible] = useState(false);
@@ -472,14 +472,17 @@ export default function App() {
             <Text style={{ fontSize: 15 }}>📈</Text>
           </TouchableOpacity>
 
-          {/* Teams & AI button */}
+          {/* Universal AI Assistant button */}
           <TouchableOpacity
-            style={[styles.iconBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-            onPress={() => setTeamsModalVisible(true)}
-            accessibilityLabel="Configurações do Microsoft Teams e IA"
+            style={[styles.iconBtn, { backgroundColor: 'rgba(59, 130, 246, 0.12)', borderColor: colors.primary }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setAiModalVisible(true);
+            }}
+            accessibilityLabel="Central de IA e Importação"
             activeOpacity={0.7}
           >
-            <Text style={{ fontSize: 16 }}>🤖</Text>
+            <Text style={{ fontSize: 16 }}>✨</Text>
           </TouchableOpacity>
 
           {/* Settings button */}
@@ -950,9 +953,9 @@ export default function App() {
         }}
       />
 
-      <TeamsConfigModal
-        visible={teamsModalVisible}
-        onClose={() => setTeamsModalVisible(false)}
+      <AIImportModal
+        visible={aiModalVisible}
+        onClose={() => setAiModalVisible(false)}
         theme={theme}
         events={events}
         attendances={attendances}

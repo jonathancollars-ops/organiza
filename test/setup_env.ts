@@ -50,5 +50,22 @@ Module.prototype.require = function (id: string) {
       NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' }
     };
   }
+  if (id === 'expo-file-system' || id === 'expo-file-system/legacy') {
+    return {
+      documentDirectory: 'file:///mock_sandbox_app/files/',
+      cacheDirectory: 'file:///mock_sandbox_app/cache/',
+      getInfoAsync: async (uri: string) => ({ exists: false, isDirectory: false }),
+      makeDirectoryAsync: async () => {},
+      deleteAsync: async () => {},
+      createDownloadResumable: (url: string, fileUri: string, options: any, callback: any) => ({
+        downloadAsync: async () => {
+          if (callback) callback({ totalBytesWritten: 1280000000, totalBytesExpectedToWrite: 1280000000 });
+          return { uri: fileUri, status: 200 };
+        },
+        cancelAsync: async () => {},
+        pauseAsync: async () => {}
+      })
+    };
+  }
   return origRequire.apply(this, arguments);
 };

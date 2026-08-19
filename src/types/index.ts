@@ -189,10 +189,32 @@ export interface TeamsConfig {
 
 export type AIProvider = 'gemini' | 'openai';
 
+export type AIProviderMode = 'local_edge' | 'gemini_cloud' | 'heuristic_offline';
+
+export type LocalModelDownloadState = 'not_downloaded' | 'downloading' | 'downloaded' | 'error';
+
+export interface LocalAIModelInfo {
+  id: string;
+  name: string;
+  filename: string;
+  description: string;
+  sizeBytes: number;
+  formattedSize: string;
+  downloadUrl: string;
+  downloadState: LocalModelDownloadState;
+  downloadProgress: number; // 0.0 to 1.0
+  downloadedBytes: number;
+  localPath?: string;
+  lastUpdated?: string;
+}
+
 export interface AIConfig {
   provider: AIProvider;
+  mode: AIProviderMode;
   apiKey: string;
   model?: string;
+  localModelPath?: string;
+  enableFallbackToCloud?: boolean;
 }
 
 export type AIIntent = 'cancelled_class' | 'homework' | 'exam' | 'none';
@@ -207,12 +229,40 @@ export interface AIParsedItem {
   endTime: string; // HH:mm
   alerts: number[]; // e.g. [10080, 1440]
   rawSummary: string;
+  confidence?: number;
 }
 
 export interface AIParsingResult {
   items: AIParsedItem[];
   confidence: number;
   rawResponse?: string;
+  sourceMode?: AIProviderMode;
+}
+
+export interface UniversalAIInput {
+  rawText: string;
+  sourceType: 'whatsapp' | 'classroom' | 'sheets' | 'teams' | 'text' | 'image';
+  sender?: string;
+  subjectHint?: string;
+}
+
+export interface GradeFormulaExtraction {
+  passGrade: number;
+  description: string;
+  groups: {
+    name: string;
+    weight: number;
+    items: {
+      name: string;
+      weight: number;
+      maxGrade: number;
+    }[];
+  }[];
+  extraPoints?: {
+    name: string;
+    maxPoints: number;
+  };
+  finalExamRule?: string;
 }
 
 export interface SyncResult {
@@ -244,4 +294,5 @@ export interface TeamsMessage {
   cleanText?: string;
   rawHtml?: string;
 }
+
 

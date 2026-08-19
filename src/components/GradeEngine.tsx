@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Modal, Swit
 import { Subject, GradeGroup, GradeItem, ThemeType } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId } from '../utils/id';
+import { AIGradeCriteriaModal } from './AIGradeCriteriaModal';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -160,6 +161,9 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
   const [finalExamModalVisible, setFinalExamModalVisible] = useState(false);
   const [finalExamGrade, setFinalExamGrade] = useState('');
   const [finalExamResult, setFinalExamResult] = useState<{ avg: number; passed: boolean } | null>(null);
+
+  // AI Grade Formula Modal
+  const [aiCriteriaModalVisible, setAiCriteriaModalVisible] = useState(false);
 
   const gradeGroups = subject.gradeGroups || [];
   const passGrade = subject.passGrade || 7.0;
@@ -365,7 +369,18 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
         </TouchableOpacity>
       )}
 
-      <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 10 }]}>Avaliações</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 8 }}>
+        <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 0, marginBottom: 0 }]}>Avaliações</Text>
+        <TouchableOpacity
+          style={[styles.aiFormulaBtn, { backgroundColor: 'rgba(59, 130, 246, 0.12)', borderColor: colors.primary }]}
+          onPress={() => setAiCriteriaModalVisible(true)}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>
+            ✨ Configurar com IA
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
         {gradeGroups.reduce((acc, group) => {
@@ -635,6 +650,14 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
         </TouchableOpacity>
       </Modal>
 
+      <AIGradeCriteriaModal
+        visible={aiCriteriaModalVisible}
+        onClose={() => setAiCriteriaModalVisible(false)}
+        subject={subject}
+        onApplyCriteria={(updated) => onUpdateSubject(updated)}
+        theme={theme}
+      />
+
       <View style={{ height: 40 }} />
     </View>
   );
@@ -644,6 +667,12 @@ const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     padding: 18,
+  },
+  aiFormulaBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
   },
   riskCard: {
     flexDirection: 'row',

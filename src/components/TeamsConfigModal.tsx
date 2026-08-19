@@ -85,8 +85,10 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
   // AI Config State
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
+    mode: 'local_edge',
     apiKey: '',
-    model: 'gemini-1.5-flash'
+    model: 'gemini-1.5-flash',
+    enableFallbackToCloud: true
   });
   const [showApiKey, setShowApiKey] = useState(false);
   const [isAiSaving, setIsAiSaving] = useState(false);

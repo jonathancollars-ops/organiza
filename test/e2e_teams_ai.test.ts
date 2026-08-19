@@ -154,8 +154,10 @@ async function runE2ETeamsAISuite() {
 
   const geminiConfig: AIConfig = {
     provider: 'gemini',
+    mode: 'local_edge',
     apiKey: 'AIzaSySampleKey123',
-    model: 'gemini-1.5-flash'
+    model: 'gemini-1.5-flash',
+    enableFallbackToCloud: true
   };
   await StorageService.saveAIConfig(geminiConfig);
   const loadedAIConfig = await StorageService.getAIConfig();

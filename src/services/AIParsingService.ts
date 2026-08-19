@@ -110,7 +110,7 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
   /**
    * REST call to Google Gemini API.
    */
-  private static async callGemini(
+  public static async callGemini(
     rawMessage: string,
     apiKey: string,
     model: string = 'gemini-1.5-flash',
@@ -159,7 +159,7 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
   /**
    * REST call to OpenAI API.
    */
-  private static async callOpenAI(
+  public static async callOpenAI(
     rawMessage: string,
     apiKey: string,
     model: string = 'gpt-4o-mini',

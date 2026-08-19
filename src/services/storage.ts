@@ -317,14 +317,30 @@ export const StorageService = {
     }
   },
 
-  async getAIConfig(): Promise<AIConfig | null> {
+  async getAIConfig(): Promise<AIConfig> {
     try {
       const jsonValue = await AsyncStorage.getItem(AI_CONFIG_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : null;
+      if (jsonValue != null) {
+        const parsed = JSON.parse(jsonValue);
+        return {
+          provider: parsed.provider || 'gemini',
+          mode: parsed.mode || 'local_edge',
+          apiKey: parsed.apiKey || '',
+          model: parsed.model || 'gemini-1.5-flash',
+          enableFallbackToCloud: parsed.enableFallbackToCloud !== false,
+          localModelPath: parsed.localModelPath
+        };
+      }
     } catch (e) {
-      console.error('Failed to fetch AI config from storage', e);
-      return null;
+      console.warn('Failed to fetch AI config from storage', e);
     }
+    return {
+      provider: 'gemini',
+      mode: 'local_edge',
+      apiKey: '',
+      model: 'gemini-1.5-flash',
+      enableFallbackToCloud: true
+    };
   },
 
   async saveAIConfig(config: AIConfig): Promise<void> {
@@ -414,7 +430,10 @@ export const StorageService = {
       AACC_KEY,
       GROUP_PROJECTS_KEY,
       GAMIFICATION_KEY,
+      '@organiza_ai_config',
+      '@organiza_local_ai_model_info',
     ]);
   }
 };
+
 

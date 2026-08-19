@@ -96,11 +96,31 @@ async function runTestSuite() {
   assert(calc.missingItemsCount === 1, 'Counts 1 missing assessment');
   assert(calc.minimumNeeded === 4.0, `Calculates minimum needed on P2 to pass with 7.0 (needs 4.0, got ${calc.minimumNeeded})`);
 
+  // ── 4. Out-of-the-Box Automated Google Sheets Configuration ──
+  console.log('\n--- 4. Out-of-the-Box Automated Google Sheets Configuration ---');
+
+  const initialConfig = await GoogleSheetsService.getSheetsConfig();
+  assert(initialConfig.isConnected === true, 'Default Google Sheets is connected out-of-the-box');
+  assert(initialConfig.autoSyncEnabled === true, 'Default Google Sheets has auto-sync enabled out-of-the-box');
+  assert(initialConfig.spreadsheetUrl.includes('docs.google.com/spreadsheets'), 'Default spreadsheet URL is pre-configured');
+
+  // Test performAutoSync safely without network crash
+  const autoSyncResult = await GoogleSheetsService.performAutoSync([], [], [], {
+    provider: 'gemini',
+    mode: 'heuristic_offline',
+    apiKey: '',
+    model: 'gemini-1.5-flash',
+    enableFallbackToCloud: true
+  });
+  assert(typeof autoSyncResult.hasUpdates === 'boolean', 'performAutoSync runs safely in background without unhandled exceptions');
+
   console.log('\n================================================================');
   console.log(`TESTS SUMMARY: ${passed}/${passed + failed} Passed (${failed} Failed)`);
   console.log('================================================================');
 
-  if (failed > 0) process.exit(1);
+  if (failed > 0) {
+    process.exit(1);
+  }
 }
 
 runTestSuite();

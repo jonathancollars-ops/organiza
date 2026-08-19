@@ -63,7 +63,8 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
   // Google Sheets (Power Automate) State
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>({
     spreadsheetUrl: '',
-    isConnected: false
+    isConnected: false,
+    autoSyncEnabled: true
   });
   const [isSheetsLoading, setIsSheetsLoading] = useState(false);
   const [isSheetssyncing, setIsSheetsSyncing] = useState(false);

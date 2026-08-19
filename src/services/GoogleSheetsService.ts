@@ -1,20 +1,37 @@
-import { TeamsMessage } from '../types';
+import {
+  TeamsMessage,
+  AppEvent,
+  AttendanceRecord,
+  Subject,
+  AIConfig,
+  AIParsedItem,
+  GoogleSheetsConfig
+} from '../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StorageService } from './storage';
+import { SyncService } from './SyncService';
+import { NotificationService } from './notifications';
+import { LocalAIInferenceService } from './LocalAIInferenceService';
+import { getLocalDateString } from '../utils';
+
+export { GoogleSheetsConfig };
 
 const LAST_SYNC_KEY = '@organiza_sheets_last_sync';
 const SHEET_URL_KEY = '@organiza_sheets_url';
 
-export interface GoogleSheetsConfig {
-  spreadsheetUrl: string; // The published CSV URL
-  isConnected: boolean;
-  lastSync?: string;
-}
+export const DEFAULT_SHEETS_CONFIG: GoogleSheetsConfig = {
+  spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?usp=sharing',
+  isConnected: true,
+  autoSyncEnabled: true,
+  syncIntervalMinutes: 15
+};
 
 export class GoogleSheetsService {
   /**
    * Extracts the spreadsheet ID from various Google Sheets URL formats.
    */
   static extractSpreadsheetId(url: string): string | null {
+    if (!url) return null;
     // Format: https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/...
     const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     return match ? match[1] : null;
@@ -102,21 +119,26 @@ export class GoogleSheetsService {
 
       if (char === '"') {
         if (inQuotes && i + 1 < csvText.length && csvText[i + 1] === '"') {
+          // Escaped quote: "" -> "
           currentField += '"';
-          i++; // Skip escaped quote
+          i++; // Skip the next quote
         } else {
+          // Toggle quote state
           inQuotes = !inQuotes;
         }
       } else if (char === ',' && !inQuotes) {
+        // Field delimiter outside quotes
         currentRecord.push(currentField);
         currentField = '';
       } else if ((char === '\r' || char === '\n') && !inQuotes) {
+        // Record delimiter outside quotes
+        // Handle \r\n as a single delimiter
         if (char === '\r' && i + 1 < csvText.length && csvText[i + 1] === '\n') {
           i++;
         }
         currentRecord.push(currentField);
         currentField = '';
-        if (currentRecord.length > 1 || (currentRecord.length === 1 && currentRecord[0].trim().length > 0)) {
+        if (currentRecord.some(f => f.trim().length > 0)) {
           records.push(currentRecord);
         }
         currentRecord = [];
@@ -125,9 +147,10 @@ export class GoogleSheetsService {
       }
     }
 
+    // Push trailing field/record if present
     if (currentField.length > 0 || currentRecord.length > 0) {
       currentRecord.push(currentField);
-      if (currentRecord.length > 1 || (currentRecord.length === 1 && currentRecord[0].trim().length > 0)) {
+      if (currentRecord.some(f => f.trim().length > 0)) {
         records.push(currentRecord);
       }
     }
@@ -136,18 +159,18 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Parses CSV text into TeamsMessage objects.
+   * Parses CSV text into TeamsMessage objects using RFC 4180 parser.
    */
   private static parseCsv(csvText: string): TeamsMessage[] {
-    const rows = this.parseCsvRecords(csvText);
-    if (rows.length <= 1) return []; // Only header or empty
+    const records = this.parseCsvRecords(csvText);
+    if (records.length <= 1) return []; // Only header or empty
 
     const messages: TeamsMessage[] = [];
 
     // Skip header row (index 0)
-    for (let i = 1; i < rows.length; i++) {
+    for (let i = 1; i < records.length; i++) {
       try {
-        const fields = rows[i];
+        const fields = records[i];
         if (fields.length < 5) continue;
 
         const [timestamp, teamName, channelName, sender, ...messageParts] = fields;
@@ -178,35 +201,6 @@ export class GoogleSheetsService {
   }
 
   /**
-   * Parses a single CSV line handling quoted fields with commas.
-   */
-  private static parseCsvLine(line: string): string[] {
-    const fields: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-          current += '"';
-          i++; // Skip escaped quote
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        fields.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    fields.push(current); // Last field
-    return fields;
-  }
-
-  /**
    * Validates if a Google Sheets URL is accessible and has the expected format.
    */
   static async validateConnection(spreadsheetUrl: string): Promise<{ success: boolean; messageCount: number; error?: string }> {
@@ -215,6 +209,110 @@ export class GoogleSheetsService {
       return { success: true, messageCount: messages.length };
     } catch (err: any) {
       return { success: false, messageCount: 0, error: err?.message || 'Erro desconhecido' };
+    }
+  }
+
+  /**
+   * Fully automated background sync with Google Sheets on app startup or timer.
+   * Seamlessly downloads new class notices, triggers AI inference, updates attendances & calendar.
+   */
+  static async performAutoSync(
+    currentEvents: AppEvent[],
+    currentAttendances: AttendanceRecord[],
+    currentSubjects: Subject[],
+    aiConfig: AIConfig
+  ): Promise<{
+    hasUpdates: boolean;
+    updatedEvents: AppEvent[];
+    updatedAttendances: AttendanceRecord[];
+    updatedSubjects: Subject[];
+    newMessagesCount: number;
+  }> {
+    try {
+      const config = await this.getSheetsConfig();
+      if (!config.isConnected || !config.autoSyncEnabled || !config.spreadsheetUrl) {
+        return {
+          hasUpdates: false,
+          updatedEvents: currentEvents,
+          updatedAttendances: currentAttendances,
+          updatedSubjects: currentSubjects,
+          newMessagesCount: 0
+        };
+      }
+
+      const newMessages = await this.fetchNewMessages(config.spreadsheetUrl);
+      if (newMessages.length === 0) {
+        return {
+          hasUpdates: false,
+          updatedEvents: currentEvents,
+          updatedAttendances: currentAttendances,
+          updatedSubjects: currentSubjects,
+          newMessagesCount: 0
+        };
+      }
+
+      const context = {
+        currentDate: getLocalDateString(),
+        currentDayOfWeek: ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'][new Date().getDay()],
+        registeredSubjects: currentSubjects.map(s => s.name)
+      };
+
+      const parsedItems: AIParsedItem[] = [];
+      for (const msg of newMessages) {
+        const text = msg.cleanText || (typeof msg.body === 'object' ? msg.body.content : msg.body);
+        if (text) {
+          const res = await LocalAIInferenceService.parseUniversalInput(
+            { rawText: text, sourceType: 'sheets', sender: msg.senderName },
+            aiConfig,
+            context
+          );
+          parsedItems.push(...res.items);
+        }
+      }
+
+      if (parsedItems.length === 0) {
+        return {
+          hasUpdates: false,
+          updatedEvents: currentEvents,
+          updatedAttendances: currentAttendances,
+          updatedSubjects: currentSubjects,
+          newMessagesCount: newMessages.length
+        };
+      }
+
+      const syncRes = await SyncService.processParsedItems(
+        parsedItems,
+        currentEvents,
+        currentAttendances,
+        currentSubjects
+      );
+
+      // Save updated records
+      await StorageService.saveEvents(syncRes.updatedEvents);
+      await StorageService.saveAttendances(syncRes.updatedAttendances);
+      await StorageService.saveSubjects(syncRes.updatedSubjects);
+
+      // Schedule alerts
+      for (const ev of syncRes.syncResult.createdEvents) {
+        await NotificationService.scheduleEventNotifications(ev);
+      }
+
+      return {
+        hasUpdates: true,
+        updatedEvents: syncRes.updatedEvents,
+        updatedAttendances: syncRes.updatedAttendances,
+        updatedSubjects: syncRes.updatedSubjects,
+        newMessagesCount: newMessages.length
+      };
+    } catch (err) {
+      console.warn('[GoogleSheets] Sincronização em segundo plano pulada:', err);
+      return {
+        hasUpdates: false,
+        updatedEvents: currentEvents,
+        updatedAttendances: currentAttendances,
+        updatedSubjects: currentSubjects,
+        newMessagesCount: 0
+      };
     }
   }
 
@@ -235,13 +333,23 @@ export class GoogleSheetsService {
     }
   }
 
-  static async getSheetsConfig(): Promise<GoogleSheetsConfig | null> {
+  static async getSheetsConfig(): Promise<GoogleSheetsConfig> {
     try {
       const jsonValue = await AsyncStorage.getItem(SHEET_URL_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : null;
+      if (jsonValue != null) {
+        const parsed = JSON.parse(jsonValue);
+        return {
+          spreadsheetUrl: parsed.spreadsheetUrl || DEFAULT_SHEETS_CONFIG.spreadsheetUrl,
+          isConnected: parsed.isConnected !== false,
+          autoSyncEnabled: parsed.autoSyncEnabled !== false,
+          lastSync: parsed.lastSync,
+          syncIntervalMinutes: parsed.syncIntervalMinutes || DEFAULT_SHEETS_CONFIG.syncIntervalMinutes
+        };
+      }
     } catch {
-      return null;
+      // Fallback
     }
+    return DEFAULT_SHEETS_CONFIG;
   }
 
   static async saveSheetsConfig(config: GoogleSheetsConfig): Promise<void> {

@@ -90,7 +90,8 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
   // Sheets & Teams State
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>({
     spreadsheetUrl: '',
-    isConnected: false
+    isConnected: false,
+    autoSyncEnabled: true
   });
   const [isSheetsSyncing, setIsSheetsSyncing] = useState(false);
 
@@ -551,13 +552,24 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
 
               {/* Google Sheets Card */}
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 20, marginRight: 8 }}>📊</Text>
-                  <View>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Google Sheets (Power Automate)</Text>
-                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Sem limites e 100% gratuito</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 22, marginRight: 8 }}>📊</Text>
+                    <View>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Google Sheets (Automático)</Text>
+                      <Text style={{ fontSize: 11, color: colors.success, fontWeight: '700' }}>
+                        {sheetsConfig.autoSyncEnabled ? '✅ Sincronização Automática Ativada' : '⏸️ Sincronização Pausada'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: colors.success }}>100% Grátis</Text>
                   </View>
                 </View>
+
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, lineHeight: 16 }}>
+                  O app sincroniza automaticamente os avisos da planilha publicada na inicialização e em segundo plano.
+                </Text>
 
                 <TextInput
                   style={styles.input}
@@ -567,25 +579,46 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
                   placeholderTextColor={colors.textSecondary}
                 />
 
+                {/* Auto Sync Toggle */}
+                <View style={[styles.toggleRow, { paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border, marginBottom: 10 }]}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Sincronizar ao Abrir o App</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Detecta novas aulas canceladas e provas sem precisar clicar</Text>
+                  </View>
+                  <Switch
+                    value={sheetsConfig.autoSyncEnabled}
+                    onValueChange={async (val) => {
+                      const updated = { ...sheetsConfig, autoSyncEnabled: val };
+                      setSheetsConfig(updated);
+                      await GoogleSheetsService.saveSheetsConfig(updated);
+                    }}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
+
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: colors.primary }]}
                   onPress={async () => {
-                    if (!sheetsConfig.spreadsheetUrl) {
-                      Alert.alert('URL Necessária', 'Insira o link da planilha publicada.');
-                      return;
-                    }
                     setIsSheetsSyncing(true);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     try {
-                      const validation = await GoogleSheetsService.validateConnection(sheetsConfig.spreadsheetUrl);
-                      if (validation.success) {
-                        const updated = { ...sheetsConfig, isConnected: true };
-                        setSheetsConfig(updated);
-                        await GoogleSheetsService.saveSheetsConfig(updated);
+                      const res = await GoogleSheetsService.performAutoSync(
+                        events,
+                        attendances,
+                        subjects,
+                        aiConfig
+                      );
+
+                      if (res.hasUpdates) {
+                        if (onSyncSuccess) {
+                          onSyncSuccess(res.updatedEvents, res.updatedAttendances, res.updatedSubjects);
+                        }
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        Alert.alert('Conectado!', `Planilha verificada com ${validation.messageCount} mensagens disponíveis.`);
+                        Alert.alert('Sincronizado!', `${res.newMessagesCount} novas mensagens da planilha foram processadas e agendadas!`);
                       } else {
-                        throw new Error(validation.error || 'Falha na conexão.');
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        Alert.alert('Tudo Atualizado!', 'A planilha foi verificada e seu calendário já está com todos os avisos mais recentes.');
                       }
                     } catch (e: any) {
                       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -599,8 +632,8 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
                   {isSheetsSyncing ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                      {sheetsConfig.isConnected ? '🔄 Sincronizar Mensagens da Planilha' : '🔗 Conectar Planilha'}
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>
+                      🔄 Sincronizar Agora
                     </Text>
                   )}
                 </TouchableOpacity>

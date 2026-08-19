@@ -295,4 +295,13 @@ export interface TeamsMessage {
   rawHtml?: string;
 }
 
+export interface GoogleSheetsConfig {
+  spreadsheetUrl: string;
+  isConnected: boolean;
+  autoSyncEnabled: boolean;
+  lastSync?: string;
+  syncIntervalMinutes?: number;
+}
+
+
 

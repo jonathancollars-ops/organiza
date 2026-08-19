@@ -17,6 +17,7 @@ import {
 import { StorageService } from './src/services/storage';
 import { AttendanceService } from './src/services/AttendanceService';
 import { NotificationService } from './src/services/notifications';
+import { GoogleSheetsService } from './src/services/GoogleSheetsService';
 import { getThemeColors, CategoryColors, getContrastTextColor } from './src/theme';
 import { generateId } from './src/utils/id';
 
@@ -159,6 +160,16 @@ export default function App() {
       setSettings(savedSettings);
       setGamification(savedGamification);
       setStreak(savedStreak);
+      // Automated Google Sheets sync out-of-the-box on boot
+      StorageService.getAIConfig().then(aiCfg => {
+        GoogleSheetsService.performAutoSync(savedEvents, updatedAttendances, savedSubjects, aiCfg).then(res => {
+          if (res.hasUpdates) {
+            setEvents(res.updatedEvents);
+            setAttendances(res.updatedAttendances);
+            setSubjects(res.updatedSubjects);
+          }
+        }).catch(() => {});
+      }).catch(() => {});
     } catch (err) {
       console.error('Error loading app data:', err);
     } finally {

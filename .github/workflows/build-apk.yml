@@ -34,12 +34,16 @@ jobs:
       - name: 📦 Install dependencies
         run: npm install
 
-      - name: 🚀 Install EAS CLI
-        run: npm install -g eas-cli
+      - name: ⚙️ Generate Native Android Project (Expo Prebuild)
+        run: npx expo prebuild --platform android --clean --no-install
 
-      - name: 🔨 Build Android APK via Local EAS
+      - name: 🔨 Build Android APK via Gradle
         run: |
-          eas build --platform android --profile preview --local --non-interactive --output ./organiza.apk
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../organiza.apk
+          cd ..
 
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4

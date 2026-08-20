@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, SafeAreaView, Platform, StatusBar as RNStatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform, StatusBar as RNStatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeType } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import * as Haptics from 'expo-haptics';
@@ -59,7 +60,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onClose, theme }) =>
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeBtn} activeOpacity={0.7}>
             <Text style={{ fontSize: 15, color: colors.primary, fontWeight: '700' }}>✕ Fechar</Text>
@@ -112,7 +113,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: Platform.OS === 'android' ? 6 : 0
   },
   header: {
     flexDirection: 'row',

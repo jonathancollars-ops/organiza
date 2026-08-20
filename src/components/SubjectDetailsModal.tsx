@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, SafeAreaView, ScrollView, Alert, Platform, StatusBar as RNStatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Alert, Platform, StatusBar as RNStatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
 import { Subject, AttendanceRecord, AppEvent, ThemeType, Semester } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
@@ -76,7 +77,7 @@ export const SubjectDetailsModal: React.FC<Props> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
             <Text style={{ fontSize: 20, color: colors.primary, marginRight: 2 }}>‹</Text>
@@ -294,7 +295,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: Platform.OS === 'android' ? 6 : 0
   },
   header: {
     flexDirection: 'row',

@@ -356,7 +356,7 @@ export const StorageService = {
    * Export all user application data into a single structured JSON object
    */
   async exportBackup(): Promise<BackupData> {
-    const [events, subjects, attendances, tasks, studySessions, semesters, settings, aaccActivities, groupProjects, gamification] = await Promise.all([
+    const [events, subjects, attendances, tasks, studySessions, semesters, settings, aaccActivities, groupProjects, gamification, streak] = await Promise.all([
       this.getEvents(),
       this.getSubjects(),
       this.getAttendances(),
@@ -367,6 +367,7 @@ export const StorageService = {
       this.getAACCActivities(),
       this.getGroupProjects(),
       this.getGamificationData(),
+      this.getStreak(),
     ]);
 
     return {
@@ -379,16 +380,17 @@ export const StorageService = {
       studySessions,
       semesters,
       settings,
+      streak,
       aaccActivities,
       groupProjects,
       gamification,
-    };
+    } as BackupData;
   },
 
   /**
    * Import and restore data from a valid BackupData object
    */
-  async importBackup(backup: BackupData): Promise<boolean> {
+  async importBackup(backup: BackupData & { streak?: StudyStreak }): Promise<boolean> {
     if (!backup || typeof backup !== 'object') {
       throw new Error('Formato de backup inválido.');
     }
@@ -403,6 +405,7 @@ export const StorageService = {
       if (Array.isArray(backup.aaccActivities)) await this.saveAACCActivities(backup.aaccActivities);
       if (Array.isArray(backup.groupProjects)) await this.saveGroupProjects(backup.groupProjects);
       if (backup.gamification) await this.saveGamificationData(backup.gamification);
+      if (backup.streak) await this.saveStreak(backup.streak);
       if (backup.settings) {
         await this.saveSettings({ ...DEFAULT_SETTINGS, ...backup.settings });
         if (backup.settings.theme) await this.saveTheme(backup.settings.theme);
@@ -420,6 +423,7 @@ export const StorageService = {
   async clearAllData(): Promise<void> {
     await AsyncStorage.multiRemove([
       EVENTS_KEY,
+      THEME_KEY,
       SUBJECTS_KEY,
       ATTENDANCES_KEY,
       TASKS_KEY,
@@ -427,10 +431,11 @@ export const StorageService = {
       SEMESTERS_KEY,
       SETTINGS_KEY,
       STREAK_KEY,
+      TEAMS_CONFIG_KEY,
       AACC_KEY,
       GROUP_PROJECTS_KEY,
       GAMIFICATION_KEY,
-      '@organiza_ai_config',
+      AI_CONFIG_KEY,
       '@organiza_local_ai_model_info',
     ]);
   }

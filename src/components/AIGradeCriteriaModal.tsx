@@ -5,13 +5,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ScrollView,
   TextInput,
   Alert,
   ActivityIndicator,
   Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Subject, ThemeType, GradeFormulaExtraction, GradeGroup, GradeItem } from '../types';
 import { LocalAIInferenceService } from '../services/LocalAIInferenceService';
 import { StorageService } from '../services/storage';
@@ -123,7 +123,7 @@ export const AIGradeCriteriaModal: React.FC<AIGradeCriteriaModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.headerBtn} activeOpacity={0.7}>
@@ -235,7 +235,7 @@ export const AIGradeCriteriaModal: React.FC<AIGradeCriteriaModalProps> = ({
 
               {previewFormula.extraPoints && (
                 <View style={[styles.extraBadge, { backgroundColor: 'rgba(234, 179, 8, 0.12)' }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#b45309' }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: theme === 'light' ? '#b45309' : '#FBBF24' }}>
                     ⭐ Ponto Extra: {previewFormula.extraPoints.name} (até +{previewFormula.extraPoints.maxPoints} pts na média)
                   </Text>
                 </View>
@@ -246,7 +246,7 @@ export const AIGradeCriteriaModal: React.FC<AIGradeCriteriaModalProps> = ({
                 onPress={handleApplyToSubject}
                 activeOpacity={0.8}
               >
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                <Text style={{ color: getContrastTextColor(colors.success), fontWeight: '800', fontSize: 14 }}>
                   ✅ Aplicar esta Fórmula à Matéria
                 </Text>
               </TouchableOpacity>
@@ -263,7 +263,6 @@ export const AIGradeCriteriaModal: React.FC<AIGradeCriteriaModalProps> = ({
 const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? 6 : 0
   },
   header: {
     flexDirection: 'row',

@@ -39,6 +39,7 @@ export const TodaySummaryWidget: React.FC<Props> = ({
     .filter(e => {
       if (e.date === selectedDate) return true;
       if (e.recurrence === 'weekly') {
+        if (e.date && selectedDate < e.date) return false;
         const dayOfWeek = new Date(selectedDate + 'T12:00:00').getDay();
         if (e.recurrenceDays && e.recurrenceDays.length > 0) {
           return e.recurrenceDays.includes(dayOfWeek);

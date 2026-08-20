@@ -233,6 +233,9 @@ export const AttendanceScreen: React.FC<Props> = ({
 
             const nextClass = getNextClass(subject);
 
+            const totalRecorded = absences + calculatePresences(subject.id);
+            const isPresenceSafe = presenceRate >= 75 || (totalRecorded < 4 && absences <= 1);
+
             return (
               <View
                 key={subject.id}
@@ -282,10 +285,10 @@ export const AttendanceScreen: React.FC<Props> = ({
 
                   <View style={[styles.statBox, { alignItems: 'flex-end' }]}>
                     <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Taxa de Presença</Text>
-                    <Text style={[styles.statValue, { color: presenceRate >= 75 ? (theme === 'light' ? colors.successDark : colors.success) : (theme === 'light' ? colors.dangerDark : colors.danger) }]}>
+                    <Text style={[styles.statValue, { color: isPresenceSafe ? (theme === 'light' ? colors.successDark : colors.success) : (theme === 'light' ? colors.dangerDark : colors.danger) }]}>
                       {presenceRate.toFixed(1)}%
                     </Text>
-                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Mínimo: 75%</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>{totalRecorded < 4 ? 'Amostra inicial' : 'Mínimo: 75%'}</Text>
                   </View>
                 </View>
 

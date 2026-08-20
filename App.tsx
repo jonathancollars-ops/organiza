@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState, useMemo } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import {
   AppEvent,
@@ -18,8 +19,8 @@ import { StorageService } from './src/services/storage';
 import { AttendanceService } from './src/services/AttendanceService';
 import { NotificationService } from './src/services/notifications';
 import { GoogleSheetsService } from './src/services/GoogleSheetsService';
-import { getThemeColors, CategoryColors, getContrastTextColor } from './src/theme';
-import { generateId } from './src/utils/id';
+import { getThemeColors, CategoryColors, getCategoryColor, getContrastTextColor } from './src/theme';
+import { generateId, getLocalDateString } from './src/utils';
 
 import { EventModal } from './src/components/EventModal';
 import { EventTypeModal } from './src/components/EventTypeModal';
@@ -317,7 +318,7 @@ export default function App() {
   };
 
   const todaysEvents = useMemo(() => {
-    const targetDate = selectedDate || format(new Date(), 'yyyy-MM-dd');
+    const targetDate = selectedDate || getLocalDateString();
 
     return events.filter(e => {
       // Filtrar se modo semana de provas estiver ativo
@@ -372,7 +373,7 @@ export default function App() {
       }
 
       const subject = e.subjectId ? subjects.find(s => s.id === e.subjectId) : null;
-      const dotColor = subject?.color || CategoryColors[e.category] || colors.primary;
+      const dotColor = subject?.color || getCategoryColor(e.category, theme) || colors.primary;
 
       if (e.recurrence === 'none') {
         if (!marks[e.date]) marks[e.date] = { dots: [] };
@@ -404,11 +405,11 @@ export default function App() {
       };
     }
     return marks;
-  }, [events, selectedDate, colors.primary, subjects]);
+  }, [events, selectedDate, colors.primary, subjects, theme]);
 
   if (isInitializing) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]} edges={['top', 'bottom']}>
         <StatusBar hidden={true} />
         <View style={{ alignItems: 'center' }}>
           <View style={[styles.logoIconBadge, { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.primaryLight, marginBottom: 12, marginRight: 0 }]}>
@@ -422,7 +423,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
       <StatusBar hidden={true} />
 
       {/* Header */}
@@ -531,12 +532,12 @@ export default function App() {
             >
               <Text style={{ fontSize: 20, marginRight: 10 }}>⚠️</Text>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14 }}>Faltas Pendentes de Confirmação</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12 }}>
+                <Text style={{ color: getContrastTextColor(colors.danger), fontWeight: 'bold', fontSize: 14 }}>Faltas Pendentes de Confirmação</Text>
+                <Text style={{ color: getContrastTextColor(colors.danger), opacity: 0.9, fontSize: 12 }}>
                   Você tem {attendances.filter(a => a.status === 'pending').length} aula(s) aguardando confirmação.
                 </Text>
               </View>
-              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 18 }}>›</Text>
+              <Text style={{ color: getContrastTextColor(colors.danger), fontWeight: 'bold', fontSize: 18 }}>›</Text>
             </TouchableOpacity>
           )}
 
@@ -544,7 +545,7 @@ export default function App() {
           <TodaySummaryWidget
             events={events}
             subjects={subjects}
-            selectedDate={selectedDate || new Date().toISOString().split('T')[0]}
+            selectedDate={selectedDate || getLocalDateString()}
             theme={theme}
             gamification={gamification || undefined}
             onOpenStudy={(subId) => {
@@ -561,13 +562,13 @@ export default function App() {
             <View style={styles.calendarContainer}>
               <View style={[styles.calendarCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Calendar
-                  current={new Date().toISOString().split('T')[0]}
+                  current={getLocalDateString()}
                   onDayPress={(day: any) => setSelectedDate(day.dateString)}
                   markingType={'multi-dot'}
                   markedDates={{
                     ...markedDates,
-                    [new Date().toISOString().split('T')[0]]: {
-                      ...(markedDates[new Date().toISOString().split('T')[0]] || {}),
+                    [getLocalDateString()]: {
+                      ...(markedDates[getLocalDateString()] || {}),
                       selected: true,
                       selectedColor: colors.primary,
                       selectedTextColor: getContrastTextColor(colors.primary)
@@ -601,15 +602,15 @@ export default function App() {
                   <Text style={[styles.highlightsTitle, { color: colors.text }]}>⏳ Próxima Atividade</Text>
                   <TouchableOpacity
                     style={[styles.highlightCard, { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1.5 }]}
-                    onPress={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
+                    onPress={() => setSelectedDate(getLocalDateString())}
                     activeOpacity={0.8}
                   >
                     <View style={styles.highlightHeader}>
                       <View style={[styles.timeBadge, { backgroundColor: colors.primaryLight }]}>
                         <Text style={[styles.highlightDate, { color: colors.primary }]}>{nextTask.startTime} - {nextTask.endTime}</Text>
                       </View>
-                      <View style={[styles.categoryBadge, { backgroundColor: (CategoryColors[nextTask.category] || colors.primary) + '20' }]}>
-                        <Text style={[styles.highlightCategory, { color: CategoryColors[nextTask.category] || colors.primary }]}>{nextTask.category}</Text>
+                      <View style={[styles.categoryBadge, { backgroundColor: (getCategoryColor(nextTask.category, theme) || colors.primary) + '20' }]}>
+                        <Text style={[styles.highlightCategory, { color: getCategoryColor(nextTask.category, theme) || colors.primary }]}>{nextTask.category}</Text>
                       </View>
                     </View>
                     <Text style={[styles.highlightEventTitle, { color: colors.text }]}>{nextTask.title}</Text>
@@ -622,12 +623,12 @@ export default function App() {
                   <Text style={[styles.highlightsTitle, { color: colors.text }]}>📌 Atividades de Hoje</Text>
                   <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                     {todaysEvents.map(event => {
-                      const categoryColor = CategoryColors[event.category] || colors.primary;
+                      const categoryColor = getCategoryColor(event.category, theme) || colors.primary;
                       return (
                         <TouchableOpacity
                           key={event.id}
                           style={[styles.highlightCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                          onPress={() => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))}
+                          onPress={() => setSelectedDate(getLocalDateString())}
                           activeOpacity={0.8}
                         >
                           <View style={styles.highlightHeader}>
@@ -667,7 +668,7 @@ export default function App() {
                   ))}
 
                   {/* Current Time Indicator */}
-                  {selectedDate === format(currentTime, 'yyyy-MM-dd') && (
+                  {selectedDate === getLocalDateString(currentTime) && (
                     <View style={{
                       position: 'absolute',
                       left: 65,
@@ -697,8 +698,8 @@ export default function App() {
 
                     const height = Math.max(durationHours * 80, 28);
                     const eventBgColor = event.subjectId
-                      ? subjects.find(s => s.id === event.subjectId)?.color || CategoryColors[event.category] || colors.primary
-                      : CategoryColors[event.category] || colors.primary;
+                      ? subjects.find(s => s.id === event.subjectId)?.color || getCategoryColor(event.category, theme) || colors.primary
+                      : getCategoryColor(event.category, theme) || colors.primary;
 
                     const contrastTextColor = getContrastTextColor(eventBgColor);
 

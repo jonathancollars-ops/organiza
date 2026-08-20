@@ -75,6 +75,26 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Robust timestamp parser supporting ISO formats and Brazilian date formats (DD/MM/YYYY HH:mm:ss).
+   */
+  public static parseTimestamp(ts: string): number {
+    if (!ts) return 0;
+    const trimmed = ts.trim();
+    // Try ISO / standard JS date format first
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) return d.getTime();
+
+    // Try Brazilian date format: DD/MM/YYYY or DD/MM/YYYY HH:mm or DD/MM/YYYY HH:mm:ss
+    const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if (brMatch) {
+      const [_, day, month, year, h = '0', m = '0', s = '0'] = brMatch;
+      const parsedBrDate = new Date(Number(year), Number(month) - 1, Number(day), Number(h), Number(m), Number(s));
+      if (!isNaN(parsedBrDate.getTime())) return parsedBrDate.getTime();
+    }
+    return 0;
+  }
+
+  /**
    * Fetches only messages newer than the last sync timestamp.
    */
   static async fetchNewMessages(spreadsheetUrl: string): Promise<TeamsMessage[]> {
@@ -89,8 +109,14 @@ export class GoogleSheetsService {
       return allMessages;
     }
 
+    const lastSyncTime = this.parseTimestamp(lastSync);
+
     const newMessages = allMessages.filter(msg => {
       try {
+        const msgTime = this.parseTimestamp(msg.createdDateTime);
+        if (msgTime > 0 && lastSyncTime > 0) {
+          return msgTime > lastSyncTime;
+        }
         return new Date(msg.createdDateTime) > new Date(lastSync);
       } catch {
         return true;

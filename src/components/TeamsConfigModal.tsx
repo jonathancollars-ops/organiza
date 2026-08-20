@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ScrollView,
   TextInput,
   Alert,
@@ -13,6 +12,7 @@ import {
   Linking,
   Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AppEvent,
   AttendanceRecord,
@@ -602,7 +602,7 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn}>
@@ -729,7 +729,7 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
                 disabled={isSheetsLoading}
               >
                 {isSheetsLoading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={getContrastTextColor(colors.primary)} />
                 ) : (
                   <Text style={styles.primaryButtonText}>✅ Validar Conexão com a Planilha</Text>
                 )}
@@ -918,7 +918,7 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
                   disabled={isTeamsLoading}
                 >
                   {isTeamsLoading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={getContrastTextColor(colors.primary)} />
                   ) : (
                     <Text style={styles.actionButtonGreenText}>✓ Confirmar Código & Conectar</Text>
                   )}
@@ -1081,7 +1081,7 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
                 disabled={isAiSaving}
               >
                 {isAiSaving ? (
-                  <ActivityIndicator color="#000" />
+                  <ActivityIndicator color={getContrastTextColor(colors.primary)} />
                 ) : (
                   <Text style={styles.primaryButtonText}>💾 Salvar Configurações de IA</Text>
                 )}
@@ -1219,7 +1219,7 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
               >
                 {isSimulating ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <ActivityIndicator color="#000" style={{ marginRight: 10 }} />
+                    <ActivityIndicator color={getContrastTextColor(colors.primary)} style={{ marginRight: 10 }} />
                     <Text style={styles.primaryButtonText}>Processando Mensagens com IA...</Text>
                   </View>
                 ) : (
@@ -1274,7 +1274,7 @@ export const TeamsConfigModal: React.FC<TeamsConfigModalProps> = ({
                   auditLogs.map((log, index) => {
                     let logColor = '#e5e7eb';
                     if (log.includes('[Cancelamento]')) logColor = '#f87171';
-                    else if (log.includes('[Tarefa]')) logColor = colors.primary;
+                    else if (log.includes('[Tarefa]')) logColor = '#00FFAA';
                     else if (log.includes('[Prova]')) logColor = '#c084fc';
                     else if (log.includes('[Notas]')) logColor = '#fbbf24';
                     else if (log.includes('[Persistência]')) logColor = '#4ade80';

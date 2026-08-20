@@ -282,7 +282,7 @@ export const GroupProjectsModal: React.FC<Props> = ({
                       </View>
 
                       <View style={[styles.percentBadge, { backgroundColor: percent === 100 ? colors.successLight : colors.surfaceSubtle }]}>
-                        <Text style={{ color: percent === 100 ? colors.success : colors.primary, fontWeight: '800', fontSize: 13 }}>
+                        <Text style={{ color: percent === 100 ? (theme === 'light' ? colors.successDark : colors.success) : colors.primary, fontWeight: '800', fontSize: 13 }}>
                           {percent}%
                         </Text>
                       </View>
@@ -489,7 +489,11 @@ export const GroupProjectsModal: React.FC<Props> = ({
               const columnLabel =
                 columnStatus === 'todo' ? '📌 A Fazer' : columnStatus === 'doing' ? '⏳ Em Andamento' : '✅ Concluído';
               const columnColor =
-                columnStatus === 'todo' ? colors.textSecondary : columnStatus === 'doing' ? colors.warning : colors.success;
+                columnStatus === 'todo'
+                  ? colors.textSecondary
+                  : columnStatus === 'doing'
+                  ? (theme === 'light' ? colors.warningDark : colors.warning)
+                  : (theme === 'light' ? colors.successDark : colors.success);
 
               return (
                 <View key={columnStatus} style={styles.kanbanColumn}>

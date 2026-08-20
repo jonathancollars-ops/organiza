@@ -1,4 +1,5 @@
 import { AIConfig, AIParsingResult, AIParsedItem, AIIntent } from '../types';
+import { getLocalDateString } from '../utils';
 
 export interface ParsingContext {
   currentDate: string; // YYYY-MM-DD
@@ -208,8 +209,16 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
     context: ParsingContext
   ): AIParsingResult {
     let cleanText = rawResponseText.trim();
-    // Remove markdown code fences if present
-    cleanText = cleanText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const jsonMatch = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (jsonMatch) {
+      cleanText = jsonMatch[1].trim();
+    } else {
+      const firstBrace = cleanText.indexOf('{');
+      const lastBrace = cleanText.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+      }
+    }
 
     let parsed: any;
     try {
@@ -342,7 +351,7 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
     } else if (lowerText.includes('amanhã') || lowerText.includes('amanha')) {
       const cur = new Date(context.currentDate + 'T12:00:00');
       cur.setDate(cur.getDate() + 1);
-      targetDate = cur.toISOString().split('T')[0];
+      targetDate = getLocalDateString(cur);
     }
 
     // 3. Extract Time

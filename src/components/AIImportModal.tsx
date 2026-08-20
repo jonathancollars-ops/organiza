@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  SafeAreaView,
   ScrollView,
   TextInput,
   Alert,
@@ -14,6 +13,7 @@ import {
   Platform,
   Switch
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AppEvent,
   AttendanceRecord,
@@ -146,12 +146,11 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
       Alert.alert('Download Concluído!', 'O modelo Google Gemma 2B (AI Edge) está pronto para uso 100% offline no seu dispositivo.');
     } catch (err: any) {
       setIsDownloading(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       
-      // Fallback for simulation or offline environments
       Alert.alert(
-        'Modo Offline Habilitado',
-        'O motor offline inteligente continuará funcionando de forma determinística no seu celular sem necessitar do download completo de 1.28 GB.'
+        'Motor Inteligente Embutido Ativo',
+        'O download do modelo pesado de 1.28 GB foi pausado ou falhou na rede. Não se preocupe: o Organiza já possui o Motor Inteligente Nativo embutido no app, que funciona 100% offline sem gastar espaço do seu celular!'
       );
       const info = await LocalAIModelService.checkModelStatus();
       setModelInfo(info);
@@ -285,7 +284,7 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.headerBtn} activeOpacity={0.7}>
@@ -528,9 +527,9 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
                     activeOpacity={0.8}
                   >
                     {isApplying ? (
-                      <ActivityIndicator color="#fff" size="small" />
+                      <ActivityIndicator color={getContrastTextColor(colors.success)} size="small" />
                     ) : (
-                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                      <Text style={{ color: getContrastTextColor(colors.success), fontWeight: '800', fontSize: 14 }}>
                         ✅ Confirmar e Agendar no Calendário
                       </Text>
                     )}
@@ -630,9 +629,9 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
                   disabled={isSheetsSyncing}
                 >
                   {isSheetsSyncing ? (
-                    <ActivityIndicator color="#fff" size="small" />
+                    <ActivityIndicator color={getContrastTextColor(colors.primary)} size="small" />
                   ) : (
-                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>
+                    <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 13 }}>
                       🔄 Sincronizar Agora
                     </Text>
                   )}
@@ -741,9 +740,9 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
                     disabled={isDownloading}
                   >
                     {isDownloading ? (
-                      <ActivityIndicator color="#fff" size="small" />
+                      <ActivityIndicator color={getContrastTextColor(colors.primary)} size="small" />
                     ) : (
-                      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>
+                      <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 13 }}>
                         📥 Baixar Modelo Offline ({modelInfo.formattedSize})
                       </Text>
                     )}
@@ -815,7 +814,7 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
                     Alert.alert('Salvo!', 'Configurações de IA salvas com sucesso.');
                   }}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>💾 Salvar Chave & Configurações</Text>
+                  <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 13 }}>💾 Salvar Chave & Configurações</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -830,7 +829,6 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
 const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? 6 : 0
   },
   header: {
     flexDirection: 'row',

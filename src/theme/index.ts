@@ -92,17 +92,29 @@ export const CategoryColors: Record<EventCategory, string> = {
   'Outros': '#A855F7', // Violet
 };
 
+/**
+ * Retorna a cor de categoria adaptada ao tema para garantir contraste adequado (ex: WCAG AA no tema light)
+ */
+export function getCategoryColor(category: string, theme: ThemeType = 'dark'): string {
+  if (category === 'Saúde/Academia') {
+    return theme === 'light' ? '#059669' : '#00FFAA';
+  }
+  return CategoryColors[category as EventCategory] || (theme === 'light' ? '#059669' : '#00FFAA');
+}
+
 export const getThemeColors = (theme: ThemeType = 'dark') => Colors[theme] || Colors.dark;
 
 /**
- * Retorna cor de texto de alto contraste (#000000 ou #FFFFFF) com base na cor de fundo
+ * Retorna cor de texto de alto contraste (#0A0A0A ou #FFFFFF) com base na cor de fundo
  */
-export function getContrastTextColor(hexOrHsl: string | undefined): string {
-  if (!hexOrHsl) return '#000000';
+export function getContrastTextColor(hexOrHslOrRgb: string | undefined): string {
+  if (!hexOrHslOrRgb) return '#000000';
+
+  const color = hexOrHslOrRgb.trim();
 
   // HSL string handling (e.g. hsl(120, 75%, 60%))
-  if (hexOrHsl.startsWith('hsl')) {
-    const match = hexOrHsl.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/);
+  if (color.startsWith('hsl')) {
+    const match = color.match(/hsl\(\s*(\d+)\s*,\s*(\d+)%\s*,\s*(\d+)%\s*\)/);
     if (match) {
       const lightness = parseInt(match[3], 10);
       return lightness > 55 ? '#0A0A0A' : '#FFFFFF';
@@ -110,15 +122,33 @@ export function getContrastTextColor(hexOrHsl: string | undefined): string {
     return '#0A0A0A';
   }
 
-  // Hex color handling (#RRGGBB or #RGB)
-  let hex = hexOrHsl.replace('#', '');
-  if (hex.length === 3) {
-    hex = hex.split('').map(c => c + c).join('');
+  // RGB/RGBA string handling (e.g. rgb(255, 255, 255) or rgba(0, 255, 170, 0.5))
+  if (color.startsWith('rgb')) {
+    const match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (match) {
+      const r = parseInt(match[1], 10);
+      const g = parseInt(match[2], 10);
+      const b = parseInt(match[3], 10);
+      const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+      return yiq >= 140 ? '#0A0A0A' : '#FFFFFF';
+    }
+    return '#0A0A0A';
+  }
+
+  // Hex color handling (#RRGGBB, #RGB, #RRGGBBAA, #RGBA)
+  let hex = color.replace('#', '');
+  if (hex.length === 3 || hex.length === 4) {
+    hex = hex.substring(0, 3).split('').map(c => c + c).join('');
+  } else if (hex.length === 8) {
+    hex = hex.substring(0, 6);
   }
   if (hex.length === 6) {
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+      return '#000000';
+    }
     // Relative luminance calculation
     const yiq = (r * 299 + g * 587 + b * 114) / 1000;
     return yiq >= 140 ? '#0A0A0A' : '#FFFFFF';
@@ -126,4 +156,5 @@ export function getContrastTextColor(hexOrHsl: string | undefined): string {
 
   return '#000000';
 }
+
 

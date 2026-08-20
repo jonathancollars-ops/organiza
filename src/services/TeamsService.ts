@@ -260,7 +260,9 @@ export class TeamsService {
       .filter((m: any) => m && m.body && (m.body.content || '').trim().length > 0)
       .map((m: any) => {
         const rawContent = m.body?.content || '';
-        const isHtml = m.body?.contentType === 'html';
+        const isHtml = typeof m.body?.contentType === 'string' 
+          ? m.body.contentType.toLowerCase().includes('html') 
+          : /<[a-z][\s\S]*>/i.test(rawContent);
         const sanitizedBody = isHtml ? TeamsService.sanitizeHtmlMessage(rawContent) : rawContent.trim();
 
         return {

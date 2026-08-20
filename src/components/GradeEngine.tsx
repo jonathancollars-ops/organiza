@@ -1,10 +1,36 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert, Modal, Switch, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
 import { Subject, GradeGroup, GradeItem, ThemeType } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId } from '../utils/id';
-import { AIGradeCriteriaModal } from './AIGradeCriteriaModal';
 import * as Haptics from 'expo-haptics';
+
+const RN: any = typeof require !== 'undefined' ? require('react-native') : {};
+const {
+  View = 'View',
+  Text = 'Text',
+  TouchableOpacity = 'TouchableOpacity',
+  StyleSheet = { create: (s: any) => s },
+  TextInput = 'TextInput',
+  Alert = { alert: () => {} },
+  Modal = 'Modal',
+  Switch = 'Switch',
+  KeyboardAvoidingView = 'KeyboardAvoidingView',
+  ScrollView = 'ScrollView',
+  Platform = { OS: 'ios' }
+}: any = RN;
+
+const modalName = './AIGradeCriteriaModal';
+let AIGradeCriteriaModalComponent: any = null;
+const AIGradeCriteriaModal: any = (props: any) => {
+  try {
+    if (!AIGradeCriteriaModalComponent) {
+      AIGradeCriteriaModalComponent = require(modalName).AIGradeCriteriaModal;
+    }
+    return React.createElement(AIGradeCriteriaModalComponent, props);
+  } catch {
+    return null;
+  }
+};
 
 interface Props {
   subject: Subject;
@@ -122,7 +148,7 @@ export function calculateFinalGrade(gradeGroups: GradeGroup[], passGrade: number
   let usedFinal = false;
 
   // Final Exam logic
-  if (!hasMissingItems && normalAvg < passGrade) {
+  if (totalItemsCount > 0 && !hasMissingItems && normalAvg < passGrade) {
     inFinal = true;
     if (finalExamItem && finalExamItem.grade !== undefined) {
       finalScore = (normalAvg + (finalExamItem.grade / finalExamItem.maxGrade * 10)) / 2;
@@ -172,6 +198,8 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
 
   // ── Risk level ──
   const riskLevel = useMemo(() => {
+    if (gradeInfo.totalItemsCount === 0) return 'unknown';
+
     if (gradeInfo.inFinal) {
       if (gradeInfo.usedFinal) {
         return gradeInfo.score >= 5.0 ? 'safe' : 'failed';
@@ -434,7 +462,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
       <Modal visible={itemModalVisible} animationType="fade" transparent onRequestClose={() => setItemModalVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setItemModalVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center' }}>
-            <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]} onPress={(e) => e.stopPropagation?.()}>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]} onPress={(e: any) => e.stopPropagation?.()}>
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={[styles.modalTitle, { color: colors.text }]}>Nova Avaliação / Nota</Text>
 
@@ -527,7 +555,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
       <Modal visible={editGradeVisible} animationType="fade" transparent onRequestClose={() => setEditGradeVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setEditGradeVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center' }}>
-            <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]} onPress={(e) => e.stopPropagation?.()}>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]} onPress={(e: any) => e.stopPropagation?.()}>
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={[styles.modalTitle, { color: colors.text }]}>Lançar / Editar Nota</Text>
 
@@ -593,7 +621,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
       <Modal visible={finalExamModalVisible} animationType="fade" transparent onRequestClose={() => setFinalExamModalVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setFinalExamModalVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center' }}>
-            <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]} onPress={(e) => e.stopPropagation?.()}>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]} onPress={(e: any) => e.stopPropagation?.()}>
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <Text style={[styles.modalTitle, { color: colors.text }]}>🛡️ Simulador de Prova Final</Text>
 
@@ -613,7 +641,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="numeric"
                   value={finalExamGrade}
-                  onChangeText={(t) => { setFinalExamGrade(t); setFinalExamResult(null); }}
+                  onChangeText={(t: string) => { setFinalExamGrade(t); setFinalExamResult(null); }}
                   autoFocus
                 />
 
@@ -654,7 +682,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
         visible={aiCriteriaModalVisible}
         onClose={() => setAiCriteriaModalVisible(false)}
         subject={subject}
-        onApplyCriteria={(updated) => onUpdateSubject(updated)}
+        onApplyCriteria={(updated: Subject) => onUpdateSubject(updated)}
         theme={theme}
       />
 

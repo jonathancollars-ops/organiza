@@ -6,10 +6,10 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  SafeAreaView,
   Platform,
   StatusBar as RNStatusBar
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeType, GamificationData, Achievement, StudyStreak, StudySession, AttendanceRecord, AACCActivity, GroupProject } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
@@ -137,7 +137,7 @@ export const AchievementsModal: React.FC<Props> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
@@ -201,7 +201,7 @@ export const AchievementsModal: React.FC<Props> = ({
               </View>
             </View>
             <View style={[styles.countBadge, { backgroundColor: colors.successLight }]}>
-              <Text style={{ color: colors.success, fontWeight: '800', fontSize: 13 }}>
+              <Text style={{ color: theme === 'light' ? colors.successDark : colors.success, fontWeight: '800', fontSize: 13 }}>
                 {Math.round((unlockedCount / achievements.length) * 100)}%
               </Text>
             </View>
@@ -264,7 +264,7 @@ export const AchievementsModal: React.FC<Props> = ({
               <View style={{ justifyContent: 'center' }}>
                 {ach.unlocked ? (
                   <View style={[styles.unlockedCheck, { backgroundColor: colors.successLight }]}>
-                    <Text style={{ color: colors.success, fontWeight: '800', fontSize: 14 }}>✓</Text>
+                    <Text style={{ color: theme === 'light' ? colors.successDark : colors.success, fontWeight: '800', fontSize: 14 }}>✓</Text>
                   </View>
                 ) : (
                   <Text style={{ fontSize: 18 }}>🔒</Text>
@@ -284,7 +284,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: Platform.OS === 'android' ? 6 : 0,
   },
   header: {
     flexDirection: 'row',

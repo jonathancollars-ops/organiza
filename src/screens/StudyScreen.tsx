@@ -71,9 +71,15 @@ export const StudyScreen: React.FC<Props> = ({
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const stopwatchRef = useRef<NodeJS.Timeout | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadStreak();
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (stopwatchRef.current) clearInterval(stopwatchRef.current);
+    };
   }, []);
 
   const loadStreak = async () => {
@@ -112,31 +118,44 @@ export const StudyScreen: React.FC<Props> = ({
   };
 
   const showToast = (text: string, type: 'success' | 'info' | 'warning' = 'info') => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     setToastMessage({ text, type });
     Haptics.notificationAsync(
       type === 'success' 
         ? Haptics.NotificationFeedbackType.Success 
         : Haptics.NotificationFeedbackType.Warning
     );
-    setTimeout(() => {
+    toastTimeoutRef.current = setTimeout(() => {
       setToastMessage(null);
     }, 4000);
   };
 
-  // Pomodoro timer tick
+  // Pomodoro timer tick without clock drift
   useEffect(() => {
-    if (isActive && timeLeft > 0) {
+    if (isActive) {
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
-    } else if (timeLeft === 0 && isActive) {
-      handlePomodoroComplete();
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
     }
     
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isActive, timeLeft]);
+  }, [isActive]);
+
+  // Handle pomodoro completion when timeLeft reaches 0
+  useEffect(() => {
+    if (timeLeft === 0 && isActive) {
+      handlePomodoroComplete();
+    }
+  }, [timeLeft, isActive]);
 
   // Stopwatch timer tick
   useEffect(() => {
@@ -553,7 +572,7 @@ export const StudyScreen: React.FC<Props> = ({
                 >
                   <Text style={[
                     styles.timerButtonText,
-                    { color: isStopwatchRunning ? '#fff' : getContrastTextColor(colors.primary) }
+                    { color: isStopwatchRunning ? getContrastTextColor(colors.danger) : getContrastTextColor(colors.primary) }
                   ]}>
                     {isStopwatchRunning ? '⏸️ Pausar' : '▶️ Iniciar'}
                   </Text>

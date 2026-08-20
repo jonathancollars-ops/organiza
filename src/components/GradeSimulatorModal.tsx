@@ -41,7 +41,8 @@ export const GradeSimulatorModal: React.FC<Props> = ({
 
   const currentSubject = subjects.find(s => s.id === selectedSubjectId);
 
-  const passGradeNum = parseFloat(targetPassGrade.replace(',', '.')) || (currentSubject?.passGrade ?? 7.0);
+  const parsed = parseFloat(targetPassGrade.replace(',', '.'));
+  const passGradeNum = isNaN(parsed) ? (currentSubject?.passGrade ?? 7.0) : parsed;
 
   const gradeInfo = useMemo(() => {
     if (!currentSubject) return null;

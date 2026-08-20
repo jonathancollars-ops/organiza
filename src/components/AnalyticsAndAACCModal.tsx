@@ -282,7 +282,7 @@ export const AnalyticsAndAACCModal: React.FC<Props> = ({
                     </Text>
                   </View>
                   <View style={[styles.percentBadge, { backgroundColor: aaccProgressPercent >= 100 ? colors.successLight : colors.primaryLight }]}>
-                    <Text style={{ color: aaccProgressPercent >= 100 ? colors.success : colors.primary, fontWeight: '800', fontSize: 14 }}>
+                    <Text style={{ color: aaccProgressPercent >= 100 ? (theme === 'light' ? colors.successDark : colors.success) : (theme === 'light' ? colors.primaryDark : colors.primary), fontWeight: '800', fontSize: 14 }}>
                       {aaccProgressPercent}%
                     </Text>
                   </View>
@@ -462,7 +462,7 @@ export const AnalyticsAndAACCModal: React.FC<Props> = ({
 
                     <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
                       <View style={[styles.hoursBadge, { backgroundColor: colors.primaryLight }]}>
-                        <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>+{item.hours}h</Text>
+                        <Text style={{ color: theme === 'light' ? colors.primaryDark : colors.primary, fontWeight: '800', fontSize: 13 }}>+{item.hours}h</Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => handleDeleteAACC(item.id)}

@@ -6,13 +6,13 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  SafeAreaView,
   TextInput,
   Switch,
   Alert,
   Platform,
   StatusBar as RNStatusBar
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeType, AppSettings, Semester, BackupData, AIConfig, LocalAIModelInfo } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
@@ -190,7 +190,7 @@ export const SettingsModal: React.FC<Props> = ({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
             <Text style={{ fontSize: 15, color: colors.danger, fontWeight: '600' }}>✕ Fechar</Text>
@@ -564,7 +564,7 @@ export const SettingsModal: React.FC<Props> = ({
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                         Alert.alert('Download Concluído', 'Modelo de IA pronto para uso offline.');
                       } catch {
-                        Alert.alert('Modo Offline Ativo', 'O motor offline inteligente continuará funcionando de forma determinística no seu aparelho.');
+                        Alert.alert('Motor Inteligente Embutido Ativo', 'O download do modelo pesado de 1.28 GB foi pausado ou falhou na rede. O Motor Inteligente Nativo já está ativo e funciona 100% offline no app!');
                       }
                     }}
                   >
@@ -618,7 +618,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: Platform.OS === 'android' ? 6 : 0
   },
   header: {
     flexDirection: 'row',

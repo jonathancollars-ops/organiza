@@ -9,6 +9,10 @@ export const mockAsyncStorage = {
   setItem: async (key: string, value: string) => { memoryStore[key] = value; },
   removeItem: async (key: string) => { delete memoryStore[key]; },
   clear: async () => { Object.keys(memoryStore).forEach(k => delete memoryStore[k]); },
+  multiRemove: async (keys: string[]) => { keys.forEach(k => delete memoryStore[k]); },
+  multiGet: async (keys: string[]) => keys.map(k => [k, memoryStore[k] ?? null] as [string, string | null]),
+  multiSet: async (pairs: [string, string][]) => { pairs.forEach(([k, v]) => { memoryStore[k] = v; }); },
+  getAllKeys: async () => Object.keys(memoryStore),
 };
 
 // Hook require for Expo/React-Native modules

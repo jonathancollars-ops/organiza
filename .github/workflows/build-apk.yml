@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Lumen Android APK
 
 on:
   push:
@@ -42,30 +42,30 @@ jobs:
           cd android
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon
-          cp app/build/outputs/apk/release/app-release.apk ../organiza.apk
+          cp app/build/outputs/apk/release/app-release.apk ../lumen.apk
           cd ..
 
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Organiza-APK
-          path: ./organiza.apk
+          name: Lumen-APK
+          path: ./lumen.apk
           retention-days: 30
 
       - name: 🚀 Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.0.0-build-${{ github.run_number }}
-          name: Organiza App (Build #${{ github.run_number }})
+          tag_name: v3.0.0-build-${{ github.run_number }}
+          name: Lumen Acadêmico v3.0 (Build #${{ github.run_number }})
           body: |
-            📱 **Organiza App v1.0.0 (Build #${{ github.run_number }})**
+            📱 **Lumen Acadêmico v3.0 (Build #${{ github.run_number }})**
 
-            ✨ **Novidades desta versão:**
-            - 🤖 **IA On-Device (Google AI Edge / Gemma 2B):** Suporte a IA offline integrada com armazenamento sandboxed (auto-excluído na desinstalação).
-            - 📋 **Central Universal de IA:** Importação de mensagens e avisos do WhatsApp, Classroom, E-mail, Planilha e Teams.
-            - 📊 **Google Sheets 100% Automático:** Sincronização e detecção de aulas canceladas/provas direto ao abrir o app.
-            - 🎓 **Assistente de Notas com IA:** Configuração de pesos e fórmulas de cálculo a partir de texto em português.
-            - 📅 **Agendamento de Provas Inteligente:** Seleção de datas futuras com validação rigorosa dos dias de aula.
-            - 🎨 **Layout Otimizado:** Pílulas compactas de semestres nas telas de Faltas, Notas e Grade Horária.
-          files: ./organiza.apk
+            ✨ **Novidades do Lumen 3.0:**
+            - 🎓 **Lumen AI (Professor & Tutor Socrático):** Condução do aprendizado com perguntas pedagógicas ou resolução passo a passo direta.
+            - 📈 **Rastreador de Histórico & Simulador What-If de CR:** Projeções de CR em tempo real, cálculo de parada/pior caso com 0s e meta de bolsa.
+            - 🎓 **Matriz Curricular & % de Conclusão do Curso:** Cálculo de integralização por créditos e semestres com badges limpos de confirmação.
+            - 🤖 **3 Níveis de IA Offline no Sandbox:** Leve (~340 MB), Equilibrado (~1.18 GB) e Completo (~2.45 GB) com gerenciamento de espaço.
+            - 🗓️ **Semestres Automáticos & Grade Integrada:** Reconhecimento automático do semestre (.1 ou .2) e visualizador de grade semanal na Agenda.
+            - ⏱️ **Cronômetro Livre & Modo Tela Cheia:** Alternância fluida de Pomodoro regressivo e progressivo com imersão total.
+          files: ./lumen.apk

@@ -23,15 +23,13 @@ import {
   AIProviderMode,
   LocalAIModelInfo,
   AIParsedItem,
-  AIParsingResult,
-  TeamsConfig
+  AIParsingResult
 } from '../types';
 import { StorageService } from '../services/storage';
 import { LocalAIModelService, DEFAULT_OFFLINE_MODEL } from '../services/LocalAIModelService';
 import { LocalAIInferenceService } from '../services/LocalAIInferenceService';
 import { ParsingContext } from '../services/AIParsingService';
 import { GoogleSheetsService, GoogleSheetsConfig } from '../services/GoogleSheetsService';
-import { TeamsService } from '../services/TeamsService';
 import { SyncService } from '../services/SyncService';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { getLocalDateString } from '../utils';
@@ -95,13 +93,6 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
   });
   const [isSheetsSyncing, setIsSheetsSyncing] = useState(false);
 
-  const [teamsConfig, setTeamsConfig] = useState<TeamsConfig>({
-    clientId: '',
-    tenantId: 'common',
-    isConnected: false
-  });
-  const [isTeamsLoading, setIsTeamsLoading] = useState(false);
-
   useEffect(() => {
     if (visible) {
       loadInitialData();
@@ -117,9 +108,6 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
 
     const sCfg = await GoogleSheetsService.getSheetsConfig();
     if (sCfg) setSheetsConfig(sCfg);
-
-    const tCfg = await StorageService.getTeamsConfig();
-    if (tCfg) setTeamsConfig(tCfg);
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -133,7 +121,7 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
 
     try {
       // In production mobile with network or simulation, handle download
-      const updated = await LocalAIModelService.startDownload((progress, downloaded, total) => {
+      const updated = await LocalAIModelService.startDownload('medium', (progress: number, downloaded: number, total: number) => {
         setDownloadProgress(progress);
         const downloadedFormatted = (downloaded / (1024 * 1024)).toFixed(0);
         const totalFormatted = (total / (1024 * 1024)).toFixed(0);
@@ -168,7 +156,7 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
           text: 'Apagar',
           style: 'destructive',
           onPress: async () => {
-            await LocalAIModelService.deleteModel();
+            await LocalAIModelService.deleteModelFile();
             const updated = await LocalAIModelService.checkModelStatus();
             setModelInfo(updated);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -635,36 +623,6 @@ export const AIImportModal: React.FC<AIImportModalProps> = ({
                       🔄 Sincronizar Agora
                     </Text>
                   )}
-                </TouchableOpacity>
-              </View>
-
-              {/* Microsoft Teams Card */}
-              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 12 }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 20, marginRight: 8 }}>💼</Text>
-                  <View>
-                    <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Microsoft Teams</Text>
-                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Integração via Microsoft Graph API</Text>
-                  </View>
-                </View>
-
-                <TextInput
-                  style={styles.input}
-                  value={teamsConfig.clientId}
-                  onChangeText={(val) => setTeamsConfig({ ...teamsConfig, clientId: val })}
-                  placeholder="Application (client) ID do Azure AD"
-                  placeholderTextColor={colors.textSecondary}
-                />
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: colors.surfaceSubtle, borderWidth: 1, borderColor: colors.border }]}
-                  onPress={async () => {
-                    await StorageService.saveTeamsConfig(teamsConfig);
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert('Salvo', 'Configurações do Microsoft Teams salvas com sucesso.');
-                  }}
-                >
-                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>💾 Salvar Configurações do Teams</Text>
                 </TouchableOpacity>
               </View>
             </View>

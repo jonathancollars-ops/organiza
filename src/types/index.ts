@@ -304,5 +304,74 @@ export interface GoogleSheetsConfig {
   syncIntervalMinutes?: number;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Lumen 3.0: Course History, Weighted CR Tracker & Degree Progress
+// ─────────────────────────────────────────────────────────────
 
+export interface CourseHistorySubject {
+  id: string;
+  name: string;
+  code?: string;
+  credits: number; // e.g. 4 credits (80h)
+  hours?: number; // e.g. 80
+  grade?: number; // Optional grade
+  isCompleted: boolean; // Simple clean checkmark (✅ Concluída)
+  isPassing?: boolean;
+}
 
+export interface CourseSemester {
+  semesterNumber: number; // 1, 2, 3, ..., 10
+  title: string; // "1º Semestre"
+  subjects: CourseHistorySubject[];
+}
+
+export interface CourseProgressData {
+  courseName?: string;
+  targetCR?: number; // e.g. 8.5
+  baselineCR?: number; // CR calculated from past semesters
+  totalRequiredCredits: number; // e.g. 240
+  completedCredits: number; // e.g. 120
+  totalRequiredHours?: number; // e.g. 3600
+  completedHours?: number; // e.g. 1800
+  semesters: CourseSemester[];
+  lastUpdated?: string;
+}
+
+export interface CRSimulationScenario {
+  title: string;
+  projectedCR: number;
+  difference: number;
+  description: string;
+  type: 'worst_case' | 'target' | 'best_case' | 'current';
+  badgeColor?: string;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Lumen 3.0: Offline Socratic Tutor & Model Manager
+// ─────────────────────────────────────────────────────────────
+
+export type TutorMode = 'socratic' | 'direct';
+export type LocalModelTier = 'light' | 'medium' | 'deep';
+
+export interface TutorMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  suggestedSteps?: string[];
+}
+
+export interface ModelTierInfo {
+  tier: LocalModelTier;
+  name: string;
+  filename: string;
+  sizeBytes: number;
+  formattedSize: string;
+  downloadUrl: string;
+  description: string;
+  recommendedHardware: string;
+  downloadState: LocalModelDownloadState;
+  downloadProgress: number;
+  downloadedBytes: number;
+  localPath?: string;
+}

@@ -27,13 +27,21 @@
 | 15 | EAS Android Preview APK Build | Execute `npx -y eas-cli build -p android --profile preview --non-interactive` and capture artifact link | M4 | Explorer 3 | IN_PROGRESS |
 | 16 | Documentation & Artifact Updates | Update README.md, changelog, and audit reports with verified APK build URL and test metrics | M4 | Explorer 3 | IN_PROGRESS |
 
+| 17 | Lumen 3.0 Rebranding & Discreet Icon | Complete rebranding to Lumen with matte obsidian satin prism icon, 3.0.0 manifest | M5 | User Request | DONE |
+| 18 | Automatic Semester Engine | Clock-based semester calculation (Jan-Jun .1, Jul-Dec .2) without manual setup | M5 | User Request | DONE |
+| 19 | Weighted Cumulative CR & What-If Simulation | Weighted average by subject credits with What-If simulations (Stop now, Target CR, Best case) | M5 | User Request | DONE |
+| 20 | Degree Matrix & % Completion | Progress bar, semester-by-semester matrix and clean completion confirmations | M5 | User Request | DONE |
+| 21 | Socratic AI Tutor & Local Edge Models | Socratic method tutor, subject context switcher, 3 download tiers (340MB, 1.18GB, 2.45GB) | M5 | User Request | DONE |
+| 22 | Weekly Schedule Modal & Teams Deprecation | Header button for Grade Horária Semanal and complete removal of legacy Teams code | M5 | User Request | DONE |
+
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
 | 1 | Logic, State & Integration Fixes | Date timezone utility, Grade parity, Streak hydration, Network timeouts, CSV & recurrence guards | Survey complete | DONE |
 | 2 | Visual, UX & Safe Area Fixes | Theme contrast, modal dismiss, KeyboardAvoidingView, SafeArea insets, Header responsive layout | M1 | DONE |
-| 3 | Comprehensive Test Verification | Test mocks, regex fixes, unit test expansion, 100% pass across all test suites | M1, M2 | IN_PROGRESS |
-| 4 | EAS Android APK Build & Artifacts | Trigger EAS preview build, obtain standalone APK download link, update documentation | M3 | IN_PROGRESS |
+| 3 | Comprehensive Test Verification | Test mocks, regex fixes, unit test expansion, 100% pass across all test suites | M1, M2 | DONE |
+| 4 | EAS Android APK Build & Artifacts | Trigger EAS preview build, obtain standalone APK download link, update documentation | M3 | DONE |
+| 5 | Lumen 3.0 Major Evolution | Lumen AI Tutor, CR Tracker, Degree Matrix, Auto Semesters, Discreet Icon & Full 5 Tabs | M4 | DONE |
 
 ## Interface Contracts
 ### `src/utils/date.ts` (or `src/utils/index.ts`) ↔ Consumers

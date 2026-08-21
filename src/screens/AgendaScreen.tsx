@@ -44,6 +44,7 @@ export interface AgendaScreenProps {
   onOpenAttendanceModal: () => void;
   onOpenExamDetails?: (event: AppEvent) => void;
   onAddNewEvent?: () => void;
+  onOpenScheduleGrid?: () => void;
 }
 
 export const AgendaScreen: React.FC<AgendaScreenProps> = ({
@@ -62,7 +63,8 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
   onOpenStudy,
   onOpenAttendanceModal,
   onOpenExamDetails,
-  onAddNewEvent
+  onAddNewEvent,
+  onOpenScheduleGrid
 }) => {
   const colors = getThemeColors(theme);
   const styles = useMemo(() => getStyles(colors, theme), [colors, theme]);
@@ -277,13 +279,30 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Próxima Atividade</Text>
           </View>
 
-          {gamification && (
-            <View style={[styles.gamificationPill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
-              <Text style={[styles.gamificationText, { color: colors.primary }]}>
-                Nv. {gamification.level} 🎓
-              </Text>
-            </View>
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {onOpenScheduleGrid && (
+              <TouchableOpacity
+                style={[styles.gamificationPill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border, marginRight: 6 }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onOpenScheduleGrid();
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
+                  🗓️ Grade Semanal
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {gamification && (
+              <View style={[styles.gamificationPill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
+                <Text style={[styles.gamificationText, { color: colors.primary }]}>
+                  Nv. {gamification.level} 🎓
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {highlightInfo.featured ? (

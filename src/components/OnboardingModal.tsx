@@ -14,38 +14,33 @@ interface Props {
 const GUIDE_SECTIONS = [
   {
     icon: '📅',
-    title: 'Agenda & Calendário',
-    desc: 'Visualize seus compromissos, aulas e tarefas. Toque em qualquer dia no calendário para abrir a timeline diária detalhada com indicador de horário atual.'
+    title: 'Agenda com Rolagem Vertical',
+    desc: 'Visualize sua Próxima Atividade no topo, o Calendário interativo no meio e suas Tarefas na base. Acesse a Grade Horária Semanal em um toque no cabeçalho.'
   },
   {
-    icon: '🗓️',
-    title: 'Grade Horária Semanal',
-    desc: 'Sua rotina universitária organizada visualmente de segunda a sábado, com blocos coloridos por matéria e horários precisos.'
+    icon: '⏱️',
+    title: 'Estudos, Pomodoro & Cronômetro Livre',
+    desc: 'Foque nos seus estudos com Pomodoro configurável ou com o Cronômetro Livre progressivo. Acumule tempo de estudo, ganhe XP e mantenha seus Streaks 🔥!'
   },
   {
-    icon: '📚',
-    title: 'Estudos, Pomodoro & Streaks',
-    desc: 'Foque nos seus estudos com o timer Pomodoro (25 min foco / 5 min descanso) ou com o cronômetro livre. Acumule dias seguidos de estudo (Streaks 🔥) e gerencie sua lista de tarefas por matéria com prazos!'
+    icon: '✨',
+    title: 'Lumen AI & Professor Socrático',
+    desc: 'Tire dúvidas acadêmicas com o Professor IA em modo Socrático ou Resolução Direta. Baixe modelos offline locais (340MB a 2.45GB) ou conecte com o Google Gemini.'
   },
   {
-    icon: '✅',
-    title: 'Controle de Faltas Inteligente',
-    desc: 'Acompanhe suas faltas em tempo real com alertas de risco coloridos antes de atingir o limite de 25%. Registre presenças e cancelamentos com 1 toque.'
+    icon: '📈',
+    title: 'Rastreador de CR & Simulador de Metas',
+    desc: 'Importe seu histórico escolar em PDF/texto, acompanhe seu CR Ponderado oficial e simule cenários para manter a meta de bolsas e intercâmbio.'
+  },
+  {
+    icon: '🎓',
+    title: 'Matriz Curricular & % de Conclusão',
+    desc: 'Acompanhe todas as disciplinas do curso separadas por semestres com confirmação limpa de matérias concluídas e barra de progresso do curso.'
   },
   {
     icon: '📊',
-    title: 'Calculadora de Notas & Prova Final',
-    desc: 'Monitore suas médias ponderadas e utilize o simulador "Quanto Preciso Tirar" para saber a nota exata que você precisa na próxima prova ou na final.'
-  },
-  {
-    icon: '🤖',
-    title: 'Integração Teams & IA',
-    desc: 'Conecte ao Microsoft Teams ou Google Sheets para que a IA identifique automaticamente avisos de aulas canceladas, entregas de trabalhos e datas de provas!'
-  },
-  {
-    icon: '💾',
-    title: 'Backup & Restauração',
-    desc: 'Exporte todos os seus dados em formato JSON para salvar com segurança ou restaurar em qualquer outro celular quando desejar.'
+    title: 'Controle de Faltas (Margem LDB 75%) & Notas',
+    desc: 'Acompanhe médias ponderadas do semestre e monitore faltas em tempo real antes de atingir o limite legal.'
   }
 ];
 
@@ -65,7 +60,7 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onClose, theme }) =>
           <TouchableOpacity onPress={handleClose} style={styles.closeBtn} activeOpacity={0.7}>
             <Text style={{ fontSize: 15, color: colors.primary, fontWeight: '700' }}>✕ Fechar</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Guia do Organiza</Text>
+          <Text style={styles.headerTitle}>Guia do Lumen</Text>
           <View style={{ width: 60 }} />
         </View>
 
@@ -74,9 +69,9 @@ export const OnboardingModal: React.FC<Props> = ({ visible, onClose, theme }) =>
             <View style={[styles.heroIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
               <Text style={{ fontSize: 40 }}>🎓</Text>
             </View>
-            <Text style={[styles.heroTitle, { color: colors.text }]}>Bem-vindo ao Organiza!</Text>
+            <Text style={[styles.heroTitle, { color: colors.text }]}>Bem-vindo ao Lumen!</Text>
             <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 14, marginTop: 6, lineHeight: 20 }}>
-              Seu companheiro acadêmico definitivo para gerenciar aulas, notas, faltas e rotinas de estudo.
+              Seu assistente acadêmico inteligente e definitivo para gerenciar aulas, notas, faltas, CR e rotinas de estudo.
             </Text>
           </View>
 

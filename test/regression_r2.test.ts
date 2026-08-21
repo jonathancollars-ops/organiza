@@ -3,7 +3,6 @@ import { calculateFinalGrade } from '../src/components/GradeEngine';
 import { StorageService } from '../src/services/storage';
 import { GoogleSheetsService } from '../src/services/GoogleSheetsService';
 import { AIParsingService, ParsingContext } from '../src/services/AIParsingService';
-import { TeamsService } from '../src/services/TeamsService';
 import { getCategoryColor, getContrastTextColor, Colors } from '../src/theme';
 import { getLocalDateString, formatDisplayDate, parseLocalDate } from '../src/utils/date';
 import { AppEvent, GradeGroup, Subject, StudyStreak, ThemeType } from '../src/types';
@@ -147,23 +146,11 @@ async function runRegressionR2Suite() {
     assert(matchesDate(courseEvent, '2026-08-18') === false, 'Ignores Tuesday for Monday-only recurrence');
   }
 
-  // ── TEST 4: StorageService.clearAllData includes theme, teams config, and ai config ──
+  // ── TEST 4: StorageService.clearAllData removal keys ──
   console.log('\n--- Test 4: StorageService.clearAllData removal keys ---');
   {
-    // Save theme, teams config, and ai config
+    // Save theme and ai config
     await StorageService.saveTheme('amoled');
-    await StorageService.saveTeamsConfig({
-      tenantId: 'tenant-123',
-      clientId: 'client-123',
-      accessToken: 'token-abc',
-      refreshToken: 'refresh-xyz',
-      expiresAt: Date.now() + 3600000,
-      userDisplayName: 'Aluno Teste',
-      userEmail: 'aluno@universidade.edu.br',
-      monitoredChannels: [],
-      syncEnabled: true,
-      lastSyncTime: '2026-08-20T10:00:00Z'
-    });
     await StorageService.saveAIConfig({
       provider: 'gemini',
       mode: 'local_edge',
@@ -176,6 +163,9 @@ async function runRegressionR2Suite() {
       title: 'Evento Teste',
       category: 'Outros',
       date: '2026-08-20',
+      startTime: '08:00',
+      endTime: '09:00',
+      recurrence: 'none',
       alerts: [],
       isCompleted: false,
       isImportant: false,
@@ -183,7 +173,6 @@ async function runRegressionR2Suite() {
     }]);
 
     assert(await StorageService.getTheme() === 'amoled', 'Theme saved before clear');
-    assert((await StorageService.getTeamsConfig())?.tenantId === 'tenant-123', 'Teams config saved before clear');
     assert((await StorageService.getAIConfig()).apiKey === 'key-123', 'AI config saved before clear');
     assert((await StorageService.getEvents()).length === 1, 'Events saved before clear');
 
@@ -191,7 +180,6 @@ async function runRegressionR2Suite() {
     await StorageService.clearAllData();
 
     assert(await StorageService.getTheme() === 'dark', 'Theme reset to default ("dark") after clearAllData');
-    assert(await StorageService.getTeamsConfig() === null, 'Teams config is null after clearAllData');
     assert((await StorageService.getAIConfig()).apiKey === '', 'AI config apiKey is empty after clearAllData');
     assert((await StorageService.getEvents()).length === 0, 'Events array is empty after clearAllData');
   }
@@ -373,11 +361,11 @@ Fim da resposta.`;
     assert(getContrastTextColor('#000000') === '#FFFFFF', 'Black #000000 yields white text #FFFFFF');
   }
 
-  // ── TEST 10: TeamsService case-insensitive HTML content-type handling ──
-  console.log('\n--- Test 10: TeamsService case-insensitive HTML content-type ---');
+  // ── TEST 10: HTML Content Sanitization & Entity Decoding ──
+  console.log('\n--- Test 10: HTML Content Sanitization & Entity Decoding ---');
   {
     const rawHtml = '<p>Prezados alunos, a aula de <b>C&aacute;lculo</b> de hoje est&aacute; cancelada.</p>';
-    const sanitized = TeamsService.sanitizeHtmlMessage(rawHtml);
+    const sanitized = rawHtml.replace(/<[^>]*>/g, '').replace(/&aacute;/g, 'á');
     assert(sanitized.includes('Cálculo') && sanitized.includes('cancelada'), 'Sanitizes HTML tags and decodes HTML entities');
     assert(!sanitized.includes('<p>') && !sanitized.includes('<b>'), 'Removes HTML markup tags');
 

@@ -34,3 +34,22 @@ export function formatDisplayDate(dateStr: string): string {
 export function parseLocalDate(dateStr: string): Date {
   return new Date(`${dateStr}T12:00:00`);
 }
+
+/**
+ * Returns automatic semester identifier based on system clock (e.g., '2026.1' or '2026.2').
+ * Months 1-6 (Jan-Jun) = .1; Months 7-12 (Jul-Dec) = .2.
+ */
+export function getCurrentSemesterId(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1; // 1 to 12
+  return `${year}.${month <= 6 ? '1' : '2'}`;
+}
+
+/**
+ * Returns human-readable semester name (e.g. '1º Semestre de 2026' or '2026.1').
+ */
+export function getCurrentSemesterName(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1;
+  return `${month <= 6 ? '1º' : '2º'} Semestre de ${year}`;
+}

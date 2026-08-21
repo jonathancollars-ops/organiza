@@ -6,7 +6,6 @@ import {
   AttendanceRecord,
   StudyTask,
   StudySession,
-  TeamsConfig,
   AIConfig,
   Semester,
   AppSettings,
@@ -16,6 +15,7 @@ import {
   GroupProject,
   GamificationData
 } from '../types';
+import { getCurrentSemesterId, getCurrentSemesterName } from '../utils';
 
 const EVENTS_KEY = '@organiza_events';
 const THEME_KEY = '@organiza_theme';
@@ -166,11 +166,35 @@ export const StorageService = {
 
   async getSemesters(): Promise<Semester[]> {
     try {
+      const currentSemId = getCurrentSemesterId();
+      const currentSemName = getCurrentSemesterName();
       const jsonValue = await AsyncStorage.getItem(SEMESTERS_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      let semesters: Semester[] = jsonValue != null ? JSON.parse(jsonValue) : [];
+
+      if (semesters.length === 0) {
+        semesters = [{
+          id: currentSemId,
+          name: currentSemId,
+          isCurrent: true
+        }];
+        await this.saveSemesters(semesters);
+      } else {
+        const hasCurrent = semesters.some(s => s.id === currentSemId || s.name === currentSemId);
+        if (!hasCurrent) {
+          semesters = semesters.map(s => ({ ...s, isCurrent: false }));
+          semesters.unshift({
+            id: currentSemId,
+            name: currentSemId,
+            isCurrent: true
+          });
+          await this.saveSemesters(semesters);
+        }
+      }
+      return semesters;
     } catch (e) {
       console.error('Failed to fetch semesters from storage', e);
-      return [];
+      const semId = getCurrentSemesterId();
+      return [{ id: semId, name: semId, isCurrent: true }];
     }
   },
 
@@ -296,25 +320,6 @@ export const StorageService = {
       return updated;
     } catch (e) {
       return DEFAULT_GAMIFICATION;
-    }
-  },
-
-  async getTeamsConfig(): Promise<TeamsConfig | null> {
-    try {
-      const jsonValue = await AsyncStorage.getItem(TEAMS_CONFIG_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : null;
-    } catch (e) {
-      console.error('Failed to fetch teams config from storage', e);
-      return null;
-    }
-  },
-
-  async saveTeamsConfig(config: TeamsConfig): Promise<void> {
-    try {
-      const jsonValue = JSON.stringify(config);
-      await AsyncStorage.setItem(TEAMS_CONFIG_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save teams config to storage', e);
     }
   },
 

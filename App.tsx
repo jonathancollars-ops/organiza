@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState, useMemo } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import {
@@ -42,6 +42,8 @@ import { AttendanceScreen } from './src/screens/AttendanceScreen';
 import { ScheduleGridScreen } from './src/screens/ScheduleGridScreen';
 import { StudyScreen } from './src/screens/StudyScreen';
 import { AgendaScreen } from './src/screens/AgendaScreen';
+import { LumenAIScreen } from './src/screens/LumenAIScreen';
+import { AIConfig } from './src/types';
 
 import { format, parseISO, addDays, getDay } from 'date-fns';
 import * as Haptics from 'expo-haptics';
@@ -57,7 +59,9 @@ LocaleConfig.locales['pt-br'] = {
 LocaleConfig.defaultLocale = 'pt-br';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<'agenda' | 'grade' | 'estudos' | 'faltas' | 'notas'>('agenda');
+  const [currentTab, setCurrentTab] = useState<'agenda' | 'estudos' | 'ia' | 'faltas' | 'notas'>('agenda');
+  const [aiConfig, setAiConfig] = useState<AIConfig>({ provider: 'gemini', mode: 'gemini_cloud', apiKey: '' });
+  const [scheduleGridVisible, setScheduleGridVisible] = useState(false);
   const [theme, setTheme] = useState<ThemeType>('dark');
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -198,7 +202,7 @@ export default function App() {
     await StorageService.saveSettings(updatedSettings);
   };
 
-  const handleTabChange = (tab: 'agenda' | 'grade' | 'estudos' | 'faltas' | 'notas') => {
+  const handleTabChange = (tab: 'agenda' | 'estudos' | 'ia' | 'faltas' | 'notas') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setCurrentTab(tab);
   };
@@ -363,7 +367,7 @@ export default function App() {
           <View style={[styles.logoIconBadge, { backgroundColor: colors.primaryLight }]}>
             <Text style={{ fontSize: 16 }}>🎓</Text>
           </View>
-          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>Organiza</Text>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>Lumen</Text>
           {settings.examWeekMode && (
             <View style={[styles.examModeBadge, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}>
               <Text style={{ color: colors.danger, fontSize: 10, fontWeight: 'bold' }}>🎯 MODO PROVAS</Text>
@@ -487,30 +491,7 @@ export default function App() {
             setEditingEvent(null);
             setModalVisible(true);
           }}
-        />
-      ) : currentTab === 'notas' ? (
-        <GradesScreen
-          subjects={subjects}
-          events={events}
-          attendances={attendances}
-          theme={theme}
-          semesters={semesters}
-          onSubjectPress={(id) => {
-            setSelectedSubjectId(id);
-            setDetailsModalVisible(true);
-          }}
-          onArchiveSubject={async (id) => {
-            const updated = subjects.map(s => s.id === id ? { ...s, isArchived: !s.isArchived } : s);
-            setSubjects(updated);
-            await StorageService.saveSubjects(updated);
-          }}
-        />
-      ) : currentTab === 'grade' ? (
-        <ScheduleGridScreen
-          subjects={subjects}
-          events={events}
-          theme={theme}
-          semesters={semesters}
+          onOpenScheduleGrid={() => setScheduleGridVisible(true)}
         />
       ) : currentTab === 'estudos' ? (
         <StudyScreen
@@ -532,7 +513,14 @@ export default function App() {
           onOpenAchievements={() => setAchievementsModalVisible(true)}
           onOpenAnalytics={() => setAnalyticsModalVisible(true)}
         />
-      ) : (
+      ) : currentTab === 'ia' ? (
+        <LumenAIScreen
+          subjects={subjects}
+          theme={theme}
+          aiConfig={aiConfig}
+          onOpenAISettings={() => setSettingsModalVisible(true)}
+        />
+      ) : currentTab === 'faltas' ? (
         <AttendanceScreen
           subjects={subjects}
           events={events}
@@ -561,16 +549,33 @@ export default function App() {
             await StorageService.saveAttendances(newAttendances);
           }}
         />
+      ) : (
+        <GradesScreen
+          subjects={subjects}
+          events={events}
+          attendances={attendances}
+          theme={theme}
+          semesters={semesters}
+          onSubjectPress={(id) => {
+            setSelectedSubjectId(id);
+            setDetailsModalVisible(true);
+          }}
+          onArchiveSubject={async (id) => {
+            const updated = subjects.map(s => s.id === id ? { ...s, isArchived: !s.isArchived } : s);
+            setSubjects(updated);
+            await StorageService.saveSubjects(updated);
+          }}
+        />
       )}
 
       {/* Bottom Navigation */}
       <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         {[
           { id: 'agenda', icon: '📅', label: 'Agenda' },
-          { id: 'grade', icon: '🗓️', label: 'Grade' },
-          { id: 'estudos', icon: '📚', label: 'Estudos' },
-          { id: 'faltas', icon: '✅', label: 'Faltas' },
-          { id: 'notas', icon: '📊', label: 'Notas' }
+          { id: 'estudos', icon: '⏱️', label: 'Estudos' },
+          { id: 'ia', icon: '✨', label: 'Lumen AI' },
+          { id: 'faltas', icon: '📊', label: 'Faltas' },
+          { id: 'notas', icon: '🎓', label: 'Notas' }
         ].map(tab => {
           const isActive = currentTab === tab.id;
           return (
@@ -771,6 +776,23 @@ export default function App() {
         theme={theme}
         subjects={subjects}
       />
+
+      {/* Grade Horária Semanal Modal */}
+      <Modal
+        visible={scheduleGridVisible}
+        animationType="slide"
+        onRequestClose={() => setScheduleGridVisible(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top', 'bottom']}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>🗓️ Grade Horária Semanal</Text>
+            <TouchableOpacity onPress={() => setScheduleGridVisible(false)} style={{ padding: 6 }}>
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 15 }}>✕ Fechar</Text>
+            </TouchableOpacity>
+          </View>
+          <ScheduleGridScreen subjects={subjects} events={events} theme={theme} semesters={semesters} />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }

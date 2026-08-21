@@ -224,8 +224,7 @@ export const SettingsModal: React.FC<Props> = ({
         <View style={styles.subTabs}>
           {[
             { id: 'geral', label: '⚙️ Geral' },
-            { id: 'semestres', label: '🎓 Semestres' },
-            { id: 'ia', label: '✨ IA' },
+            { id: 'ia', label: '✨ IA & Tutor' },
             { id: 'backup', label: '💾 Backup' }
           ].map(t => {
             const isSelected = activeSubTab === t.id;
@@ -589,7 +588,7 @@ export const SettingsModal: React.FC<Props> = ({
                             text: 'Apagar',
                             style: 'destructive',
                             onPress: async () => {
-                              await LocalAIModelService.deleteModel();
+                              await LocalAIModelService.deleteModelFile();
                               const updated = await LocalAIModelService.checkModelStatus();
                               setModelInfo(updated);
                               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

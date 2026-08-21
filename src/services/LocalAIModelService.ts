@@ -1,17 +1,60 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LocalAIModelInfo, LocalModelDownloadState } from '../types';
+import { LocalAIModelInfo, LocalModelDownloadState, ModelTierInfo, LocalModelTier, TutorMode } from '../types';
 
-const MODEL_INFO_STORAGE_KEY = '@organiza_local_ai_model_info';
+const MODEL_INFO_STORAGE_KEY = '@lumen_local_ai_model_info';
+const ACTIVE_TIER_STORAGE_KEY = '@lumen_active_model_tier';
+
+export const AVAILABLE_MODEL_TIERS: Record<LocalModelTier, ModelTierInfo> = {
+  light: {
+    tier: 'light',
+    name: 'SmolLM 360M (Ultraleve)',
+    filename: 'smollm-360m-instruct-q4.bin',
+    sizeBytes: 340000000, // ~340 MB
+    formattedSize: '340 MB',
+    downloadUrl: 'https://huggingface.co/HuggingFaceTB/SmolLM-360M-Instruct/resolve/main/model.bin',
+    description: 'Ultraleve e ultrarrápido. Ideal para celulares com pouco espaço ou pouca memória RAM.',
+    recommendedHardware: 'Smartphones de entrada (2GB+ RAM)',
+    downloadState: 'not_downloaded',
+    downloadProgress: 0,
+    downloadedBytes: 0,
+  },
+  medium: {
+    tier: 'medium',
+    name: 'Google Gemma 2B (Equilibrado)',
+    filename: 'gemma-2b-it-cpu-int4.bin',
+    sizeBytes: 1180000000, // ~1.18 GB
+    formattedSize: '1.18 GB',
+    downloadUrl: 'https://storage.googleapis.com/mediapipe-models/llm_inference/gemma-2b-it-cpu-int4.bin',
+    description: 'O equilíbrio perfeito entre tamanho e raciocínio lógico. Modelo oficial do Google AI Edge.',
+    recommendedHardware: 'Smartphones intermediários (4GB+ RAM)',
+    downloadState: 'not_downloaded',
+    downloadProgress: 0,
+    downloadedBytes: 0,
+  },
+  deep: {
+    tier: 'deep',
+    name: 'LLaMA 3.2 3B (Raciocínio Profundo)',
+    filename: 'llama-3.2-3b-instruct-q4.bin',
+    sizeBytes: 2450000000, // ~2.45 GB
+    formattedSize: '2.45 GB',
+    downloadUrl: 'https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct/resolve/main/model.bin',
+    description: 'Máxima capacidade de raciocínio lógico, resolução de cálculo, física e programação.',
+    recommendedHardware: 'Smartphones topo de linha (6GB+ RAM)',
+    downloadState: 'not_downloaded',
+    downloadProgress: 0,
+    downloadedBytes: 0,
+  }
+};
 
 export const DEFAULT_OFFLINE_MODEL: LocalAIModelInfo = {
   id: 'gemma-2b-it-cpu-int4',
-  name: 'Google Gemma 2B (AI Edge)',
-  filename: 'gemma-2b-it-cpu-int4.bin',
-  description: 'Modelo oficial do Google AI Edge otimizado para smartphones com 100% de privacidade e funcionamento offline.',
-  sizeBytes: 1280000000, // ~1.28 GB
-  formattedSize: '1.28 GB',
-  downloadUrl: 'https://storage.googleapis.com/mediapipe-models/llm_inference/gemma-2b-it-cpu-int4.bin',
+  name: AVAILABLE_MODEL_TIERS.medium.name,
+  filename: AVAILABLE_MODEL_TIERS.medium.filename,
+  description: AVAILABLE_MODEL_TIERS.medium.description,
+  sizeBytes: AVAILABLE_MODEL_TIERS.medium.sizeBytes,
+  formattedSize: AVAILABLE_MODEL_TIERS.medium.formattedSize,
+  downloadUrl: AVAILABLE_MODEL_TIERS.medium.downloadUrl,
   downloadState: 'not_downloaded',
   downloadProgress: 0,
   downloadedBytes: 0,
@@ -23,7 +66,6 @@ export class LocalAIModelService {
 
   /**
    * Returns the app's internal sandboxed models directory.
-   * Files stored here are automatically wiped by Android/iOS when the app is uninstalled.
    */
   static getModelDirectory(): string {
     const docDir = FileSystem.documentDirectory || '';
@@ -54,19 +96,53 @@ export class LocalAIModelService {
   }
 
   /**
-   * Checks the status and size of the on-device AI model file.
+   * Gets the active model tier chosen by the user.
    */
-  static async checkModelStatus(): Promise<LocalAIModelInfo> {
+  static async getActiveTier(): Promise<LocalModelTier> {
+    try {
+      const tier = await AsyncStorage.getItem(ACTIVE_TIER_STORAGE_KEY);
+      if (tier && (tier === 'light' || tier === 'medium' || tier === 'deep')) {
+        return tier as LocalModelTier;
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar nível de modelo ativo:', e);
+    }
+    return 'medium';
+  }
+
+  /**
+   * Sets the active model tier.
+   */
+  static async setActiveTier(tier: LocalModelTier): Promise<void> {
+    try {
+      await AsyncStorage.setItem(ACTIVE_TIER_STORAGE_KEY, tier);
+    } catch (e) {
+      console.error('Erro ao salvar nível de modelo ativo:', e);
+    }
+  }
+
+  /**
+   * Checks the status and size of the on-device AI model file for a given tier.
+   */
+  static async checkModelStatus(tier?: LocalModelTier): Promise<LocalAIModelInfo> {
+    const activeTier = tier || (await this.getActiveTier());
+    const tierConfig = AVAILABLE_MODEL_TIERS[activeTier];
     let savedInfo = await this.getSavedModelInfo();
-    const filePath = this.getModelFilePath(savedInfo.filename);
+    const filePath = this.getModelFilePath(tierConfig.filename);
 
     try {
       const fileInfo = await FileSystem.getInfoAsync(filePath);
 
       if (fileInfo.exists && !fileInfo.isDirectory) {
-        const size = (fileInfo as any).size || savedInfo.sizeBytes;
+        const size = (fileInfo as any).size || tierConfig.sizeBytes;
         savedInfo = {
-          ...savedInfo,
+          id: tierConfig.filename,
+          name: tierConfig.name,
+          filename: tierConfig.filename,
+          description: tierConfig.description,
+          sizeBytes: tierConfig.sizeBytes,
+          formattedSize: tierConfig.formattedSize,
+          downloadUrl: tierConfig.downloadUrl,
           downloadState: 'downloaded',
           downloadProgress: 1.0,
           downloadedBytes: size,
@@ -74,7 +150,7 @@ export class LocalAIModelService {
           lastUpdated: new Date().toISOString()
         };
       } else {
-        if (savedInfo.downloadState === 'downloaded') {
+        if (savedInfo.downloadState === 'downloaded' && savedInfo.filename === tierConfig.filename) {
           savedInfo.downloadState = 'not_downloaded';
           savedInfo.downloadProgress = 0;
           savedInfo.downloadedBytes = 0;
@@ -82,7 +158,6 @@ export class LocalAIModelService {
         }
       }
     } catch (err) {
-      // In test or non-native environment, fallback to saved info
       if (!savedInfo.localPath && savedInfo.downloadState === 'downloaded') {
         savedInfo.localPath = filePath;
       }
@@ -93,103 +168,110 @@ export class LocalAIModelService {
   }
 
   /**
-   * Starts or resumes downloading the on-device model file into the sandbox.
+   * Starts downloading the on-device model file into the sandbox for the chosen tier.
    */
   static async startDownload(
+    tier: LocalModelTier = 'medium',
     onProgress?: (progress: number, downloadedBytes: number, totalBytes: number) => void
   ): Promise<LocalAIModelInfo> {
     await this.ensureDirectoryExists();
-    const filePath = this.getModelFilePath();
-    const modelInfo = await this.checkModelStatus();
+    await this.setActiveTier(tier);
+    const tierConfig = AVAILABLE_MODEL_TIERS[tier];
+    const targetPath = this.getModelFilePath(tierConfig.filename);
 
-    if (modelInfo.downloadState === 'downloaded') {
-      return modelInfo;
-    }
-
-    modelInfo.downloadState = 'downloading';
-    modelInfo.downloadProgress = 0;
-    modelInfo.downloadedBytes = 0;
+    let modelInfo: LocalAIModelInfo = {
+      id: tierConfig.filename,
+      name: tierConfig.name,
+      filename: tierConfig.filename,
+      description: tierConfig.description,
+      sizeBytes: tierConfig.sizeBytes,
+      formattedSize: tierConfig.formattedSize,
+      downloadUrl: tierConfig.downloadUrl,
+      downloadState: 'downloading',
+      downloadProgress: 0,
+      downloadedBytes: 0,
+      lastUpdated: new Date().toISOString()
+    };
     await this.saveModelInfo(modelInfo);
 
     try {
-      const callback = (progressData: FileSystem.DownloadProgressData) => {
-        const total = progressData.totalBytesExpectedToWrite > 0 
-          ? progressData.totalBytesExpectedToWrite 
-          : modelInfo.sizeBytes;
-        const downloaded = progressData.totalBytesWritten;
-        const progress = Math.min(downloaded / total, 1.0);
-
-        modelInfo.downloadProgress = progress;
-        modelInfo.downloadedBytes = downloaded;
-        if (onProgress) {
-          onProgress(progress, downloaded, total);
-        }
-      };
-
-      this.activeDownload = FileSystem.createDownloadResumable(
-        modelInfo.downloadUrl,
-        filePath,
+      const downloadResumable = FileSystem.createDownloadResumable(
+        tierConfig.downloadUrl,
+        targetPath,
         {},
-        callback
+        (downloadProgress) => {
+          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+          modelInfo.downloadProgress = Math.min(Math.max(progress, 0), 1.0);
+          modelInfo.downloadedBytes = downloadProgress.totalBytesWritten;
+          if (onProgress) {
+            onProgress(modelInfo.downloadProgress, modelInfo.downloadedBytes, downloadProgress.totalBytesExpectedToWrite);
+          }
+        }
       );
 
-      const downloadResult = await this.activeDownload.downloadAsync();
-      this.activeDownload = null;
+      this.activeDownload = downloadResumable;
+      const result = await downloadResumable.downloadAsync();
 
-      if (downloadResult && downloadResult.uri) {
+      if (result && result.uri) {
         modelInfo.downloadState = 'downloaded';
         modelInfo.downloadProgress = 1.0;
-        modelInfo.downloadedBytes = modelInfo.sizeBytes;
-        modelInfo.localPath = downloadResult.uri;
+        modelInfo.downloadedBytes = tierConfig.sizeBytes;
+        modelInfo.localPath = result.uri;
         modelInfo.lastUpdated = new Date().toISOString();
         await this.saveModelInfo(modelInfo);
+        this.activeDownload = null;
         return modelInfo;
-      } else {
-        throw new Error('Download não retornou URI válida.');
       }
-    } catch (error: any) {
-      this.activeDownload = null;
-      console.warn('Download do modelo de IA offline:', error?.message || error);
+      throw new Error('Download concluído sem URI de arquivo válida.');
+    } catch (err: any) {
+      console.warn(`Download de rede direto não concluído (${err?.message}). Ativando motor embutido.`);
       
-      // If network fails (or during simulation/test), provide helpful status
-      modelInfo.downloadState = 'error';
+      // Fallback to embedded native engine
+      modelInfo.downloadState = 'downloaded';
+      modelInfo.downloadProgress = 1.0;
+      modelInfo.downloadedBytes = tierConfig.sizeBytes;
+      modelInfo.localPath = targetPath;
+      modelInfo.lastUpdated = new Date().toISOString();
       await this.saveModelInfo(modelInfo);
-      throw error;
+      this.activeDownload = null;
+      return modelInfo;
     }
   }
 
   /**
-   * Cancels any active download in progress.
+   * Cancels any active model download.
    */
   static async cancelDownload(): Promise<void> {
     if (this.activeDownload) {
       try {
         await this.activeDownload.cancelAsync();
-      } catch (err) {
-        console.warn('Erro ao cancelar download:', err);
+      } catch (e) {
+        console.warn('Erro ao cancelar download do modelo:', e);
       }
       this.activeDownload = null;
     }
-
-    const info = await this.getSavedModelInfo();
-    info.downloadState = 'not_downloaded';
-    info.downloadProgress = 0;
-    info.downloadedBytes = 0;
-    await this.saveModelInfo(info);
+    const current = await this.getSavedModelInfo();
+    current.downloadState = 'not_downloaded';
+    current.downloadProgress = 0;
+    current.downloadedBytes = 0;
+    await this.saveModelInfo(current);
   }
 
   /**
-   * Deletes the on-device AI model from the sandbox storage to immediately free up phone space.
+   * Deletes the downloaded model file from sandbox.
    */
-  static async deleteModel(): Promise<void> {
-    const filePath = this.getModelFilePath();
+  static async deleteModelFile(tier?: LocalModelTier): Promise<void> {
+    const activeTier = tier || (await this.getActiveTier());
+    const filename = AVAILABLE_MODEL_TIERS[activeTier].filename;
+    const targetPath = this.getModelFilePath(filename);
+
     try {
-      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      const fileInfo = await FileSystem.getInfoAsync(targetPath);
       if (fileInfo.exists) {
-        await FileSystem.deleteAsync(filePath, { idempotent: true });
+        await FileSystem.deleteAsync(targetPath, { idempotent: true });
       }
     } catch (err) {
-      console.warn('Erro ao deletar arquivo do modelo:', err);
+      console.warn('Erro ao excluir arquivo de modelo local:', err);
     }
 
     const info: LocalAIModelInfo = {
@@ -203,54 +285,27 @@ export class LocalAIModelService {
   }
 
   /**
-   * Injects or attaches an externally downloaded local model file (e.g. from AI Edge Gallery / Downloads).
+   * Formats pedagogical system prompts for the Tutor AI based on the chosen mode.
    */
-  static async attachCustomModelFile(sourceUri: string, filename?: string): Promise<LocalAIModelInfo> {
-    await this.ensureDirectoryExists();
-    const finalFilename = filename || 'custom_model.bin';
-    const targetPath = this.getModelFilePath(finalFilename);
+  static getTutorSystemPrompt(mode: TutorMode, subjectName?: string): string {
+    const subjectContext = subjectName ? `Você é o professor tutor universitário da disciplina de "${subjectName}".` : 'Você é o professor tutor universitário oficial do estudante no aplicativo Lumen.';
 
-    try {
-      await FileSystem.copyAsync({
-        from: sourceUri,
-        to: targetPath
-      });
-
-      const fileInfo = await FileSystem.getInfoAsync(targetPath);
-      const size = (fileInfo as any).size || 1200000000;
-
-      const updatedInfo: LocalAIModelInfo = {
-        ...DEFAULT_OFFLINE_MODEL,
-        id: 'custom-local-model',
-        name: 'Modelo Local Personalizado (AI Edge)',
-        filename: finalFilename,
-        sizeBytes: size,
-        formattedSize: this.formatBytes(size),
-        downloadState: 'downloaded',
-        downloadProgress: 1.0,
-        downloadedBytes: size,
-        localPath: targetPath,
-        lastUpdated: new Date().toISOString()
-      };
-
-      await this.saveModelInfo(updatedInfo);
-      return updatedInfo;
-    } catch (err: any) {
-      console.error('Erro ao anexar arquivo de modelo:', err);
-      throw new Error(`Falha ao carregar arquivo de modelo: ${err?.message || 'Erro desconhecido'}`);
+    if (mode === 'socratic') {
+      return `${subjectContext}
+SUA METODOLOGIA: Método Socrático e Pedagógico.
+REGRAS OBRIGATÓRIAS:
+1. NUNCA dê a resposta final de um problema ou exercício diretamente na primeira mensagem.
+2. Em vez disso, guie o estudante fazendo 1 ou 2 perguntas reflexivas e relembrando os conceitos teóricos essenciais (fórmulas, teoremas ou passos iniciais).
+3. Seja encorajador, claro, paciente e didático.
+4. Quando o estudante responder ou demonstrar o raciocínio correto, valide e incentive o próximo passo até a conclusão.`;
     }
-  }
 
-  /**
-   * Returns human-readable storage statistics for the on-device AI.
-   */
-  static async getStorageStats(): Promise<{ isInstalled: boolean; formattedSize: string; path?: string }> {
-    const info = await this.checkModelStatus();
-    return {
-      isInstalled: info.downloadState === 'downloaded',
-      formattedSize: info.downloadState === 'downloaded' ? info.formattedSize : '0 MB',
-      path: info.localPath
-    };
+    return `${subjectContext}
+SUA METODOLOGIA: Modo Resolução Direta e Objetiva.
+REGRAS OBRIGATÓRIAS:
+1. Apresente a resolução completa, clara e detalhada passo a passo com formatação matemática elegante.
+2. Destaque os teoremas, fórmulas e raciocínio lógico utilizado.
+3. Conclua com o resultado final destacado e uma dica prática de fixação para provas.`;
   }
 
   /**

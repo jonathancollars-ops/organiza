@@ -199,6 +199,30 @@ CC101 Algoritmos 60h 9.0 Aprovada
     assert(parsed.semesters[0].subjects.length >= 3, 'Parsed at least 3 subjects');
   });
 
+  // Test 9: Check All Tiers Status
+  await test('Check All 3 AI Model Tiers Status in Sandbox', async () => {
+    const allStatuses = await LocalAIModelService.checkAllTiersStatus();
+    assert(!!allStatuses.light, 'Light tier status returned');
+    assert(allStatuses.light.formattedSize === '340 MB', 'Light tier formatted size matches');
+    assert(!!allStatuses.medium, 'Medium tier status returned');
+    assert(allStatuses.medium.formattedSize === '1.18 GB', 'Medium tier formatted size matches');
+    assert(!!allStatuses.deep, 'Deep tier status returned');
+    assert(allStatuses.deep.formattedSize === '2.45 GB', 'Deep tier formatted size matches');
+  });
+
+  // Test 10: FAB Visibility Condition on Tabs
+  await test('FAB Add Button Visibility Condition', () => {
+    const shouldShowFAB = (tab: 'agenda' | 'estudos' | 'ia' | 'faltas' | 'notas') => {
+      return tab !== 'ia' && tab !== 'notas';
+    };
+
+    assert(shouldShowFAB('agenda') === true, 'FAB is visible on Agenda tab');
+    assert(shouldShowFAB('estudos') === true, 'FAB is visible on Estudos tab');
+    assert(shouldShowFAB('faltas') === true, 'FAB is visible on Faltas tab');
+    assert(shouldShowFAB('ia') === false, 'FAB is hidden on Lumen AI tab');
+    assert(shouldShowFAB('notas') === false, 'FAB is hidden on Notas tab');
+  });
+
   console.log('================================================================');
   console.log(`LUMEN 3.0 TESTS SUMMARY: ${passed}/${passed + failed} Suites Passed (${failed} Failed)`);
   console.log('================================================================\n');

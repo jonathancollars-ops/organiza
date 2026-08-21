@@ -78,13 +78,22 @@ export const LumenAIScreen: React.FC<Props> = ({
   const [targetCRInput, setTargetCRInput] = useState('8.5');
   const [historyTextInput, setHistoryTextInput] = useState('');
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showTierModal, setShowTierModal] = useState(false);
   const [activeTier, setActiveTier] = useState<LocalModelTier>('medium');
+  const [modelStatuses, setModelStatuses] = useState<Record<LocalModelTier, any>>({
+    light: AVAILABLE_MODEL_TIERS.light,
+    medium: AVAILABLE_MODEL_TIERS.medium,
+    deep: AVAILABLE_MODEL_TIERS.deep
+  });
+  const [downloadingTier, setDownloadingTier] = useState<LocalModelTier | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [downloadedText, setDownloadedText] = useState<string>('');
 
   const chatScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadCourseData();
-    loadModelTier();
+    loadModelData();
   }, []);
 
   const loadCourseData = async () => {
@@ -95,9 +104,15 @@ export const LumenAIScreen: React.FC<Props> = ({
     }
   };
 
-  const loadModelTier = async () => {
-    const tier = await LocalAIModelService.getActiveTier();
-    setActiveTier(tier);
+  const loadModelData = async () => {
+    try {
+      const tier = await LocalAIModelService.getActiveTier();
+      setActiveTier(tier);
+      const allStatuses = await LocalAIModelService.checkAllTiersStatus();
+      setModelStatuses(allStatuses);
+    } catch (e) {
+      console.warn('Erro ao carregar status dos modelos:', e);
+    }
   };
 
   const currentSubject = useMemo(() => {
@@ -326,7 +341,11 @@ export const LumenAIScreen: React.FC<Props> = ({
               {/* Model Tier Badge */}
               <TouchableOpacity
                 style={[styles.tierBadge, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-                onPress={onOpenAISettings}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  loadModelData();
+                  setShowTierModal(true);
+                }}
               >
                 <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: '700' }}>
                   {AVAILABLE_MODEL_TIERS[activeTier].formattedSize} ⚙️
@@ -720,6 +739,195 @@ export const LumenAIScreen: React.FC<Props> = ({
                 onPress={handleParseHistoryText}
               >
                 <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800' }}>Processar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Model Tier Selector & Download Modal */}
+      {showTierModal && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, borderColor: colors.border, maxHeight: '85%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Modelos de IA & Offline</Text>
+              <TouchableOpacity onPress={() => setShowTierModal(false)} style={{ padding: 4 }}>
+                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 16 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalSub, { color: colors.textSecondary, marginBottom: 12 }]}>
+              Selecione e baixe o modelo ideal para o hardware do seu celular:
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+              {(['light', 'medium', 'deep'] as LocalModelTier[]).map((tierKey) => {
+                const tierConfig = AVAILABLE_MODEL_TIERS[tierKey];
+                const tierStatus = modelStatuses[tierKey] || tierConfig;
+                const isDownloaded = tierStatus.downloadState === 'downloaded';
+                const isCurrentlyDownloading = downloadingTier === tierKey;
+                const isActive = activeTier === tierKey;
+
+                const icon = tierKey === 'light' ? '🪶' : tierKey === 'medium' ? '⚖️' : '🚀';
+                const categoryTitle = tierKey === 'light' ? 'Leve (340 MB)' : tierKey === 'medium' ? 'Equilibrado (1.18 GB)' : 'Completo (2.45 GB)';
+
+                return (
+                  <View
+                    key={tierKey}
+                    style={{
+                      backgroundColor: colors.surfaceSubtle,
+                      borderColor: isActive ? colors.primary : colors.border,
+                      borderWidth: isActive ? 2 : 1,
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 10
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <Text style={{ fontSize: 20, marginRight: 8 }}>{icon}</Text>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>{categoryTitle}</Text>
+                            {isActive && (
+                              <View style={{ backgroundColor: colors.primaryLight, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 }}>
+                                <Text style={{ fontSize: 9, fontWeight: '800', color: colors.primary }}>ATIVO</Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary }}>{tierConfig.name}</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginVertical: 4 }}>
+                      {tierConfig.description}
+                    </Text>
+
+                    {isCurrentlyDownloading && (
+                      <View style={{ backgroundColor: colors.surface, padding: 8, borderRadius: 6, marginVertical: 6, borderWidth: 1, borderColor: colors.primary }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: colors.primary }}>Baixando...</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text }}>
+                            {(downloadProgress * 100).toFixed(0)}% ({downloadedText})
+                          </Text>
+                        </View>
+                        <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+                          <View style={{ height: '100%', width: `${Math.max(downloadProgress * 100, 5)}%`, backgroundColor: colors.primary }} />
+                        </View>
+                      </View>
+                    )}
+
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                      {isDownloaded ? (
+                        <>
+                          {!isActive && (
+                            <TouchableOpacity
+                              style={{ flex: 1, backgroundColor: colors.primary, padding: 8, borderRadius: 8, alignItems: 'center' }}
+                              onPress={async () => {
+                                Haptics.selectionAsync();
+                                await LocalAIModelService.setActiveTier(tierKey);
+                                setActiveTier(tierKey);
+                                setShowTierModal(false);
+                              }}
+                            >
+                              <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 11 }}>
+                                ⭐ Usar este Modelo
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            style={{
+                              flex: isActive ? 1 : undefined,
+                              backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                              padding: 8,
+                              borderRadius: 8,
+                              alignItems: 'center',
+                              borderWidth: 1,
+                              borderColor: colors.danger
+                            }}
+                            onPress={() => {
+                              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                              Alert.alert(
+                                'Liberar Espaço?',
+                                `Deseja apagar o arquivo do modelo ${tierConfig.name} (${tierConfig.formattedSize})?`,
+                                [
+                                  { text: 'Cancelar', style: 'cancel' },
+                                  {
+                                    text: 'Apagar',
+                                    style: 'destructive',
+                                    onPress: async () => {
+                                      await LocalAIModelService.deleteModelFile(tierKey);
+                                      const updated = await LocalAIModelService.checkAllTiersStatus();
+                                      setModelStatuses(updated);
+                                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                    }
+                                  }
+                                ]
+                              );
+                            }}
+                          >
+                            <Text style={{ color: colors.danger, fontWeight: '800', fontSize: 11 }}>
+                              🗑️ Apagar
+                            </Text>
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <TouchableOpacity
+                          style={{ flex: 1, backgroundColor: colors.primary, padding: 9, borderRadius: 8, alignItems: 'center' }}
+                          disabled={downloadingTier !== null}
+                          onPress={async () => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            setDownloadingTier(tierKey);
+                            setDownloadProgress(0);
+
+                            try {
+                              await LocalAIModelService.startDownload(tierKey, (progress, downloaded, total) => {
+                                setDownloadProgress(progress);
+                                const dlMB = (downloaded / (1024 * 1024)).toFixed(0);
+                                const totalMB = (total / (1024 * 1024)).toFixed(0);
+                                setDownloadedText(`${dlMB} MB / ${totalMB} MB`);
+                              });
+
+                              const updated = await LocalAIModelService.checkAllTiersStatus();
+                              setModelStatuses(updated);
+                              await LocalAIModelService.setActiveTier(tierKey);
+                              setActiveTier(tierKey);
+                              setDownloadingTier(null);
+                              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                              Alert.alert('Pronto!', `Modelo ${tierConfig.name} baixado e ativado.`);
+                            } catch {
+                              setDownloadingTier(null);
+                              Alert.alert('Motor Nativo Ativo', 'O download foi pausado. O Motor Nativo offline continua funcionando.');
+                              const updated = await LocalAIModelService.checkAllTiersStatus();
+                              setModelStatuses(updated);
+                            }
+                          }}
+                        >
+                          <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 11 }}>
+                            📥 Baixar Modelo ({tierConfig.formattedSize})
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowTierModal(false);
+                  if (onOpenAISettings) onOpenAISettings();
+                }}
+              >
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>⚙️ Configurações Completas</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtnSecondary, { borderColor: colors.border }]}
+                onPress={() => setShowTierModal(false)}
+              >
+                <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>Fechar</Text>
               </TouchableOpacity>
             </View>
           </View>

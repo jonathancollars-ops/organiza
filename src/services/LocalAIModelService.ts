@@ -168,6 +168,47 @@ export class LocalAIModelService {
   }
 
   /**
+   * Checks the status and size of all 3 available model tiers in the app sandbox.
+   */
+  static async checkAllTiersStatus(): Promise<Record<LocalModelTier, LocalAIModelInfo>> {
+    const results: Record<LocalModelTier, LocalAIModelInfo> = {} as any;
+    const tiers: LocalModelTier[] = ['light', 'medium', 'deep'];
+
+    for (const tier of tiers) {
+      const tierConfig = AVAILABLE_MODEL_TIERS[tier];
+      const filePath = this.getModelFilePath(tierConfig.filename);
+      let isDownloaded = false;
+      let size = 0;
+
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        if (fileInfo.exists && !fileInfo.isDirectory) {
+          isDownloaded = true;
+          size = (fileInfo as any).size || tierConfig.sizeBytes;
+        }
+      } catch (e) {
+        isDownloaded = false;
+      }
+
+      results[tier] = {
+        id: tierConfig.filename,
+        name: tierConfig.name,
+        filename: tierConfig.filename,
+        description: tierConfig.description,
+        sizeBytes: tierConfig.sizeBytes,
+        formattedSize: tierConfig.formattedSize,
+        downloadUrl: tierConfig.downloadUrl,
+        downloadState: isDownloaded ? 'downloaded' : 'not_downloaded',
+        downloadProgress: isDownloaded ? 1.0 : 0,
+        downloadedBytes: isDownloaded ? size : 0,
+        localPath: isDownloaded ? filePath : undefined,
+      };
+    }
+
+    return results;
+  }
+
+  /**
    * Starts downloading the on-device model file into the sandbox for the chosen tier.
    */
   static async startDownload(

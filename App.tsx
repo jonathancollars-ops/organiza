@@ -18,7 +18,6 @@ import {
 import { StorageService } from './src/services/storage';
 import { AttendanceService } from './src/services/AttendanceService';
 import { NotificationService } from './src/services/notifications';
-import { GoogleSheetsService } from './src/services/GoogleSheetsService';
 import { getThemeColors, CategoryColors, getCategoryColor, getContrastTextColor } from './src/theme';
 import { generateId, getLocalDateString } from './src/utils';
 
@@ -28,7 +27,6 @@ import { SubjectModal } from './src/components/SubjectModal';
 import { ExamModal } from './src/components/ExamModal';
 import { PendingAttendanceModal } from './src/components/PendingAttendanceModal';
 import { SubjectDetailsModal } from './src/components/SubjectDetailsModal';
-import { AIImportModal } from './src/components/AIImportModal';
 import { SettingsModal } from './src/components/SettingsModal';
 import { OnboardingModal } from './src/components/OnboardingModal';
 
@@ -90,7 +88,6 @@ export default function App() {
   const [modalVisible, setModalVisible] = useState(false);
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
-  const [aiModalVisible, setAiModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [onboardingVisible, setOnboardingVisible] = useState(false);
   const [analyticsModalVisible, setAnalyticsModalVisible] = useState(false);
@@ -174,16 +171,6 @@ export default function App() {
       setSettings(savedSettings);
       setGamification(savedGamification);
       setStreak(savedStreak);
-      // Automated Google Sheets sync out-of-the-box on boot
-      StorageService.getAIConfig().then(aiCfg => {
-        GoogleSheetsService.performAutoSync(savedEvents, updatedAttendances, savedSubjects, aiCfg).then(res => {
-          if (res.hasUpdates) {
-            setEvents(res.updatedEvents);
-            setAttendances(res.updatedAttendances);
-            setSubjects(res.updatedSubjects);
-          }
-        }).catch(() => {});
-      }).catch(() => {});
     } catch (err) {
       console.error('Error loading app data:', err);
     } finally {
@@ -419,19 +406,6 @@ export default function App() {
             <Text style={{ fontSize: 15 }}>📈</Text>
           </TouchableOpacity>
 
-          {/* Universal AI Assistant button */}
-          <TouchableOpacity
-            style={[styles.iconBtn, { backgroundColor: 'rgba(59, 130, 246, 0.12)', borderColor: colors.primary }]}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setAiModalVisible(true);
-            }}
-            accessibilityLabel="Central de IA e Importação"
-            activeOpacity={0.7}
-          >
-            <Text style={{ fontSize: 16 }}>✨</Text>
-          </TouchableOpacity>
-
           {/* Settings button */}
           <TouchableOpacity
             style={[styles.iconBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
@@ -603,14 +577,16 @@ export default function App() {
       </View>
 
       {/* Floating Action Button */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
-        onPress={() => setEventTypeVisible(true)}
-        accessibilityLabel="Adicionar novo item"
-        activeOpacity={0.85}
-      >
-        <Text style={[styles.fabIcon, { color: getContrastTextColor(colors.primary) }]}>+</Text>
-      </TouchableOpacity>
+      {currentTab !== 'ia' && currentTab !== 'notas' && (
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
+          onPress={() => setEventTypeVisible(true)}
+          accessibilityLabel="Adicionar novo item"
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.fabIcon, { color: getContrastTextColor(colors.primary) }]}>+</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Modals */}
       <EventTypeModal
@@ -710,20 +686,6 @@ export default function App() {
 
           setAttendances(newAttendances);
           await StorageService.saveAttendances(newAttendances);
-        }}
-      />
-
-      <AIImportModal
-        visible={aiModalVisible}
-        onClose={() => setAiModalVisible(false)}
-        theme={theme}
-        events={events}
-        attendances={attendances}
-        subjects={subjects}
-        onSyncSuccess={(updatedEvents, updatedAttendances, updatedSubjects) => {
-          setEvents(updatedEvents);
-          setAttendances(updatedAttendances);
-          setSubjects(updatedSubjects);
         }}
       />
 

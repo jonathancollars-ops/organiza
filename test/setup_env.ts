@@ -17,6 +17,23 @@ export const mockAsyncStorage = {
 
 // Hook require for Expo/React-Native modules
 const Module = require('module');
+export const mockReactNative = {
+  Platform: { OS: 'ios', select: (obj: any) => obj.ios || obj.default },
+  StyleSheet: { create: (styles: any) => styles },
+  View: 'View',
+  Text: 'Text',
+  ScrollView: 'ScrollView',
+  TouchableOpacity: 'TouchableOpacity',
+  Alert: { alert: () => {} },
+  StatusBar: { setBarStyle: () => {} },
+  ActivityIndicator: 'ActivityIndicator',
+};
+
+export const mockReactNativeCalendars = {
+  Calendar: 'Calendar',
+  LocaleConfig: { locales: {} as Record<string, any>, defaultLocale: 'pt-br' },
+};
+
 const origRequire = Module.prototype.require;
 
 Module.prototype.require = function (id: string) {
@@ -24,9 +41,10 @@ Module.prototype.require = function (id: string) {
     return { default: mockAsyncStorage, ...mockAsyncStorage };
   }
   if (id === 'react-native') {
-    return {
-      Platform: { OS: 'ios', select: (obj: any) => obj.ios || obj.default },
-    };
+    return mockReactNative;
+  }
+  if (id === 'react-native-calendars') {
+    return mockReactNativeCalendars;
   }
   if (id === 'expo-notifications') {
     return {

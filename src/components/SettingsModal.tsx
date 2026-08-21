@@ -66,6 +66,7 @@ export const SettingsModal: React.FC<Props> = ({
   const [isExporting, setIsExporting] = useState(false);
 
   // Settings local state
+  const [fullscreen, setFullscreen] = useState(settings.fullscreen === true);
   const [focusMin, setFocusMin] = useState(settings.pomodoroFocusMin.toString());
   const [breakMin, setBreakMin] = useState(settings.pomodoroBreakMin.toString());
   const [passGrade, setPassGrade] = useState(settings.defaultPassGrade.toString());
@@ -75,6 +76,7 @@ export const SettingsModal: React.FC<Props> = ({
 
   React.useEffect(() => {
     if (visible) {
+      setFullscreen(settings.fullscreen === true);
       setFocusMin(settings.pomodoroFocusMin.toString());
       setBreakMin(settings.pomodoroBreakMin.toString());
       setPassGrade(settings.defaultPassGrade.toString());
@@ -87,11 +89,28 @@ export const SettingsModal: React.FC<Props> = ({
 
   const handleSaveSettings = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // Sanitize Pomodoro Focus Time (1 - 180 min)
+    let cleanFocus = parseInt(focusMin, 10);
+    if (isNaN(cleanFocus) || cleanFocus < 1) cleanFocus = 25;
+    else if (cleanFocus > 180) cleanFocus = 180;
+
+    // Sanitize Pomodoro Break Time (1 - 60 min)
+    let cleanBreak = parseInt(breakMin, 10);
+    if (isNaN(cleanBreak) || cleanBreak < 1) cleanBreak = 5;
+    else if (cleanBreak > 60) cleanBreak = 60;
+
+    // Sanitize Pass Grade (0 - 10)
+    let cleanGrade = parseFloat(passGrade.replace(',', '.'));
+    if (isNaN(cleanGrade) || cleanGrade < 0) cleanGrade = 7.0;
+    else if (cleanGrade > 10) cleanGrade = 10.0;
+
     const updated: AppSettings = {
       ...settings,
-      pomodoroFocusMin: parseInt(focusMin, 10) || 25,
-      pomodoroBreakMin: parseInt(breakMin, 10) || 5,
-      defaultPassGrade: parseFloat(passGrade.replace(',', '.')) || 7.0,
+      fullscreen,
+      pomodoroFocusMin: cleanFocus,
+      pomodoroBreakMin: cleanBreak,
+      defaultPassGrade: cleanGrade,
       soundEnabled,
       hapticsEnabled,
       examWeekMode,
@@ -281,6 +300,30 @@ export const SettingsModal: React.FC<Props> = ({
                 })}
               </View>
 
+              {/* Modo Tela Cheia */}
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 16 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>🖥️ Modo Tela Cheia</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2, lineHeight: 16 }}>
+                      {fullscreen ? 'Status bar oculta (visual imersivo de borda a borda).' : 'Status bar visível (padrão com relógio e ícones do sistema).'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={fullscreen}
+                    onValueChange={(val) => {
+                      Haptics.selectionAsync();
+                      setFullscreen(val);
+                      const updated: AppSettings = { ...settings, fullscreen: val };
+                      onUpdateSettings(updated);
+                      StorageService.saveSettings(updated);
+                    }}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={fullscreen ? '#fff' : '#f4f3f4'}
+                  />
+                </View>
+              </View>
+
               {/* Modo Semana de Provas */}
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 16 }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -306,22 +349,30 @@ export const SettingsModal: React.FC<Props> = ({
               <Text style={[styles.sectionTitle, { marginTop: 22 }]}>Preferências do Pomodoro</Text>
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.settingRow}>
-                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Tempo de Foco (minutos)</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Tempo de Foco (minutos)</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>Mínimo 1m • Máximo 180m</Text>
+                  </View>
                   <TextInput
                     style={[styles.smallInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                     keyboardType="numeric"
+                    maxLength={3}
                     value={focusMin}
-                    onChangeText={setFocusMin}
+                    onChangeText={(val) => setFocusMin(val.replace(/\D/g, ''))}
                   />
                 </View>
 
                 <View style={[styles.settingRow, { borderTopWidth: 1, borderTopColor: colors.borderSubtle }]}>
-                  <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Pausa Curta (minutos)</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>Pausa Curta (minutos)</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>Mínimo 1m • Máximo 60m</Text>
+                  </View>
                   <TextInput
                     style={[styles.smallInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
                     keyboardType="numeric"
+                    maxLength={2}
                     value={breakMin}
-                    onChangeText={setBreakMin}
+                    onChangeText={(val) => setBreakMin(val.replace(/\D/g, ''))}
                   />
                 </View>
               </View>

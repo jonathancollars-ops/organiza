@@ -1,3 +1,4 @@
+import './setup_env';
 import { AIParsingService } from '../src/services/AIParsingService';
 import { calculateFinalGrade } from '../src/components/GradeEngine';
 import { ParsedSubjectCriteria } from '../src/types';

@@ -48,6 +48,7 @@ export const StudyScreen: React.FC<Props> = ({
   
   // Pomodoro State
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(subjects.length > 0 ? subjects[0].id : null);
+  const [activeFocusMinutes, setActiveFocusMinutes] = useState<number>(focusMinutesDefault);
   const [timeLeft, setTimeLeft] = useState(focusMinutesDefault * 60);
   const [isActive, setIsActive] = useState(false);
   const [isBreak, setIsBreak] = useState(false);
@@ -81,6 +82,31 @@ export const StudyScreen: React.FC<Props> = ({
       if (stopwatchRef.current) clearInterval(stopwatchRef.current);
     };
   }, []);
+
+  // Sync selected subjects when subjects array changes
+  useEffect(() => {
+    if (subjects.length > 0) {
+      if (!selectedSubjectId || !subjects.some(s => s.id === selectedSubjectId)) {
+        setSelectedSubjectId(subjects[0].id);
+      }
+      if (!stopwatchSubjectId || !subjects.some(s => s.id === stopwatchSubjectId)) {
+        setStopwatchSubjectId(subjects[0].id);
+      }
+    }
+  }, [subjects]);
+
+  // Dynamic sync: when focusMinutesDefault or breakMinutesDefault change from Settings props,
+  // update timeLeft immediately if the timer is idle (!isActive).
+  useEffect(() => {
+    if (!isActive) {
+      if (!isBreak) {
+        setActiveFocusMinutes(focusMinutesDefault);
+        setTimeLeft(focusMinutesDefault * 60);
+      } else {
+        setTimeLeft(breakMinutesDefault * 60);
+      }
+    }
+  }, [focusMinutesDefault, breakMinutesDefault, isBreak, isActive]);
 
   const loadStreak = async () => {
     const s = await StorageService.getStreak();
@@ -175,30 +201,35 @@ export const StudyScreen: React.FC<Props> = ({
     setIsActive(false);
     if (timerRef.current) clearInterval(timerRef.current);
     
-    if (!isBreak && selectedSubjectId) {
+    const subId = selectedSubjectId || (subjects.length > 0 ? subjects[0].id : null);
+    if (!isBreak && subId) {
+      const sessionDurationMin = activeFocusMinutes || focusMinutesDefault;
       const newSession: StudySession = {
         id: generateId('sess'),
-        subjectId: selectedSubjectId,
-        durationMs: focusMinutesDefault * 60 * 1000,
+        subjectId: subId,
+        durationMs: sessionDurationMin * 60 * 1000,
         date: getLocalDateString(),
       };
       onAddSession(newSession);
-      updateStreakOnSessionSaved();
-      const updatedGamification = await StorageService.addXP(50, focusMinutesDefault);
+      await updateStreakOnSessionSaved();
+      const updatedGamification = await StorageService.addXP(50, sessionDurationMin);
       setGamification(updatedGamification);
-      showToast(`🎉 Sessão de ${focusMinutesDefault}min concluída! (+50 XP) Hora do descanso.`, 'success');
+      showToast(`🎉 Sessão de ${sessionDurationMin}min concluída! (+50 XP) Hora do descanso.`, 'success');
       setIsBreak(true);
       setTimeLeft(breakMinutesDefault * 60);
     } else {
       showToast('⚡ Descanso finalizado! Hora de retomar o foco.', 'info');
       setIsBreak(false);
-      setTimeLeft(focusMinutesDefault * 60);
+      setTimeLeft((activeFocusMinutes || focusMinutesDefault) * 60);
     }
   };
 
   const toggleTimer = () => {
-    if (!selectedSubjectId) {
-      showToast('Selecione uma matéria antes de iniciar o timer.', 'warning');
+    if (!selectedSubjectId && subjects.length > 0) {
+      setSelectedSubjectId(subjects[0].id);
+    }
+    if (!selectedSubjectId && subjects.length === 0) {
+      showToast('Cadastre uma matéria antes de iniciar o timer.', 'warning');
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -209,39 +240,64 @@ export const StudyScreen: React.FC<Props> = ({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsActive(false);
     setIsBreak(false);
-    setTimeLeft(focusMinutesDefault * 60);
+    setTimeLeft((activeFocusMinutes || focusMinutesDefault) * 60);
+  };
+
+  const handleSelectPreset = (minutes: number) => {
+    if (isActive) {
+      showToast('Pause o timer para alterar a duração.', 'warning');
+      return;
+    }
+    Haptics.selectionAsync();
+    setActiveFocusMinutes(minutes);
+    if (!isBreak) {
+      setTimeLeft(minutes * 60);
+    }
   };
 
   const toggleStopwatch = () => {
-    if (!stopwatchSubjectId) {
-      showToast('Selecione uma matéria para cronometrar.', 'warning');
-      return;
+    if (!stopwatchSubjectId && subjects.length > 0) {
+      setStopwatchSubjectId(subjects[0].id);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsStopwatchRunning(!isStopwatchRunning);
   };
 
+  const resetStopwatch = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsStopwatchRunning(false);
+    setStopwatchSeconds(0);
+    showToast('Cronômetro zerado.', 'info');
+  };
+
   const saveAndResetStopwatch = async () => {
     if (stopwatchSeconds < 30) {
-      setIsStopwatchRunning(false);
-      setStopwatchSeconds(0);
+      showToast('Estude por pelo menos 30 segundos para salvar a sessão.', 'warning');
       return;
     }
 
-    if (stopwatchSubjectId) {
-      const newSession: StudySession = {
-        id: generateId('sess'),
-        subjectId: stopwatchSubjectId,
-        durationMs: stopwatchSeconds * 1000,
-        date: getLocalDateString(),
-      };
-      onAddSession(newSession);
-      updateStreakOnSessionSaved();
-      const minutes = Math.floor(stopwatchSeconds / 60);
-      const updatedGamification = await StorageService.addXP(25, minutes);
-      setGamification(updatedGamification);
-      showToast(`Sessão de ${minutes} min salva! (+25 XP)`, 'success');
+    const subId = stopwatchSubjectId || (subjects.length > 0 ? subjects[0].id : null);
+    if (!subId) {
+      showToast('Selecione uma matéria para salvar a sessão.', 'warning');
+      return;
     }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const newSession: StudySession = {
+      id: generateId('sess'),
+      subjectId: subId,
+      durationMs: stopwatchSeconds * 1000,
+      date: getLocalDateString(),
+    };
+    onAddSession(newSession);
+    await updateStreakOnSessionSaved();
+
+    const minutes = Math.max(1, Math.floor(stopwatchSeconds / 60));
+    // Proportional XP: ~2 XP per minute, minimum 10 XP
+    const xpGained = Math.max(10, Math.round(minutes * 2));
+    const updatedGamification = await StorageService.addXP(xpGained, minutes);
+    setGamification(updatedGamification);
+    showToast(`🎉 Sessão de ${minutes} min salva! (+${xpGained} XP)`, 'success');
 
     setIsStopwatchRunning(false);
     setStopwatchSeconds(0);
@@ -431,33 +487,75 @@ export const StudyScreen: React.FC<Props> = ({
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Matéria em Foco</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
-              {subjects.map(sub => {
-                const isSelected = selectedSubjectId === sub.id;
-                const chipBg = isSelected ? (sub.color || colors.primary) : colors.surfaceSubtle;
-                const textColor = isSelected ? getContrastTextColor(sub.color || colors.primary) : colors.text;
+            
+            {subjects.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
+                {subjects.map(sub => {
+                  const isSelected = selectedSubjectId === sub.id;
+                  const chipBg = isSelected ? (sub.color || colors.primary) : colors.surfaceSubtle;
+                  const textColor = isSelected ? getContrastTextColor(sub.color || colors.primary) : colors.text;
 
-                return (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={[
-                      styles.subjectChip,
-                      {
-                        backgroundColor: chipBg,
-                        borderWidth: 1,
-                        borderColor: isSelected ? (sub.color || colors.primary) : colors.border
-                      }
-                    ]}
-                    onPress={() => setSelectedSubjectId(sub.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ color: textColor, fontWeight: '700', fontSize: 13 }}>
-                      {sub.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                  return (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={[
+                        styles.subjectChip,
+                        {
+                          backgroundColor: chipBg,
+                          borderWidth: 1,
+                          borderColor: isSelected ? (sub.color || colors.primary) : colors.border
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedSubjectId(sub.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: textColor, fontWeight: '700', fontSize: 13 }}>
+                        {sub.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 14 }}>
+                Nenhuma matéria cadastrada. Adicione matérias para vincular seus estudos.
+              </Text>
+            )}
+
+            {/* Quick Presets */}
+            <View style={styles.presetsContainer}>
+              <Text style={[styles.presetsLabel, { color: colors.textSecondary }]}>⏱️ Duração rápida:</Text>
+              <View style={styles.presetsRow}>
+                {[15, 25, 45, 50, 60].map((presetMin) => {
+                  const isPresetSelected = !isBreak && activeFocusMinutes === presetMin;
+                  return (
+                    <TouchableOpacity
+                      key={presetMin}
+                      style={[
+                        styles.presetChip,
+                        {
+                          backgroundColor: isPresetSelected ? colors.primary : colors.surfaceSubtle,
+                          borderColor: isPresetSelected ? colors.primary : colors.border,
+                        }
+                      ]}
+                      onPress={() => handleSelectPreset(presetMin)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        color: isPresetSelected ? getContrastTextColor(colors.primary) : colors.text,
+                        fontWeight: '700',
+                        fontSize: 12
+                      }}>
+                        {presetMin}m
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
 
             <View style={styles.timerContainer}>
               <View style={[
@@ -468,7 +566,7 @@ export const StudyScreen: React.FC<Props> = ({
                 }
               ]}>
                 <Text style={{ fontSize: 13, fontWeight: '800', color: isBreak ? colors.success : colors.primary }}>
-                  {isBreak ? '☕ Descanso' : '🎯 Foco Total'}
+                  {isBreak ? `☕ Descanso (${breakMinutesDefault}m)` : `🎯 Foco Total (${activeFocusMinutes}m)`}
                 </Text>
               </View>
 
@@ -527,36 +625,45 @@ export const StudyScreen: React.FC<Props> = ({
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Cronômetro Livre</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 15 }}>
-              Estude sem limite de tempo e salve a sessão ao terminar.
+              Contagem progressiva: estude no seu próprio ritmo e salve a sessão ao terminar.
             </Text>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-              {subjects.map(sub => {
-                const isSelected = stopwatchSubjectId === sub.id;
-                const chipBg = isSelected ? (sub.color || colors.primary) : colors.surfaceSubtle;
-                const textColor = isSelected ? getContrastTextColor(sub.color || colors.primary) : colors.text;
+            {subjects.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                {subjects.map(sub => {
+                  const isSelected = stopwatchSubjectId === sub.id;
+                  const chipBg = isSelected ? (sub.color || colors.primary) : colors.surfaceSubtle;
+                  const textColor = isSelected ? getContrastTextColor(sub.color || colors.primary) : colors.text;
 
-                return (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={[
-                      styles.subjectChip,
-                      {
-                        backgroundColor: chipBg,
-                        borderWidth: 1,
-                        borderColor: isSelected ? (sub.color || colors.primary) : colors.border
-                      }
-                    ]}
-                    onPress={() => setStopwatchSubjectId(sub.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ color: textColor, fontWeight: '700', fontSize: 13 }}>
-                      {sub.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                  return (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={[
+                        styles.subjectChip,
+                        {
+                          backgroundColor: chipBg,
+                          borderWidth: 1,
+                          borderColor: isSelected ? (sub.color || colors.primary) : colors.border
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setStopwatchSubjectId(sub.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: textColor, fontWeight: '700', fontSize: 13 }}>
+                        {sub.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 15 }}>
+                Nenhuma matéria cadastrada.
+              </Text>
+            )}
 
             <View style={styles.timerContainer}>
               <Text style={[styles.timerText, { color: colors.text }]}>{formatStopwatch(stopwatchSeconds)}</Text>
@@ -579,15 +686,50 @@ export const StudyScreen: React.FC<Props> = ({
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.timerButton, { backgroundColor: colors.surfaceSubtle, borderWidth: 1, borderColor: colors.border }]}
+                  style={[styles.timerButton, { backgroundColor: colors.success }]}
                   onPress={saveAndResetStopwatch}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.timerButtonText, { color: colors.text }]}>💾 Salvar</Text>
+                  <Text style={[styles.timerButtonText, { color: getContrastTextColor(colors.success) }]}>💾 Salvar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.timerButton, { backgroundColor: colors.surfaceSubtle, borderWidth: 1, borderColor: colors.border }]}
+                  onPress={resetStopwatch}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.timerButtonText, { color: colors.text }]}>🔄 Zerar</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </View>
+
+          {/* Daily study overview card */}
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 0 }]}>Tempo Hoje</Text>
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 18 }}>
+                {formatTotalTime(todayTotalStudyMs)}
+              </Text>
+            </View>
+
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 10 }}>Distribuição por matéria:</Text>
+
+            {subjects.map(sub => {
+              const total = getSubjectTotalTime(sub.id);
+              if (total === 0) return null;
+              return (
+                <View key={sub.id} style={[styles.statRow, { borderBottomColor: colors.borderSubtle }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: sub.color || colors.primary, marginRight: 8 }} />
+                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{sub.name}</Text>
+                  </View>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{formatTotalTime(total)}</Text>
+                </View>
+              );
+            })}
+          </View>
+
           <View style={{ height: 100 }} />
         </ScrollView>
       ) : (
@@ -851,6 +993,10 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   cardTitle: { fontSize: 17, fontWeight: '800', marginBottom: 14 },
   subjectChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, marginRight: 8 },
+  presetsContainer: { marginBottom: 12 },
+  presetsLabel: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
+  presetsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  presetChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   statePill: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20, marginBottom: 10, borderWidth: 1 },
   timerContainer: { alignItems: 'center', paddingVertical: 15 },
   timerText: { fontSize: 58, fontWeight: '800', marginBottom: 18, fontVariant: ['tabular-nums'], letterSpacing: 2 },

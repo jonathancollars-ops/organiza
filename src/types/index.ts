@@ -101,6 +101,7 @@ export interface StudyStreak {
 
 export interface AppSettings {
   theme: ThemeType;
+  fullscreen?: boolean; // Default false (Barra de status visível)
   pomodoroFocusMin: number; // Default 25
   pomodoroBreakMin: number; // Default 5
   pomodoroLongBreakMin: number; // Default 15

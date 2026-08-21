@@ -34,6 +34,7 @@ const GAMIFICATION_KEY = '@organiza_gamification';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
+  fullscreen: false,
   pomodoroFocusMin: 25,
   pomodoroBreakMin: 5,
   pomodoroLongBreakMin: 15,

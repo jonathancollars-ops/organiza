@@ -569,7 +569,7 @@ export async function runM4AdversarialSyncSuite() {
   assertEqual(recoveredSubjects, [], '[C5.1] StorageService.getSubjects returns [] on JSON parse corruption');
   assertEqual(recoveredAttendances, [], '[C5.1] StorageService.getAttendances returns [] on JSON parse corruption');
   assertEqual(recoveredTeams, null, '[C5.1] StorageService.getTeamsConfig returns null on corruption');
-  assertEqual(recoveredAI, null, '[C5.1] StorageService.getAIConfig returns null on corruption');
+  assertEqual(recoveredAI.provider, 'gemini', '[C5.1] StorageService.getAIConfig returns default fallback on corruption');
 
   // 5.2: Missing Keys Default Handling
   await mockAsyncStorage.clear();

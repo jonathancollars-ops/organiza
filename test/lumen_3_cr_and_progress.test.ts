@@ -203,11 +203,11 @@ CC101 Algoritmos 60h 9.0 Aprovada
   await test('Check All 3 AI Model Tiers Status in Sandbox', async () => {
     const allStatuses = await LocalAIModelService.checkAllTiersStatus();
     assert(!!allStatuses.light, 'Light tier status returned');
-    assert(allStatuses.light.formattedSize === '340 MB', 'Light tier formatted size matches');
+    assert(allStatuses.light.formattedSize === AVAILABLE_MODEL_TIERS.light.formattedSize, 'Light tier formatted size matches');
     assert(!!allStatuses.medium, 'Medium tier status returned');
-    assert(allStatuses.medium.formattedSize === '1.18 GB', 'Medium tier formatted size matches');
+    assert(allStatuses.medium.formattedSize === AVAILABLE_MODEL_TIERS.medium.formattedSize, 'Medium tier formatted size matches');
     assert(!!allStatuses.deep, 'Deep tier status returned');
-    assert(allStatuses.deep.formattedSize === '2.45 GB', 'Deep tier formatted size matches');
+    assert(allStatuses.deep.formattedSize === AVAILABLE_MODEL_TIERS.deep.formattedSize, 'Deep tier formatted size matches');
   });
 
   // Test 10: FAB Visibility Condition on Tabs

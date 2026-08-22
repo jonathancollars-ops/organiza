@@ -332,7 +332,7 @@ export default function App() {
           <View style={[styles.logoIconBadge, { width: 56, height: 56, borderRadius: 16, backgroundColor: colors.primaryLight, marginBottom: 12, marginRight: 0 }]}>
             <Text style={{ fontSize: 28 }}>🎓</Text>
           </View>
-          <Text style={[styles.title, { color: colors.text, fontSize: 24, marginBottom: 8 }]}>Organiza</Text>
+          <Text style={[styles.title, { color: colors.text, fontSize: 24, marginBottom: 8 }]}>Lumen</Text>
           <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 12 }} />
         </View>
       </SafeAreaView>

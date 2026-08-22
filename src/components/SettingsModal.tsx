@@ -578,7 +578,8 @@ export const SettingsModal: React.FC<Props> = ({
                 const isActive = activeTier === tierKey;
 
                 const icon = tierKey === 'light' ? '🪶' : tierKey === 'medium' ? '⚖️' : '🚀';
-                const categoryTitle = tierKey === 'light' ? 'Leve (Rápido & Econômico)' : tierKey === 'medium' ? 'Equilibrado (Recomendado)' : 'Completo (Raciocínio Avançado)';
+                const categoryTitle = tierKey === 'light' ? 'Ultraleve (Rápido & Econômico)' : tierKey === 'medium' ? 'Equilibrado (Recomendado)' : 'Avançado (Raciocínio Profundo)';
+                const isError = tierStatus.downloadState === 'error';
 
                 return (
                   <View
@@ -587,7 +588,7 @@ export const SettingsModal: React.FC<Props> = ({
                       styles.card,
                       {
                         backgroundColor: colors.surface,
-                        borderColor: isActive ? colors.primary : colors.border,
+                        borderColor: isActive ? colors.primary : isError ? colors.danger : colors.border,
                         borderWidth: isActive ? 2 : 1,
                         marginBottom: 14
                       }
@@ -603,6 +604,11 @@ export const SettingsModal: React.FC<Props> = ({
                             {isActive && (
                               <View style={{ backgroundColor: colors.primaryLight, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 }}>
                                 <Text style={{ fontSize: 10, fontWeight: '800', color: colors.primary }}>ATIVO</Text>
+                              </View>
+                            )}
+                            {isError && (
+                              <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '800', color: colors.danger }}>ERRO</Text>
                               </View>
                             )}
                           </View>
@@ -671,7 +677,7 @@ export const SettingsModal: React.FC<Props> = ({
                               'Liberar Espaço?',
                               `Deseja apagar o arquivo de ${tierConfig.formattedSize} do celular?`,
                               [
-                                { text: 'Cancelar', style: 'cancel' },
+                                  { text: 'Cancelar', style: 'cancel' },
                                 {
                                   text: 'Apagar',
                                   style: 'destructive',
@@ -694,7 +700,12 @@ export const SettingsModal: React.FC<Props> = ({
                       </View>
                     ) : (
                       <TouchableOpacity
-                        style={{ backgroundColor: colors.primary, padding: 11, borderRadius: 8, alignItems: 'center' }}
+                        style={{
+                          backgroundColor: isError ? colors.danger : colors.primary,
+                          padding: 11,
+                          borderRadius: 8,
+                          alignItems: 'center'
+                        }}
                         disabled={downloadingTier !== null}
                         onPress={async () => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -716,16 +727,17 @@ export const SettingsModal: React.FC<Props> = ({
                             setDownloadingTier(null);
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                             Alert.alert('Download Concluído!', `O modelo ${tierConfig.name} está instalado e pronto para uso offline.`);
-                          } catch {
+                          } catch (err: any) {
                             setDownloadingTier(null);
-                            Alert.alert('Motor Inteligente Embutido Ativo', 'O download foi pausado ou falhou na rede. O Motor Nativo do Lumen continua funcionando 100% offline.');
+                            const errMsg = err?.message || 'Falha na transferência do modelo de IA.';
+                            Alert.alert('Aviso de Download', errMsg);
                             const updated = await LocalAIModelService.checkAllTiersStatus();
                             setModelStatuses(updated);
                           }
                         }}
                       >
-                        <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 12 }}>
-                          📥 Baixar {categoryTitle.split(' ')[0]} ({tierConfig.formattedSize})
+                        <Text style={{ color: isError ? '#FFFFFF' : getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 12 }}>
+                          {isError ? `🔄 Tentar Novamente (${tierConfig.formattedSize})` : `📥 Baixar ${categoryTitle.split(' ')[0]} (${tierConfig.formattedSize})`}
                         </Text>
                       </TouchableOpacity>
                     )}

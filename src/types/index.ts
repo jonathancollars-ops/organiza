@@ -192,7 +192,7 @@ export type AIProvider = 'gemini' | 'openai';
 
 export type AIProviderMode = 'local_edge' | 'gemini_cloud' | 'heuristic_offline';
 
-export type LocalModelDownloadState = 'not_downloaded' | 'downloading' | 'downloaded' | 'error';
+export type LocalModelDownloadState = 'not_downloaded' | 'downloading' | 'paused' | 'downloaded' | 'error';
 
 export interface LocalAIModelInfo {
   id: string;
@@ -207,6 +207,7 @@ export interface LocalAIModelInfo {
   downloadedBytes: number;
   localPath?: string;
   lastUpdated?: string;
+  errorMessage?: string;
 }
 
 export interface AIConfig {
@@ -374,4 +375,5 @@ export interface ModelTierInfo {
   downloadProgress: number;
   downloadedBytes: number;
   localPath?: string;
+  errorMessage?: string;
 }

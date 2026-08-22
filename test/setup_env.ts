@@ -15,6 +15,13 @@ export const mockAsyncStorage = {
   getAllKeys: async () => Object.keys(memoryStore),
 };
 
+// In-memory FileSystem store
+export const mockFileSystemStore: Record<string, { exists: boolean; size: number; isDirectory: boolean }> = {};
+export let mockFreeDiskStorageBytes = 10 * 1024 * 1024 * 1024; // 10 GB free by default
+export function setMockFreeDiskStorageBytes(bytes: number) {
+  mockFreeDiskStorageBytes = bytes;
+}
+
 // Hook require for Expo/React-Native modules
 const Module = require('module');
 export const mockReactNative = {
@@ -36,7 +43,17 @@ export const mockReactNativeCalendars = {
 
 const origRequire = Module.prototype.require;
 
+export const mockSecureStore: Record<string, string> = {};
+
 Module.prototype.require = function (id: string) {
+  if (id === 'expo-secure-store') {
+    return {
+      WHEN_UNLOCKED_THIS_DEVICE_ONLY: 1,
+      setItemAsync: async (k: string, v: string) => { mockSecureStore[k] = v; },
+      getItemAsync: async (k: string) => mockSecureStore[k] ?? null,
+      deleteItemAsync: async (k: string) => { delete mockSecureStore[k]; },
+    };
+  }
   if (id === '@react-native-async-storage/async-storage') {
     return { default: mockAsyncStorage, ...mockAsyncStorage };
   }
@@ -76,17 +93,47 @@ Module.prototype.require = function (id: string) {
     return {
       documentDirectory: 'file:///mock_sandbox_app/files/',
       cacheDirectory: 'file:///mock_sandbox_app/cache/',
-      getInfoAsync: async (uri: string) => ({ exists: false, isDirectory: false }),
-      makeDirectoryAsync: async () => {},
-      deleteAsync: async () => {},
-      createDownloadResumable: (url: string, fileUri: string, options: any, callback: any) => ({
-        downloadAsync: async () => {
-          if (callback) callback({ totalBytesWritten: 1280000000, totalBytesExpectedToWrite: 1280000000 });
-          return { uri: fileUri, status: 200 };
-        },
-        cancelAsync: async () => {},
-        pauseAsync: async () => {}
-      })
+      getInfoAsync: async (uri: string) => {
+        if (mockFileSystemStore[uri]) {
+          return { exists: true, isDirectory: mockFileSystemStore[uri].isDirectory, size: mockFileSystemStore[uri].size, uri };
+        }
+        return { exists: false, isDirectory: false, uri };
+      },
+      getFreeDiskStorageAsync: async () => mockFreeDiskStorageBytes,
+      makeDirectoryAsync: async (dirUri: string) => {
+        mockFileSystemStore[dirUri] = { exists: true, isDirectory: true, size: 0 };
+      },
+      deleteAsync: async (uri: string) => {
+        delete mockFileSystemStore[uri];
+      },
+      createDownloadResumable: (url: string, fileUri: string, options: any, callback: any) => {
+        let isPaused = false;
+        let isCancelled = false;
+        return {
+          downloadAsync: async () => {
+            if (isCancelled) throw new Error('Download cancelado');
+            const totalBytes = 800000000;
+            if (callback) {
+              callback({ totalBytesWritten: Math.floor(totalBytes / 2), totalBytesExpectedToWrite: totalBytes });
+              callback({ totalBytesWritten: totalBytes, totalBytesExpectedToWrite: totalBytes });
+            }
+            mockFileSystemStore[fileUri] = { exists: true, isDirectory: false, size: totalBytes };
+            return { uri: fileUri, status: 200 };
+          },
+          pauseAsync: async () => {
+            isPaused = true;
+            return { url, fileUri, options, resumeData: 'mock_resume_data' };
+          },
+          resumeAsync: async () => {
+            isPaused = false;
+            return { uri: fileUri, status: 200 };
+          },
+          cancelAsync: async () => {
+            isCancelled = true;
+            delete mockFileSystemStore[fileUri];
+          }
+        };
+      }
     };
   }
   return origRequire.apply(this, arguments);

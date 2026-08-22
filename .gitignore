@@ -3,37 +3,46 @@
 # dependencies
 node_modules/
 
-# Expo
+# Expo & Metro
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+.eas/
+.metro-health-check*
 
-# Native
+# Native & Keystores (Security Hardening)
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
+*.pem
 *.mobileprovision
+credentials.json
+google-services.json
+GoogleService-Info.plist
 
-# Metro
-.metro-health-check*
-
-# debug
+# debug & logs
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+pnpm-debug.*
+*.log
 
-# macOS
+# macOS & Windows OS
 .DS_Store
-*.pem
+Thumbs.db
 
-# local env files
-.env*.local
+# local env files & secrets (Security Hardening)
+.env
+.env.*
+!.env.example
 
-# typescript
+# test & coverage
+coverage/
 *.tsbuildinfo
 
 # generated native folders

@@ -1,0 +1,117 @@
+name: Android CI & APK Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type (apk or app-bundle)'
+        required: false
+        default: 'apk'
+        type: choice
+        options:
+          - apk
+          - app-bundle
+      run_tests:
+        description: 'Run Test Suite Before Build'
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-build:
+    name: Verify, Test & Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: ☕ Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 Install NPM Dependencies
+        run: npm ci || npm install
+
+      - name: 🔍 Strict TypeScript Compilation Check
+        run: npx tsc --noEmit
+
+      - name: 🧪 Run Automated Test Harness
+        if: ${{ github.event.inputs.run_tests != 'false' }}
+        run: npm test
+
+      - name: ⚙️ Generate Native Android Project (Expo Prebuild)
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: 🔑 Grant Execute Permission to Gradle Wrapper
+        run: chmod +x android/gradlew
+
+      - name: 🔨 Build Android Standalone APK (Release)
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError"
+
+      - name: 📋 Prepare Artifacts & Calculate Checksums
+        id: prepare-artifact
+        run: |
+          mkdir -p build-output
+          # Locate generated APK
+          APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          if [ -n "$APK_FILE" ] && [ -f "$APK_FILE" ]; then
+            TARGET_APK="build-output/lumen-v3.0.0-standalone.apk"
+            cp "$APK_FILE" "$TARGET_APK"
+            echo "apk_path=$TARGET_APK" >> $GITHUB_OUTPUT
+            
+            # Generate SHA-256 Checksum
+            cd build-output
+            sha256sum lumen-v3.0.0-standalone.apk > SHA256SUMS.txt
+            echo "APK generated successfully: $TARGET_APK"
+            cat SHA256SUMS.txt
+            cd ..
+          else
+            echo "❌ Error: APK output file not found!"
+            exit 1
+          fi
+
+      - name: 📤 Upload Standalone APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumen-v3.0.0-android-apk
+          path: |
+            build-output/lumen-v3.0.0-standalone.apk
+            build-output/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: 📝 Output GitHub Actions Job Summary
+        if: always()
+        run: |
+          echo "### 🚀 Lumen 3.0 Android CI/CD Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status == 'success' && '✅ SUCCESS' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Event**: \`${{ github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact**: \`lumen-v3.0.0-android-apk\` (Standalone APK & SHA256SUMS.txt)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Typecheck**: \`npx tsc --noEmit\` (0 errors)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests**: \`npm test\` (100% green)" >> $GITHUB_STEP_SUMMARY

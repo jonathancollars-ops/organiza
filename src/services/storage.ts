@@ -28,9 +28,19 @@ const SETTINGS_KEY = '@organiza_settings';
 const STREAK_KEY = '@organiza_streak';
 const TEAMS_CONFIG_KEY = '@organiza_teams_config';
 const AI_CONFIG_KEY = '@organiza_ai_config';
+const SECURE_AI_API_KEY = 'lumen_secure_ai_api_key';
 const AACC_KEY = '@organiza_aacc';
 const GROUP_PROJECTS_KEY = '@organiza_group_projects';
 const GAMIFICATION_KEY = '@organiza_gamification';
+
+let secureStoreModule: any = null;
+try {
+  secureStoreModule = require('expo-secure-store');
+} catch {
+  secureStoreModule = null;
+}
+
+const inMemorySecureVault: Record<string, string> = {};
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
@@ -323,15 +333,78 @@ export const StorageService = {
     }
   },
 
+  async saveSecureSecret(key: string, value: string): Promise<void> {
+    if (!key) return;
+    try {
+      if (!value || value.trim() === '') {
+        await this.deleteSecureSecret(key);
+        return;
+      }
+      inMemorySecureVault[key] = value;
+      if (secureStoreModule && typeof secureStoreModule.setItemAsync === 'function') {
+        await secureStoreModule.setItemAsync(key, value, {
+          keychainAccessible: secureStoreModule.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        });
+      }
+    } catch (e) {
+      inMemorySecureVault[key] = value;
+    }
+  },
+
+  async getSecureSecret(key: string): Promise<string | null> {
+    if (!key) return null;
+    try {
+      if (secureStoreModule && typeof secureStoreModule.getItemAsync === 'function') {
+        const val = await secureStoreModule.getItemAsync(key);
+        if (val !== null && val !== undefined) {
+          inMemorySecureVault[key] = val;
+          return val;
+        }
+      }
+    } catch (e) {
+      // Fallback to in-memory vault
+    }
+    return inMemorySecureVault[key] ?? null;
+  },
+
+  async deleteSecureSecret(key: string): Promise<void> {
+    if (!key) return;
+    delete inMemorySecureVault[key];
+    try {
+      if (secureStoreModule && typeof secureStoreModule.deleteItemAsync === 'function') {
+        await secureStoreModule.deleteItemAsync(key);
+      }
+    } catch (e) {
+      // Ignore fallback deletion error
+    }
+  },
+
   async getAIConfig(): Promise<AIConfig> {
+    let secureApiKey: string | null = null;
+    try {
+      secureApiKey = await this.getSecureSecret(SECURE_AI_API_KEY);
+    } catch {
+      secureApiKey = null;
+    }
+
     try {
       const jsonValue = await AsyncStorage.getItem(AI_CONFIG_KEY);
       if (jsonValue != null) {
         const parsed = JSON.parse(jsonValue);
+        const legacyApiKey = parsed.apiKey || '';
+
+        // Backward compatibility migration: migrate plaintext key from AsyncStorage to SecureStore
+        if (!secureApiKey && legacyApiKey && legacyApiKey.trim().length > 0) {
+          await this.saveSecureSecret(SECURE_AI_API_KEY, legacyApiKey.trim());
+          secureApiKey = legacyApiKey.trim();
+          const sanitized = { ...parsed, apiKey: '' };
+          await AsyncStorage.setItem(AI_CONFIG_KEY, JSON.stringify(sanitized)).catch(() => {});
+        }
+
         return {
           provider: parsed.provider || 'gemini',
           mode: parsed.mode || 'local_edge',
-          apiKey: parsed.apiKey || '',
+          apiKey: secureApiKey || '',
           model: parsed.model || 'gemini-1.5-flash',
           enableFallbackToCloud: parsed.enableFallbackToCloud !== false,
           localModelPath: parsed.localModelPath
@@ -343,7 +416,7 @@ export const StorageService = {
     return {
       provider: 'gemini',
       mode: 'local_edge',
-      apiKey: '',
+      apiKey: secureApiKey || '',
       model: 'gemini-1.5-flash',
       enableFallbackToCloud: true
     };
@@ -351,7 +424,18 @@ export const StorageService = {
 
   async saveAIConfig(config: AIConfig): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(config);
+      if (config.apiKey && config.apiKey.trim().length > 0) {
+        await this.saveSecureSecret(SECURE_AI_API_KEY, config.apiKey.trim());
+      } else {
+        await this.deleteSecureSecret(SECURE_AI_API_KEY);
+      }
+
+      // Persist config without sensitive plaintext in unencrypted AsyncStorage
+      const sanitizedConfig = {
+        ...config,
+        apiKey: ''
+      };
+      const jsonValue = JSON.stringify(sanitizedConfig);
       await AsyncStorage.setItem(AI_CONFIG_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save AI config to storage', e);
@@ -427,6 +511,7 @@ export const StorageService = {
    * Clear all application data
    */
   async clearAllData(): Promise<void> {
+    await this.deleteSecureSecret(SECURE_AI_API_KEY);
     await AsyncStorage.multiRemove([
       EVENTS_KEY,
       THEME_KEY,

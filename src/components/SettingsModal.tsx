@@ -13,10 +13,9 @@ import {
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ThemeType, AppSettings, Semester, BackupData, AIConfig, LocalAIModelInfo, LocalModelTier } from '../types';
+import { ThemeType, AppSettings, Semester, BackupData, AIConfig } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
-import { LocalAIModelService, DEFAULT_OFFLINE_MODEL, AVAILABLE_MODEL_TIERS } from '../services/LocalAIModelService';
 import { generateId } from '../utils/id';
 import { APP_VERSION } from '../utils/version';
 import * as Haptics from 'expo-haptics';
@@ -52,18 +51,9 @@ export const SettingsModal: React.FC<Props> = ({
   const styles = getStyles(colors);
 
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'semestres' | 'ia' | 'backup'>('geral');
-  const [activeTier, setActiveTier] = useState<LocalModelTier>('medium');
-  const [modelStatuses, setModelStatuses] = useState<Record<LocalModelTier, any>>({
-    light: AVAILABLE_MODEL_TIERS.light,
-    medium: AVAILABLE_MODEL_TIERS.medium,
-    deep: AVAILABLE_MODEL_TIERS.deep
-  });
-  const [downloadingTier, setDownloadingTier] = useState<LocalModelTier | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<number>(0);
-  const [downloadedText, setDownloadedText] = useState<string>('');
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
-    mode: 'local_edge',
+    mode: 'cloud',
     apiKey: '',
     model: 'gemini-1.5-flash',
     enableFallbackToCloud: true
@@ -102,11 +92,9 @@ export const SettingsModal: React.FC<Props> = ({
   const loadAIData = async () => {
     try {
       const savedAIConfig = await StorageService.getAIConfig();
-      setAiConfig(savedAIConfig);
-      const tier = await LocalAIModelService.getActiveTier();
-      setActiveTier(tier);
-      const allStatuses = await LocalAIModelService.checkAllTiersStatus();
-      setModelStatuses(allStatuses);
+      if (savedAIConfig) {
+        setAiConfig(savedAIConfig);
+      }
     } catch (e) {
       console.warn('Erro ao carregar dados de IA:', e);
     }
@@ -585,223 +573,74 @@ export const SettingsModal: React.FC<Props> = ({
           )}
 
           {/* ======================================================= */}
-          {/* TAB: IA & OFFLINE MODEL MANAGER                         */}
+          {/* TAB: IA & API CONFIGURATION                             */}
           {/* ======================================================= */}
           {activeSubTab === 'ia' && (
             <>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Modelos de IA & Funcionamento Offline</Text>
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 14 }}>
-                Escolha o peso do modelo ideal para o hardware do seu celular ou configure sua chave gratuita do Google Gemini.
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Inteligência Artificial & API</Text>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16, lineHeight: 18 }}>
+                Configure sua chave de API para habilitar o parsing automático de mensagens e assistente de estudos.
               </Text>
 
-              {/* 3 Model Tier Cards */}
-              {(['light', 'medium', 'deep'] as LocalModelTier[]).map((tierKey) => {
-                const tierConfig = AVAILABLE_MODEL_TIERS[tierKey];
-                const tierStatus = modelStatuses[tierKey] || tierConfig;
-                const isDownloaded = tierStatus.downloadState === 'downloaded';
-                const isCurrentlyDownloading = downloadingTier === tierKey;
-                const isActive = activeTier === tierKey;
-
-                const icon = tierKey === 'light' ? '🪶' : tierKey === 'medium' ? '⚖️' : '🚀';
-                const categoryTitle = tierKey === 'light' ? 'Ultraleve (Rápido & Econômico)' : tierKey === 'medium' ? 'Equilibrado (Recomendado)' : 'Avançado (Raciocínio Profundo)';
-                const isError = tierStatus.downloadState === 'error';
-
-                return (
-                  <View
-                    key={tierKey}
-                    style={[
-                      styles.card,
-                      {
-                        backgroundColor: colors.surface,
-                        borderColor: isActive ? colors.primary : isError ? colors.danger : colors.border,
-                        borderWidth: isActive ? 2 : 1,
-                        marginBottom: 14
-                      }
-                    ]}
-                  >
-                    {/* Header */}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <Text style={{ fontSize: 22, marginRight: 8 }}>{icon}</Text>
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>{categoryTitle}</Text>
-                            {isActive && (
-                              <View style={{ backgroundColor: colors.primaryLight, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 }}>
-                                <Text style={{ fontSize: 10, fontWeight: '800', color: colors.primary }}>ATIVO</Text>
-                              </View>
-                            )}
-                            {isError && (
-                              <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 6 }}>
-                                <Text style={{ fontSize: 10, fontWeight: '800', color: colors.danger }}>ERRO</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 1 }}>{tierConfig.name}</Text>
-                        </View>
-                      </View>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>
-                        {tierConfig.formattedSize}
-                      </Text>
-                    </View>
-
-                    {/* Description & Recommended Hardware */}
-                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6, lineHeight: 16 }}>
-                      {tierConfig.description}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '600', marginBottom: 10 }}>
-                      📱 Recomendado: {tierConfig.recommendedHardware}
-                    </Text>
-
-                    {/* Downloading Progress Indicator */}
-                    {isCurrentlyDownloading && (
-                      <View style={{ backgroundColor: colors.surfaceSubtle, padding: 10, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: colors.primary }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>Baixando modelo...</Text>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text }}>
-                            {(downloadProgress * 100).toFixed(0)}% ({downloadedText})
-                          </Text>
-                        </View>
-                        <View style={{ height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' }}>
-                          <View style={{ height: '100%', width: `${Math.max(downloadProgress * 100, 5)}%`, backgroundColor: colors.primary }} />
-                        </View>
-                      </View>
-                    )}
-
-                    {/* Action Buttons */}
-                    {isDownloaded ? (
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {!isActive && (
-                          <TouchableOpacity
-                            style={{ flex: 1, backgroundColor: colors.primary, padding: 10, borderRadius: 8, alignItems: 'center' }}
-                            onPress={async () => {
-                              Haptics.selectionAsync();
-                              await LocalAIModelService.setActiveTier(tierKey);
-                              setActiveTier(tierKey);
-                              Alert.alert('Modelo Ativado', `O modelo ${tierConfig.name} agora está ativo para o Tutor e Cálculos.`);
-                            }}
-                          >
-                            <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 12 }}>
-                              ⭐ Ativar Modelo
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                        <TouchableOpacity
-                          style={{
-                            flex: isActive ? 1 : undefined,
-                            backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                            padding: 10,
-                            borderRadius: 8,
-                            alignItems: 'center',
-                            borderWidth: 1,
-                            borderColor: colors.danger
-                          }}
-                          onPress={() => {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                            Alert.alert(
-                              'Liberar Espaço?',
-                              `Deseja apagar o arquivo de ${tierConfig.formattedSize} do celular?`,
-                              [
-                                  { text: 'Cancelar', style: 'cancel' },
-                                {
-                                  text: 'Apagar',
-                                  style: 'destructive',
-                                  onPress: async () => {
-                                    await LocalAIModelService.deleteModelFile(tierKey);
-                                    const updated = await LocalAIModelService.checkAllTiersStatus();
-                                    setModelStatuses(updated);
-                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                    Alert.alert('Espaço Liberado', 'O arquivo do modelo foi apagado com sucesso.');
-                                  }
-                                }
-                              ]
-                            );
-                          }}
-                        >
-                          <Text style={{ color: colors.danger, fontWeight: '800', fontSize: 12 }}>
-                            🗑️ Apagar ({tierConfig.formattedSize})
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: isError ? colors.danger : colors.primary,
-                          padding: 11,
-                          borderRadius: 8,
-                          alignItems: 'center'
-                        }}
-                        disabled={downloadingTier !== null}
-                        onPress={async () => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                          setDownloadingTier(tierKey);
-                          setDownloadProgress(0);
-
-                          try {
-                            await LocalAIModelService.startDownload(tierKey, (progress, downloaded, total) => {
-                              setDownloadProgress(progress);
-                              const dlMB = (downloaded / (1024 * 1024)).toFixed(0);
-                              const totalMB = (total / (1024 * 1024)).toFixed(0);
-                              setDownloadedText(`${dlMB} MB / ${totalMB} MB`);
-                            });
-
-                            const updated = await LocalAIModelService.checkAllTiersStatus();
-                            setModelStatuses(updated);
-                            await LocalAIModelService.setActiveTier(tierKey);
-                            setActiveTier(tierKey);
-                            setDownloadingTier(null);
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                            Alert.alert('Download Concluído!', `O modelo ${tierConfig.name} está instalado e pronto para uso offline.`);
-                          } catch (err: any) {
-                            setDownloadingTier(null);
-                            const errMsg = err?.message || 'Falha na transferência do modelo de IA.';
-                            Alert.alert('Aviso de Download', errMsg);
-                            const updated = await LocalAIModelService.checkAllTiersStatus();
-                            setModelStatuses(updated);
-                          }
-                        }}
-                      >
-                        <Text style={{ color: isError ? '#FFFFFF' : getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 12 }}>
-                          {isError ? `🔄 Tentar Novamente (${tierConfig.formattedSize})` : `📥 Baixar ${categoryTitle.split(' ')[0]} (${tierConfig.formattedSize})`}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-
               {/* Gemini Cloud Card */}
-              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 4 }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 20, marginRight: 8 }}>☁️</Text>
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>Google Gemini API (Nuvem Grátis)</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 14 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                    <Text style={{ fontSize: 18 }}>✨</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text }}>Google Gemini API</Text>
+                    <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>Recomendado • Gratuito</Text>
+                  </View>
+                  <View style={{ backgroundColor: colors.successLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: colors.successDark }}>GRÁTIS</Text>
+                  </View>
                 </View>
 
-                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8 }}>
-                  Opcional: use sua chave de API para respostas ultrarrápidas com o modelo Gemini 1.5 Flash na nuvem.
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 12, lineHeight: 17 }}>
+                  Obtenha sua chave gratuita em <Text style={{ color: colors.primary, fontWeight: '700' }}>aistudio.google.com</Text> sem precisar de cartão de crédito.
                 </Text>
 
+                <Text style={[styles.label, { color: colors.text, marginBottom: 6 }]}>Chave de API (Gemini):</Text>
                 <TextInput
-                  style={[styles.input, { backgroundColor: colors.surfaceSubtle, color: colors.text, borderColor: colors.border, padding: 10 }]}
+                  style={[styles.input, { backgroundColor: colors.surfaceSubtle, color: colors.text, borderColor: colors.border, padding: 12, fontSize: 13 }]}
                   value={aiConfig.apiKey}
-                  onChangeText={(val) => setAiConfig({ ...aiConfig, apiKey: val })}
-                  placeholder="Cole sua API Key do Google Gemini..."
+                  onChangeText={(val) => setAiConfig({ ...aiConfig, apiKey: val.trim() })}
+                  placeholder="Cole sua API Key do Google Gemini (ex: AIzaSy...)"
                   placeholderTextColor={colors.textSecondary}
                   secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
 
                 <TouchableOpacity
-                  style={{ backgroundColor: colors.primary, padding: 11, borderRadius: 10, alignItems: 'center', marginTop: 10 }}
+                  style={{ backgroundColor: colors.primary, padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 }}
                   onPress={async () => {
-                    await StorageService.saveAIConfig(aiConfig);
+                    await StorageService.saveAIConfig({
+                      ...aiConfig,
+                      provider: 'gemini',
+                      model: 'gemini-1.5-flash'
+                    });
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert('Salvo!', 'Configurações de IA salvas com sucesso.');
+                    Alert.alert('Chave Salva!', 'A chave da API Gemini foi salva com segurança.');
                   }}
+                  activeOpacity={0.8}
                 >
-                  <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 13 }}>
+                  <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 14 }}>
                     💾 Salvar Chave do Gemini
                   </Text>
                 </TouchableOpacity>
+              </View>
+
+              {/* Information & Security Note */}
+              <View style={[styles.card, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border, padding: 14 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 16, marginRight: 8 }}>🔒</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Segurança & Privacidade</Text>
+                </View>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 17 }}>
+                  Sua chave é armazenada de forma segura e criptografada no armazenamento local do seu dispositivo e nunca é enviada a servidores de terceiros.
+                </Text>
               </View>
             </>
           )}
@@ -812,6 +651,7 @@ export const SettingsModal: React.FC<Props> = ({
     </Modal>
   );
 };
+
 
 const getStyles = (colors: any) => StyleSheet.create({
   container: {

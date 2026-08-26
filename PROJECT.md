@@ -35,6 +35,7 @@
 | 26 | Academic Performance Dashboard & Flowchart | Replaced legacy AI with 100% offline CR Tracker, Matrix importer, Final Exam calculator | M7 | User Request | DONE |
 | 27 | Transparent Silhouette Notification Icon | Monochrome alpha mask icon to eliminate Android notification white square box | M7 | User Request | DONE |
 | 28 | In-App Auto-Updater & Strict SemVer | Automatic check for GitHub Releases, update modal with changelog, SemVer rules (+0.0.1 patch, +0.1.0 minor, +1.0.0 major) | M8 | User Request | DONE |
+| 29 | Performance Screen Crash Fix, Notch Clearance, API-Only AI & Agenda-Only FAB | Ultra-defensive schema healing for CR, front camera notch clearance, simplified API-only AI setup, Agenda-exclusive FAB | M9 | User Request | DONE |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
@@ -47,6 +48,7 @@
 | 6 | Security Hardening & GitHub CI/CD | SecureStore vault, prompt sanitization, UI polish tokens, and GitHub Actions APK release | M5 | DONE |
 | 7 | Academic Performance & Crisp Notifications | Offline CR Tracker, Curriculum Matrix importer, Final Exam calc, transparent Android notification icon | M6 | DONE |
 | 8 | Auto-Updater & Strict Semantic Versioning | In-app GitHub Release checking, download triggers, SemVer standard (3.1.0 base, +0.0.1 fixes, +0.1.0 features, +1.0.0 overhauls) | M7 | DONE |
+| 9 | Lumen 3.1.1 Stabilization & UI Notch Harmony | Crash fix on performance tab, camera cutout clear channel, clean API AI setup, Agenda-only FAB | M8 | DONE |
 
 ## Semantic Versioning Rules
 - **Patch (`+0.0.1`, ex: `3.1.1`)**: Small fixes, UI polish, bug corrections, minor styling tweaks.

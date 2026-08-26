@@ -29,7 +29,7 @@ type PerformanceTab = 'cr_sim' | 'curriculum';
  * 100% Offline CR Tracker, What-If Simulation Engine & Degree Matrix.
  */
 export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps> = ({
-  subjects,
+  subjects = [],
   theme = 'dark',
 }) => {
   const colors = getThemeColors(theme);
@@ -59,41 +59,72 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
   const loadData = async () => {
     try {
       const data = await CourseCRService.loadCourseProgress();
-      setCourseData(data);
-      if (data.targetCR) {
-        setTargetInput(data.targetCR.toString());
+      if (data && Array.isArray(data.semesters) && data.semesters.length > 0) {
+        setCourseData(data);
+        if (data.targetCR) {
+          setTargetInput(data.targetCR.toString());
+        }
+      } else {
+        setCourseData(DEFAULT_CURRICULUM_TEMPLATE);
       }
     } catch (e) {
       console.warn('Erro ao carregar dados de desempenho:', e);
+      setCourseData(DEFAULT_CURRICULUM_TEMPLATE);
     }
   };
 
-  // Calculations
+  // Calculations with complete defensive fallbacks
   const historicalCR = useMemo(() => {
-    return CourseCRService.calculateHistoricalCR(courseData);
+    try {
+      return CourseCRService.calculateHistoricalCR(courseData);
+    } catch {
+      return courseData?.baselineCR || 8.0;
+    }
   }, [courseData]);
 
   const degreeProgress = useMemo(() => {
-    return CourseCRService.calculateDegreeProgress(courseData);
+    try {
+      return CourseCRService.calculateDegreeProgress(courseData);
+    } catch {
+      return {
+        completedCredits: 0,
+        totalRequiredCredits: 200,
+        completionPercentage: 0,
+        completedSubjectsCount: 0,
+        totalSubjectsCount: 0
+      };
+    }
   }, [courseData]);
 
   const crSimulations = useMemo(() => {
-    return CourseCRService.simulateCRScenarios(courseData, subjects);
-  }, [courseData, subjects]);
+    try {
+      return CourseCRService.simulateCRScenarios(courseData, subjects || []);
+    } catch {
+      return {
+        currentCR: historicalCR,
+        scenarios: []
+      };
+    }
+  }, [courseData, subjects, historicalCR]);
 
   // Current Semester Data
   const currentSemester = useMemo(() => {
-    if (!courseData.semesters || courseData.semesters.length === 0) return null;
-    const safeIndex = Math.min(Math.max(selectedSemesterIndex, 0), courseData.semesters.length - 1);
-    return courseData.semesters[safeIndex];
+    const sems = courseData?.semesters;
+    if (!sems || !Array.isArray(sems) || sems.length === 0) return null;
+    const safeIndex = Math.min(Math.max(selectedSemesterIndex, 0), sems.length - 1);
+    return sems[safeIndex] || null;
   }, [courseData, selectedSemesterIndex]);
 
   // Handlers
   const handleToggleSubject = async (subjectId: string) => {
-    Haptics.selectionAsync();
-    const updated = CourseCRService.toggleSubjectCompletion(courseData, subjectId);
-    setCourseData(updated);
-    await CourseCRService.saveCourseProgress(updated);
+    try {
+      Haptics.selectionAsync();
+      const updated = CourseCRService.toggleSubjectCompletion(courseData, subjectId);
+      setCourseData(updated);
+      await CourseCRService.saveCourseProgress(updated);
+    } catch (e) {
+      console.warn('Erro ao alternar status da matéria:', e);
+    }
   };
 
   const handleSaveTargetCR = async () => {
@@ -177,11 +208,14 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
     );
   };
 
+  const safeSemesters = Array.isArray(courseData?.semesters) ? courseData.semesters : [];
+  const safeSubjects = Array.isArray(subjects) ? subjects : [];
+
   return (
     <View style={styles.container}>
-      {/* Header Actions */}
+      {/* Header Actions - Asymmetric Dual-Zone layout clear of notch/camera */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1, paddingRight: 8 }}>
           <Text style={styles.headerTitle}>🎯 Desempenho & Curso</Text>
           <Text style={styles.headerSubtitle}>
             CR Acumulado • Integralização • Prova Final
@@ -229,7 +263,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
           }}
         >
           <Text style={[styles.tabButtonText, activeTab === 'curriculum' && styles.tabButtonTextActive]}>
-            🎓 Fluxograma & {degreeProgress.completionPercentage.toFixed(0)}% Curso
+            🎓 Fluxograma & {(degreeProgress?.completionPercentage ?? 0).toFixed(0)}% Curso
           </Text>
         </TouchableOpacity>
       </View>
@@ -261,7 +295,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                 <View style={styles.heroMetric}>
                   <Text style={styles.heroLabel}>META DESEJADA</Text>
                   <Text style={[styles.heroValue, { color: colors.primary }]}>
-                    {(courseData.targetCR || 8.5).toFixed(2)}
+                    {(courseData?.targetCR || 8.5).toFixed(2)}
                   </Text>
                   <TouchableOpacity
                     style={styles.heroEditBtn}
@@ -277,11 +311,11 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>🔮 Simulação de Cenários (What-If)</Text>
               <Text style={styles.sectionBadge}>
-                {subjects.length} Matérias em Andamento
+                {safeSubjects.length} Matérias em Andamento
               </Text>
             </View>
 
-            {crSimulations.scenarios.map((scen, idx) => (
+            {(crSimulations.scenarios || []).map((scen, idx) => (
               <View key={idx} style={[styles.scenarioCard, { borderLeftColor: scen.badgeColor }]}>
                 <View style={styles.scenarioHeader}>
                   <Text style={styles.scenarioTitle}>{scen.title}</Text>
@@ -307,21 +341,20 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
               <Text style={styles.sectionTitle}>📝 Calculadora de Prova Final</Text>
             </View>
 
-            {subjects.length === 0 ? (
+            {safeSubjects.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyCardText}>
                   Nenhuma disciplina cadastrada no semestre atual. Cadastre matérias na aba Notas ou Agenda para ver o cálculo da prova final.
                 </Text>
               </View>
             ) : (
-              subjects.map(sub => {
-                // Calculate average
+              safeSubjects.map(sub => {
                 let avg = sub.passGrade || 7.0;
                 if (sub.gradeGroups && sub.gradeGroups.length > 0) {
                   let totalWeight = 0;
                   let weightedSum = 0;
                   sub.gradeGroups.forEach(g => {
-                    if (g.items && g.items.length > 0) {
+                    if (g && g.items && g.items.length > 0) {
                       const itemSum = g.items.reduce((acc, it) => acc + (it.grade || 0), 0);
                       const groupScore = (itemSum / g.items.length) * (g.weight / 100);
                       weightedSum += groupScore;
@@ -371,7 +404,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                   </Text>
                 </View>
                 <Text style={styles.progressHeroPercent}>
-                  {degreeProgress.completionPercentage.toFixed(1)}%
+                  {(degreeProgress?.completionPercentage ?? 0).toFixed(1)}%
                 </Text>
               </View>
 
@@ -379,7 +412,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                 <View
                   style={[
                     styles.progressBarFill,
-                    { width: `${degreeProgress.completionPercentage}%`, backgroundColor: colors.primary }
+                    { width: `${Math.min(100, Math.max(0, degreeProgress.completionPercentage))}%`, backgroundColor: colors.primary }
                   ]}
                 />
               </View>
@@ -399,8 +432,8 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.semesterPillsScroll}
               >
-                {courseData.semesters.map((sem, idx) => {
-                  const completedInSem = sem.subjects.filter(s => s.isCompleted).length;
+                {safeSemesters.map((sem, idx) => {
+                  const completedInSem = (sem.subjects || []).filter(s => s.isCompleted).length;
                   const isSelected = idx === selectedSemesterIndex;
 
                   return (
@@ -417,7 +450,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                       </Text>
                       <View style={[styles.semesterPillBadge, isSelected && styles.semesterPillBadgeActive]}>
                         <Text style={[styles.semesterPillBadgeText, isSelected && styles.semesterPillBadgeTextActive]}>
-                          {completedInSem}/{sem.subjects.length}
+                          {completedInSem}/{(sem.subjects || []).length}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -439,7 +472,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                   </TouchableOpacity>
                 </View>
 
-                {currentSemester.subjects.length === 0 ? (
+                {(!currentSemester.subjects || currentSemester.subjects.length === 0) ? (
                   <Text style={styles.emptySemesterText}>
                     Nenhuma matéria neste semestre. Clique em "+ Matéria" ou importe o fluxograma.
                   </Text>
@@ -498,35 +531,41 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
             </Text>
 
             {/* Mode Switcher */}
-            <View style={styles.modalTabContainer}>
+            <View style={styles.modalTabSwitch}>
               <TouchableOpacity
                 style={[styles.modalTabBtn, importMode === 'transcript' && styles.modalTabBtnActive]}
-                onPress={() => setImportMode('transcript')}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setImportMode('transcript');
+                }}
               >
                 <Text style={[styles.modalTabBtnText, importMode === 'transcript' && styles.modalTabBtnTextActive]}>
-                  📑 Histórico & CR
+                  📄 Histórico / CR
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.modalTabBtn, importMode === 'curriculum' && styles.modalTabBtnActive]}
-                onPress={() => setImportMode('curriculum')}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setImportMode('curriculum');
+                }}
               >
                 <Text style={[styles.modalTabBtnText, importMode === 'curriculum' && styles.modalTabBtnTextActive]}>
-                  🎓 Fluxograma Matriz
+                  🗺️ Grade / Fluxograma
                 </Text>
               </TouchableOpacity>
             </View>
 
             <TextInput
               style={styles.importTextInput}
-              multiline
               placeholder={
                 importMode === 'transcript'
-                  ? `Exemplo:\nCálculo I - 80h - Aprovado - Nota 8.5\nFísica Geral I - 60h - Aprovado\nCR Acumulado: 8.42`
-                  : `Exemplo:\n1º Semestre\nCálculo I 5 cr\nFísica I 4 cr\n\n2º Semestre\nCálculo II 5 cr\nEstrutura de Dados 4 cr`
+                  ? 'Ex: Cole o texto do histórico escolar contendo o CR e as disciplinas concluídas...'
+                  : 'Ex: Cole a lista de disciplinas por semestre (1º Semestre, 2º Semestre)...'
               }
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.textSecondary}
+              multiline
               value={importInputText}
               onChangeText={setImportInputText}
             />
@@ -536,10 +575,10 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                 style={styles.modalActionSecondary}
                 onPress={handleResetToTemplate}
               >
-                <Text style={styles.modalActionSecondaryText}>Restaurar Padrão</Text>
+                <Text style={styles.modalActionSecondaryText}>Restaurar Grade Padrão</Text>
               </TouchableOpacity>
 
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={styles.modalButtonsRow}>
                 <TouchableOpacity
                   style={styles.modalActionCancel}
                   onPress={() => setIsImportModalVisible(false)}
@@ -560,7 +599,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
       </Modal>
 
       {/* =========================================================================
-          MODAL: META DE CR
+          MODAL: DEFINIR META DE CR
           ========================================================================= */}
       <Modal
         visible={isTargetModalVisible}
@@ -568,21 +607,23 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
         animationType="fade"
         onRequestClose={() => setIsTargetModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { maxWidth: 360 }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCardSmall}>
             <Text style={styles.modalTitle}>🎯 Definir Meta de CR</Text>
             <Text style={styles.modalSubtitle}>
-              Insira o Coeficiente de Rendimento desejado (0.0 a 10.0) para suas simulações de bolsa e formatura
+              Insira o Coeficiente de Rendimento desejado para sua graduação:
             </Text>
 
             <TextInput
               style={styles.singleInput}
-              keyboardType="numeric"
               placeholder="Ex: 8.5"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="decimal-pad"
               value={targetInput}
               onChangeText={setTargetInput}
-              maxLength={4}
             />
 
             <View style={styles.modalButtonsRow}>
@@ -601,7 +642,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* =========================================================================
@@ -613,29 +654,31 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
         animationType="fade"
         onRequestClose={() => setIsAddSubjectModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { maxWidth: 380 }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCardSmall}>
             <Text style={styles.modalTitle}>+ Adicionar Disciplina</Text>
             <Text style={styles.modalSubtitle}>
-              Adicione à grade do {currentSemester?.title || 'Semestre'}
+              Adicionar ao {currentSemester?.title || 'Semestre Atual'}:
             </Text>
 
             <TextInput
-              style={styles.singleInput}
-              placeholder="Nome da Matéria (Ex: Cálculo Numérico)"
-              placeholderTextColor={colors.textMuted}
+              style={[styles.singleInput, { marginBottom: 10 }]}
+              placeholder="Nome da matéria (ex: Cálculo Numérico)"
+              placeholderTextColor={colors.textSecondary}
               value={newSubjectName}
               onChangeText={setNewSubjectName}
             />
 
             <TextInput
-              style={[styles.singleInput, { marginTop: 10 }]}
-              keyboardType="numeric"
-              placeholder="Créditos (Ex: 4)"
-              placeholderTextColor={colors.textMuted}
+              style={styles.singleInput}
+              placeholder="Créditos (ex: 4)"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="number-pad"
               value={newSubjectCredits}
               onChangeText={setNewSubjectCredits}
-              maxLength={2}
             />
 
             <View style={styles.modalButtonsRow}>
@@ -654,13 +697,13 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
 };
 
-const createStyles = (colors: any, theme: ThemeType) =>
+const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeType) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -668,61 +711,71 @@ const createStyles = (colors: any, theme: ThemeType) =>
     },
     header: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
+      justifyContent: 'space-between',
       paddingHorizontal: 16,
       paddingTop: 12,
-      paddingBottom: 8,
+      paddingBottom: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+      backgroundColor: colors.surface,
     },
     headerTitle: {
-      fontSize: 20,
+      fontSize: 17,
       fontWeight: '800',
       color: colors.text,
     },
     headerSubtitle: {
-      fontSize: 12,
-      color: colors.textMuted,
+      fontSize: 11,
+      color: colors.textSecondary,
       marginTop: 2,
     },
     headerButtons: {
       flexDirection: 'row',
-      gap: 8,
+      gap: 6,
     },
     headerBtn: {
       paddingHorizontal: 10,
       paddingVertical: 6,
       borderRadius: 8,
       backgroundColor: colors.surfaceHighlight,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
     },
     headerBtnText: {
       fontSize: 12,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.text,
     },
     headerBtnPrimary: {
       backgroundColor: colors.primary,
+      borderColor: colors.primary,
     },
     headerBtnPrimaryText: {
       fontSize: 12,
-      fontWeight: '700',
+      fontWeight: '800',
       color: '#000',
     },
     tabContainer: {
       flexDirection: 'row',
-      marginHorizontal: 16,
-      marginVertical: 10,
       backgroundColor: colors.surface,
-      borderRadius: 12,
-      padding: 4,
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+      gap: 8,
     },
     tabButton: {
       flex: 1,
       paddingVertical: 8,
       alignItems: 'center',
       borderRadius: 8,
+      backgroundColor: colors.surfaceHighlight,
     },
     tabButtonActive: {
-      backgroundColor: colors.surfaceHighlight,
+      backgroundColor: colors.primaryLight,
+      borderWidth: 1,
+      borderColor: colors.primary,
     },
     tabButtonText: {
       fontSize: 12,
@@ -730,30 +783,30 @@ const createStyles = (colors: any, theme: ThemeType) =>
       color: colors.textMuted,
     },
     tabButtonTextActive: {
-      color: colors.text,
-      fontWeight: '700',
+      color: colors.primary,
+      fontWeight: '800',
     },
     scrollContent: {
       flex: 1,
     },
     scrollContentContainer: {
-      paddingHorizontal: 16,
-      paddingBottom: 40,
+      padding: 16,
+      paddingBottom: 90,
     },
     tabSection: {
-      paddingTop: 6,
+      gap: 16,
     },
     heroCard: {
-      backgroundColor: colors.card,
+      backgroundColor: colors.surface,
       borderRadius: 16,
       padding: 16,
-      marginBottom: 16,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
     },
     heroRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
     },
     heroMetric: {
       flex: 1,
@@ -763,11 +816,13 @@ const createStyles = (colors: any, theme: ThemeType) =>
       width: 1,
       height: 48,
       backgroundColor: colors.borderSubtle,
+      marginHorizontal: 12,
     },
     heroLabel: {
       fontSize: 10,
-      fontWeight: '800',
+      fontWeight: '700',
       color: colors.textMuted,
+      textTransform: 'uppercase',
       letterSpacing: 0.5,
       marginBottom: 4,
     },
@@ -777,46 +832,50 @@ const createStyles = (colors: any, theme: ThemeType) =>
       color: colors.text,
     },
     heroSubtext: {
-      fontSize: 11,
-      color: colors.textMuted,
-      marginTop: 2,
+      fontSize: 10,
+      color: colors.textSecondary,
       textAlign: 'center',
+      marginTop: 4,
     },
     heroEditBtn: {
       marginTop: 4,
       paddingHorizontal: 8,
       paddingVertical: 2,
-      backgroundColor: colors.surfaceHighlight,
-      borderRadius: 6,
+      borderRadius: 4,
+      backgroundColor: colors.primaryLight,
     },
     heroEditText: {
       fontSize: 10,
-      fontWeight: '600',
-      color: colors.textSecondary,
+      fontWeight: '700',
+      color: colors.primary,
     },
     sectionHeaderRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 12,
+      marginTop: 8,
     },
     sectionTitle: {
-      fontSize: 15,
-      fontWeight: '700',
+      fontSize: 14,
+      fontWeight: '800',
       color: colors.text,
     },
     sectionBadge: {
       fontSize: 11,
-      color: colors.textMuted,
+      fontWeight: '600',
+      color: colors.primary,
+      backgroundColor: colors.primaryLight,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
     },
     scenarioCard: {
       backgroundColor: colors.surface,
       borderRadius: 12,
       padding: 14,
-      marginBottom: 10,
-      borderLeftWidth: 4,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
+      borderLeftWidth: 4,
     },
     scenarioHeader: {
       flexDirection: 'row',
@@ -825,25 +884,26 @@ const createStyles = (colors: any, theme: ThemeType) =>
       marginBottom: 6,
     },
     scenarioTitle: {
-      fontSize: 14,
-      fontWeight: '700',
+      fontSize: 13,
+      fontWeight: '800',
       color: colors.text,
       flex: 1,
     },
     scenarioCRBadge: {
       paddingHorizontal: 8,
-      paddingVertical: 4,
+      paddingVertical: 3,
       borderRadius: 6,
+      marginLeft: 8,
     },
     scenarioCRValue: {
       fontSize: 13,
-      fontWeight: '800',
+      fontWeight: '900',
     },
     scenarioDesc: {
       fontSize: 12,
       color: colors.textSecondary,
-      lineHeight: 17,
-      marginBottom: 8,
+      lineHeight: 16,
+      marginBottom: 6,
     },
     scenarioFooter: {
       flexDirection: 'row',
@@ -851,30 +911,44 @@ const createStyles = (colors: any, theme: ThemeType) =>
     },
     scenarioDiff: {
       fontSize: 11,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.textMuted,
+    },
+    emptyCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      alignItems: 'center',
+    },
+    emptyCardText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 18,
     },
     examCard: {
       backgroundColor: colors.surface,
       borderRadius: 12,
-      padding: 12,
-      marginBottom: 8,
+      padding: 14,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
+      marginBottom: 10,
     },
     examRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 4,
+      marginBottom: 6,
     },
     examSubjectName: {
-      fontSize: 14,
-      fontWeight: '700',
+      fontSize: 13,
+      fontWeight: '800',
       color: colors.text,
     },
     examSubjectAvg: {
-      fontSize: 12,
+      fontSize: 11,
       color: colors.textSecondary,
       marginTop: 2,
     },
@@ -882,33 +956,21 @@ const createStyles = (colors: any, theme: ThemeType) =>
       paddingHorizontal: 8,
       paddingVertical: 4,
       borderRadius: 6,
+      marginLeft: 8,
     },
     examBadgeText: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '800',
     },
     examMessage: {
       fontSize: 11,
-      color: colors.textMuted,
-      marginTop: 4,
-    },
-    emptyCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 12,
-      padding: 16,
-      alignItems: 'center',
-    },
-    emptyCardText: {
-      fontSize: 12,
-      color: colors.textMuted,
-      textAlign: 'center',
-      lineHeight: 18,
+      color: colors.textSecondary,
+      lineHeight: 15,
     },
     progressHeroCard: {
-      backgroundColor: colors.card,
+      backgroundColor: colors.surface,
       borderRadius: 16,
       padding: 16,
-      marginBottom: 16,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
     },
@@ -924,25 +986,25 @@ const createStyles = (colors: any, theme: ThemeType) =>
       color: colors.text,
     },
     progressHeroSubtitle: {
-      fontSize: 12,
-      color: colors.textMuted,
+      fontSize: 11,
+      color: colors.textSecondary,
       marginTop: 2,
     },
     progressHeroPercent: {
-      fontSize: 24,
+      fontSize: 22,
       fontWeight: '900',
       color: colors.primary,
     },
     progressBarTrack: {
-      height: 10,
+      height: 8,
       backgroundColor: colors.surfaceHighlight,
-      borderRadius: 5,
+      borderRadius: 4,
       overflow: 'hidden',
       marginBottom: 10,
     },
     progressBarFill: {
       height: '100%',
-      borderRadius: 5,
+      borderRadius: 4,
     },
     progressFooter: {
       flexDirection: 'row',
@@ -950,52 +1012,56 @@ const createStyles = (colors: any, theme: ThemeType) =>
     },
     progressFooterText: {
       fontSize: 11,
-      color: colors.textSecondary,
       fontWeight: '600',
+      color: colors.textSecondary,
     },
     semesterNav: {
-      marginBottom: 12,
+      marginTop: 8,
     },
     semesterNavTitle: {
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '700',
-      color: colors.text,
+      color: colors.textMuted,
       marginBottom: 8,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     semesterPillsScroll: {
       gap: 8,
+      paddingBottom: 4,
     },
     semesterPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.surface,
       paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 10,
+      paddingVertical: 7,
+      borderRadius: 20,
+      backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
       gap: 6,
     },
     semesterPillActive: {
-      backgroundColor: colors.primary,
+      backgroundColor: colors.primaryLight,
       borderColor: colors.primary,
     },
     semesterPillText: {
       fontSize: 12,
       fontWeight: '700',
-      color: colors.text,
+      color: colors.textMuted,
     },
     semesterPillTextActive: {
-      color: '#000',
+      color: colors.primary,
+      fontWeight: '800',
     },
     semesterPillBadge: {
       backgroundColor: colors.surfaceHighlight,
       paddingHorizontal: 6,
       paddingVertical: 2,
-      borderRadius: 6,
+      borderRadius: 10,
     },
     semesterPillBadgeActive: {
-      backgroundColor: 'rgba(0,0,0,0.15)',
+      backgroundColor: colors.primary + '30',
     },
     semesterPillBadgeText: {
       fontSize: 10,
@@ -1003,7 +1069,7 @@ const createStyles = (colors: any, theme: ThemeType) =>
       color: colors.textMuted,
     },
     semesterPillBadgeTextActive: {
-      color: '#000',
+      color: colors.primary,
     },
     semesterContentCard: {
       backgroundColor: colors.surface,
@@ -1011,6 +1077,7 @@ const createStyles = (colors: any, theme: ThemeType) =>
       padding: 16,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
+      marginTop: 8,
     },
     semesterCardHeader: {
       flexDirection: 'row',
@@ -1019,47 +1086,43 @@ const createStyles = (colors: any, theme: ThemeType) =>
       marginBottom: 12,
     },
     semesterCardTitle: {
-      fontSize: 16,
+      fontSize: 14,
       fontWeight: '800',
       color: colors.text,
     },
     addSubjectBtn: {
-      backgroundColor: colors.surfaceHighlight,
       paddingHorizontal: 10,
-      paddingVertical: 4,
+      paddingVertical: 5,
       borderRadius: 6,
+      backgroundColor: colors.primaryLight,
     },
     addSubjectBtnText: {
       fontSize: 11,
-      fontWeight: '700',
-      color: colors.text,
+      fontWeight: '800',
+      color: colors.primary,
     },
     emptySemesterText: {
       fontSize: 12,
-      color: colors.textMuted,
+      color: colors.textSecondary,
       textAlign: 'center',
       paddingVertical: 20,
     },
     subjectItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.background,
-      padding: 12,
-      borderRadius: 10,
-      marginBottom: 8,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
     },
     subjectItemCompleted: {
-      opacity: 0.85,
-      backgroundColor: colors.surfaceHighlight,
+      opacity: 0.8,
     },
     checkbox: {
-      width: 22,
-      height: 22,
-      borderRadius: 6,
-      borderWidth: 2,
-      borderColor: colors.borderHighlight,
+      width: 20,
+      height: 20,
+      borderRadius: 5,
+      borderWidth: 1.5,
+      borderColor: colors.borderSubtle,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 10,
@@ -1069,12 +1132,13 @@ const createStyles = (colors: any, theme: ThemeType) =>
       borderColor: colors.primary,
     },
     checkmark: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '900',
       color: '#000',
     },
     subjectItemInfo: {
       flex: 1,
+      marginRight: 8,
     },
     subjectItemName: {
       fontSize: 13,
@@ -1082,21 +1146,21 @@ const createStyles = (colors: any, theme: ThemeType) =>
       color: colors.text,
     },
     subjectItemNameCompleted: {
-      textDecorationLine: 'line-through',
       color: colors.textMuted,
+      textDecorationLine: 'line-through',
     },
     subjectItemMeta: {
-      fontSize: 11,
-      color: colors.textMuted,
+      fontSize: 10,
+      color: colors.textSecondary,
       marginTop: 2,
     },
     statusBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
     },
     statusBadgeDone: {
-      backgroundColor: '#10B98125',
+      backgroundColor: colors.primaryLight,
     },
     statusBadgePending: {
       backgroundColor: colors.surfaceHighlight,
@@ -1106,45 +1170,55 @@ const createStyles = (colors: any, theme: ThemeType) =>
       fontWeight: '700',
     },
     statusBadgeTextDone: {
-      color: '#10B981',
+      color: colors.primary,
     },
     statusBadgeTextPending: {
       color: colors.textMuted,
     },
     modalBackdrop: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.65)',
+      backgroundColor: 'rgba(0,0,0,0.7)',
       justifyContent: 'center',
       alignItems: 'center',
       padding: 16,
     },
     modalCard: {
       width: '100%',
-      maxWidth: 480,
+      maxWidth: 420,
       backgroundColor: colors.surface,
       borderRadius: 16,
-      padding: 20,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    modalCardSmall: {
+      width: '100%',
+      maxWidth: 360,
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 18,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
     },
     modalTitle: {
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: '800',
       color: colors.text,
+      marginBottom: 4,
     },
     modalSubtitle: {
-      fontSize: 12,
-      color: colors.textMuted,
-      marginTop: 4,
+      fontSize: 11,
+      color: colors.textSecondary,
       marginBottom: 12,
-      lineHeight: 16,
+      lineHeight: 15,
     },
-    modalTabContainer: {
+    modalTabSwitch: {
       flexDirection: 'row',
       backgroundColor: colors.background,
       borderRadius: 8,
-      padding: 2,
+      padding: 3,
       marginBottom: 12,
+      gap: 4,
     },
     modalTabBtn: {
       flex: 1,

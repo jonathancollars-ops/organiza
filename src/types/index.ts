@@ -190,7 +190,7 @@ export interface TeamsConfig {
 
 export type AIProvider = 'gemini' | 'openai';
 
-export type AIProviderMode = 'local_edge' | 'gemini_cloud' | 'heuristic_offline';
+export type AIProviderMode = 'local_edge' | 'gemini_cloud' | 'heuristic_offline' | 'cloud';
 
 export type LocalModelDownloadState = 'not_downloaded' | 'downloading' | 'paused' | 'downloaded' | 'error';
 
@@ -343,7 +343,7 @@ export interface CRSimulationScenario {
   projectedCR: number;
   difference: number;
   description: string;
-  type: 'worst_case' | 'target' | 'best_case' | 'current';
+  type: 'worst_case' | 'target' | 'best_case' | 'current' | 'realistic';
   badgeColor?: string;
 }
 

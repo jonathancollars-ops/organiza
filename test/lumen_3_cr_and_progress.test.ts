@@ -210,15 +210,15 @@ CC101 Algoritmos 60h 9.0 Aprovada
     assert(allStatuses.deep.formattedSize === AVAILABLE_MODEL_TIERS.deep.formattedSize, 'Deep tier formatted size matches');
   });
 
-  // Test 10: FAB Visibility Condition on Tabs
-  await test('FAB Add Button Visibility Condition', () => {
+  // Test 10: FAB Visibility Condition on Tabs (Only on Agenda)
+  await test('FAB Add Button Visibility Condition (Agenda only)', () => {
     const shouldShowFAB = (tab: 'agenda' | 'estudos' | 'ia' | 'faltas' | 'notas') => {
-      return tab !== 'ia' && tab !== 'notas';
+      return tab === 'agenda';
     };
 
     assert(shouldShowFAB('agenda') === true, 'FAB is visible on Agenda tab');
-    assert(shouldShowFAB('estudos') === true, 'FAB is visible on Estudos tab');
-    assert(shouldShowFAB('faltas') === true, 'FAB is visible on Faltas tab');
+    assert(shouldShowFAB('estudos') === false, 'FAB is hidden on Estudos tab');
+    assert(shouldShowFAB('faltas') === false, 'FAB is hidden on Faltas tab');
     assert(shouldShowFAB('ia') === false, 'FAB is hidden on Lumen AI tab');
     assert(shouldShowFAB('notas') === false, 'FAB is hidden on Notas tab');
   });

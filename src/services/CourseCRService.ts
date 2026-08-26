@@ -106,17 +106,23 @@ export class CourseCRService {
    * Formula: CR = Sum(Grade * Credits) / Sum(Credits)
    */
   static calculateHistoricalCR(data: CourseProgressData): number {
+    if (!data || !Array.isArray(data.semesters)) {
+      return data?.baselineCR || 0;
+    }
+
     let totalWeightedScore = 0;
     let totalCredits = 0;
 
     data.semesters.forEach(sem => {
-      sem.subjects.forEach(sub => {
-        if (sub.isCompleted && typeof sub.grade === 'number' && !isNaN(sub.grade)) {
-          const credits = sub.credits > 0 ? sub.credits : 1;
-          totalWeightedScore += sub.grade * credits;
-          totalCredits += credits;
-        }
-      });
+      if (sem && Array.isArray(sem.subjects)) {
+        sem.subjects.forEach(sub => {
+          if (sub && sub.isCompleted && typeof sub.grade === 'number' && !isNaN(sub.grade)) {
+            const credits = (typeof sub.credits === 'number' && sub.credits > 0) ? sub.credits : 1;
+            totalWeightedScore += sub.grade * credits;
+            totalCredits += credits;
+          }
+        });
+      }
     });
 
     if (totalCredits === 0) {
@@ -124,7 +130,7 @@ export class CourseCRService {
     }
 
     const calculated = totalWeightedScore / totalCredits;
-    return Number(calculated.toFixed(2));
+    return isNaN(calculated) ? (data.baselineCR || 0) : Number(calculated.toFixed(2));
   }
 
   /**
@@ -137,32 +143,54 @@ export class CourseCRService {
     completedSubjectsCount: number;
     totalSubjectsCount: number;
   } {
+    if (!data || !Array.isArray(data.semesters)) {
+      return {
+        completedCredits: data?.completedCredits || 0,
+        totalRequiredCredits: data?.totalRequiredCredits || 200,
+        completionPercentage: 0,
+        completedSubjectsCount: 0,
+        totalSubjectsCount: 0
+      };
+    }
+
     let completedCredits = 0;
     let totalCredits = 0;
     let completedSubjectsCount = 0;
     let totalSubjectsCount = 0;
 
     data.semesters.forEach(sem => {
-      sem.subjects.forEach(sub => {
-        const credits = sub.credits > 0 ? sub.credits : (sub.hours ? Math.round(sub.hours / 15) : 4);
-        totalCredits += credits;
-        totalSubjectsCount++;
+      if (sem && Array.isArray(sem.subjects)) {
+        sem.subjects.forEach(sub => {
+          if (sub) {
+            const credits = (typeof sub.credits === 'number' && sub.credits > 0)
+              ? sub.credits
+              : (sub.hours ? Math.round(sub.hours / 15) : 4);
+            totalCredits += credits;
+            totalSubjectsCount++;
 
-        if (sub.isCompleted) {
-          completedCredits += credits;
-          completedSubjectsCount++;
-        }
-      });
+            if (sub.isCompleted) {
+              completedCredits += credits;
+              completedSubjectsCount++;
+            }
+          }
+        });
+      }
     });
 
-    const targetTotalCredits = data.totalRequiredCredits > 0 ? data.totalRequiredCredits : Math.max(totalCredits, 1);
-    const effectiveCompleted = totalSubjectsCount > 0 ? completedCredits : Math.max(completedCredits, data.completedCredits || 0);
+    const targetTotalCredits = (data.totalRequiredCredits && data.totalRequiredCredits > 0)
+      ? data.totalRequiredCredits
+      : Math.max(totalCredits, 1);
+
+    const effectiveCompleted = totalSubjectsCount > 0
+      ? completedCredits
+      : Math.max(completedCredits, data.completedCredits || 0);
+
     const percentage = Math.min((effectiveCompleted / targetTotalCredits) * 100, 100.0);
 
     return {
       completedCredits: effectiveCompleted,
       totalRequiredCredits: targetTotalCredits,
-      completionPercentage: Number(percentage.toFixed(1)),
+      completionPercentage: isNaN(percentage) ? 0 : Number(percentage.toFixed(1)),
       completedSubjectsCount,
       totalSubjectsCount
     };
@@ -173,28 +201,34 @@ export class CourseCRService {
    */
   static simulateCRScenarios(
     courseData: CourseProgressData,
-    currentSemesterSubjects: Subject[]
+    currentSemesterSubjects: Subject[] = []
   ): {
     currentCR: number;
     scenarios: CRSimulationScenario[];
   } {
-    const historicalCR = this.calculateHistoricalCR(courseData);
+    const safeData = (courseData && Array.isArray(courseData.semesters))
+      ? courseData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
+    const historicalCR = this.calculateHistoricalCR(safeData);
 
     let pastCredits = 0;
     let pastWeightedSum = 0;
 
-    courseData.semesters.forEach(sem => {
-      sem.subjects.forEach(sub => {
-        if (sub.isCompleted && typeof sub.grade === 'number' && !isNaN(sub.grade)) {
-          const credits = sub.credits > 0 ? sub.credits : 4;
-          pastWeightedSum += sub.grade * credits;
-          pastCredits += credits;
-        }
-      });
+    safeData.semesters.forEach(sem => {
+      if (sem && Array.isArray(sem.subjects)) {
+        sem.subjects.forEach(sub => {
+          if (sub && sub.isCompleted && typeof sub.grade === 'number' && !isNaN(sub.grade)) {
+            const credits = sub.credits > 0 ? sub.credits : 4;
+            pastWeightedSum += sub.grade * credits;
+            pastCredits += credits;
+          }
+        });
+      }
     });
 
     if (pastCredits === 0) {
-      pastCredits = courseData.completedCredits || 40;
+      pastCredits = safeData.completedCredits || 40;
       pastWeightedSum = historicalCR * pastCredits;
     }
 
@@ -204,55 +238,64 @@ export class CourseCRService {
     let currentSemesterBestSum = 0; // If future exams get 10
     let currentSemesterEstimatedSum = 0;
 
-    currentSemesterSubjects.forEach(sub => {
-      const credits = sub.workloadHours ? Math.round(sub.workloadHours / 20) : 4;
-      currentSemesterCredits += credits;
+    const safeSubjects = Array.isArray(currentSemesterSubjects) ? currentSemesterSubjects : [];
 
-      if (sub.gradeGroups && sub.gradeGroups.length > 0) {
-        const calc = calculateFinalGrade(sub.gradeGroups, sub.passGrade || 7.0);
-        const currentScore = calc.score; // current average on graded items
-        
-        currentSemesterEstimatedSum += currentScore * credits;
-        currentSemesterWorstSum += (calc.hasMissingItems ? currentScore * 0.7 : currentScore) * credits;
-        currentSemesterBestSum += 10.0 * credits;
-      } else {
-        // No grades entered yet
-        currentSemesterEstimatedSum += (sub.passGrade || 7.0) * credits;
-        currentSemesterWorstSum += 0 * credits;
-        currentSemesterBestSum += 10.0 * credits;
+    safeSubjects.forEach(sub => {
+      if (sub) {
+        const credits = sub.workloadHours ? Math.round(sub.workloadHours / 20) : 4;
+        currentSemesterCredits += credits;
+
+        if (sub.gradeGroups && sub.gradeGroups.length > 0) {
+          const calc = calculateFinalGrade(sub.gradeGroups, sub.passGrade || 7.0);
+          const currentScore = typeof calc.score === 'number' && !isNaN(calc.score) ? calc.score : (sub.passGrade || 7.0);
+          
+          currentSemesterEstimatedSum += currentScore * credits;
+          currentSemesterWorstSum += (calc.hasMissingItems ? currentScore * 0.7 : currentScore) * credits;
+          currentSemesterBestSum += 10.0 * credits;
+        } else {
+          // No grades entered yet
+          const fallback = typeof sub.passGrade === 'number' ? sub.passGrade : 7.0;
+          currentSemesterEstimatedSum += fallback * credits;
+          currentSemesterWorstSum += (fallback * 0.5) * credits;
+          currentSemesterBestSum += 10.0 * credits;
+        }
       }
     });
 
-    const totalCreditsAll = pastCredits + Math.max(currentSemesterCredits, 1);
-    
-    // Scenario 1: Current Estimated CR
-    const currentEstimatedCR = Number(((pastWeightedSum + currentSemesterEstimatedSum) / totalCreditsAll).toFixed(2));
-    
-    // Scenario 2: Worst Case (Pior Caso / Parar Agora com notas zeradas)
-    const worstCaseCR = Number(((pastWeightedSum + currentSemesterWorstSum) / totalCreditsAll).toFixed(2));
-    
-    // Scenario 3: Best Case (Tirar 10 em tudo)
-    const bestCaseCR = Number(((pastWeightedSum + currentSemesterBestSum) / totalCreditsAll).toFixed(2));
+    const totalEstimatedCredits = pastCredits + currentSemesterCredits;
 
-    // Scenario 4: Target CR Required Average
-    const targetCR = courseData.targetCR || 8.5;
-    const requiredTotalSum = targetCR * totalCreditsAll;
-    const neededInCurrent = (requiredTotalSum - pastWeightedSum) / Math.max(currentSemesterCredits, 1);
-    const neededFormatted = Math.min(Math.max(neededInCurrent, 0), 10).toFixed(2);
+    // Projected CR Calculations
+    const realisticCR = totalEstimatedCredits > 0
+      ? Number(((pastWeightedSum + currentSemesterEstimatedSum) / totalEstimatedCredits).toFixed(2))
+      : historicalCR;
+
+    const worstCaseCR = totalEstimatedCredits > 0
+      ? Number(((pastWeightedSum + currentSemesterWorstSum) / totalEstimatedCredits).toFixed(2))
+      : historicalCR;
+
+    const bestCaseCR = totalEstimatedCredits > 0
+      ? Number(((pastWeightedSum + currentSemesterBestSum) / totalEstimatedCredits).toFixed(2))
+      : historicalCR;
+
+    const targetCR = safeData.targetCR || 8.5;
+    const targetTotalWeighted = targetCR * totalEstimatedCredits;
+    const neededCurrentWeighted = targetTotalWeighted - pastWeightedSum;
+    const neededInCurrent = currentSemesterCredits > 0 ? (neededCurrentWeighted / currentSemesterCredits) : targetCR;
+    const neededFormatted = isNaN(neededInCurrent) ? targetCR.toFixed(1) : neededInCurrent.toFixed(1);
 
     const scenarios: CRSimulationScenario[] = [
       {
-        title: '📊 Projeção Atual no Semestre',
-        projectedCR: currentEstimatedCR,
-        difference: Number((currentEstimatedCR - historicalCR).toFixed(2)),
-        description: `Mantendo o ritmo atual nas ${currentSemesterSubjects.length} disciplinas vigentes.`,
-        type: 'current',
+        title: '📊 Cenário Realista (Manter Médias Atuais)',
+        projectedCR: isNaN(realisticCR) ? historicalCR : realisticCR,
+        difference: Number(((isNaN(realisticCR) ? historicalCR : realisticCR) - historicalCR).toFixed(2)),
+        description: 'Mantendo o ritmo e notas parciais calculadas nas disciplinas deste período.',
+        type: 'realistic',
         badgeColor: '#3B82F6'
       },
       {
         title: '🛑 Pior Caso (Parar Hoje / Nota Zero)',
-        projectedCR: worstCaseCR,
-        difference: Number((worstCaseCR - historicalCR).toFixed(2)),
+        projectedCR: isNaN(worstCaseCR) ? historicalCR : worstCaseCR,
+        difference: Number(((isNaN(worstCaseCR) ? historicalCR : worstCaseCR) - historicalCR).toFixed(2)),
         description: 'Se você não realizar mais nenhuma avaliação e tirar zero nas provas restantes.',
         type: 'worst_case',
         badgeColor: '#EF4444'
@@ -269,8 +312,8 @@ export class CourseCRService {
       },
       {
         title: '🚀 Melhor Caso (Nota 10 em tudo)',
-        projectedCR: bestCaseCR,
-        difference: Number((bestCaseCR - historicalCR).toFixed(2)),
+        projectedCR: isNaN(bestCaseCR) ? historicalCR : bestCaseCR,
+        difference: Number(((isNaN(bestCaseCR) ? historicalCR : bestCaseCR) - historicalCR).toFixed(2)),
         description: 'Se gabaritar todas as provas e trabalhos pendentes até o final do semestre.',
         type: 'best_case',
         badgeColor: '#8B5CF6'
@@ -287,8 +330,9 @@ export class CourseCRService {
    * Toggles completion status of a subject in the curriculum matrix.
    */
   static toggleSubjectCompletion(data: CourseProgressData, subjectId: string): CourseProgressData {
-    const updatedSemesters = data.semesters.map(sem => {
-      const updatedSubjects = sem.subjects.map(sub => {
+    const safeData = (data && Array.isArray(data.semesters)) ? data : DEFAULT_CURRICULUM_TEMPLATE;
+    const updatedSemesters = safeData.semesters.map(sem => {
+      const updatedSubjects = (sem.subjects || []).map(sub => {
         if (sub.id === subjectId) {
           return { ...sub, isCompleted: !sub.isCompleted };
         }
@@ -297,10 +341,10 @@ export class CourseCRService {
       return { ...sem, subjects: updatedSubjects };
     });
 
-    const progress = this.calculateDegreeProgress({ ...data, semesters: updatedSemesters });
+    const progress = this.calculateDegreeProgress({ ...safeData, semesters: updatedSemesters });
 
     return {
-      ...data,
+      ...safeData,
       semesters: updatedSemesters,
       completedCredits: progress.completedCredits,
       lastUpdated: new Date().toISOString()
@@ -315,8 +359,9 @@ export class CourseCRService {
     semesterNumber: number,
     subject: { name: string; credits: number; hours?: number; code?: string; isCompleted?: boolean }
   ): CourseProgressData {
+    const safeData = (data && Array.isArray(data.semesters)) ? data : DEFAULT_CURRICULUM_TEMPLATE;
     const newSubject: CourseHistorySubject = {
-      id: generateId(),
+      id: generateId('subj'),
       name: subject.name.trim(),
       code: subject.code?.trim(),
       credits: subject.credits > 0 ? subject.credits : 4,
@@ -325,10 +370,13 @@ export class CourseCRService {
     };
 
     let semesterFound = false;
-    const updatedSemesters = data.semesters.map(sem => {
+    const updatedSemesters = safeData.semesters.map(sem => {
       if (sem.semesterNumber === semesterNumber) {
         semesterFound = true;
-        return { ...sem, subjects: [...sem.subjects, newSubject] };
+        return {
+          ...sem,
+          subjects: [...(sem.subjects || []), newSubject]
+        };
       }
       return sem;
     });
@@ -342,129 +390,116 @@ export class CourseCRService {
       updatedSemesters.sort((a, b) => a.semesterNumber - b.semesterNumber);
     }
 
-    const progress = this.calculateDegreeProgress({ ...data, semesters: updatedSemesters });
+    const progress = this.calculateDegreeProgress({ ...safeData, semesters: updatedSemesters });
 
     return {
-      ...data,
+      ...safeData,
       semesters: updatedSemesters,
       completedCredits: progress.completedCredits,
-      totalRequiredCredits: progress.totalRequiredCredits,
       lastUpdated: new Date().toISOString()
     };
   }
 
   /**
-   * Calculates the minimum grade required in the Final Exam (Prova Final) for approval.
-   * Standard Brazilian university formula: Final = (PassGrade * 2) - CurrentAverage
-   * or weighted (Average * 6 + Final * 4) / 10 >= PassGrade => Final = (PassGrade * 10 - Average * 6) / 4
+   * Calculates required final exam score based on standard academic regulations:
+   * Rule: (Average * 6 + FinalExam * 4) / 10 >= 5.0  (or target passGrade)
+   * Required Final = (PassGrade * 10 - Average * 6) / 4
    */
-  static calculateFinalExamRequirement(
-    currentAverage: number,
-    passGrade: number = 7.0,
-    finalPassThreshold: number = 5.0
-  ): {
-    status: 'approved' | 'final_exam' | 'reproved';
+  static calculateFinalExamRequirement(currentAverage: number, passGrade: number = 7.0): {
     neededGrade: number;
+    status: 'approved' | 'final_exam' | 'reproved';
     message: string;
     badgeColor: string;
   } {
-    if (currentAverage >= passGrade) {
+    const avg = typeof currentAverage === 'number' && !isNaN(currentAverage) ? currentAverage : 0;
+    const pass = typeof passGrade === 'number' && !isNaN(passGrade) ? passGrade : 7.0;
+
+    if (avg >= pass) {
       return {
-        status: 'approved',
         neededGrade: 0,
-        message: 'Aprovado direto! Você já atingiu a média necessária.',
+        status: 'approved',
+        message: `Parabéns! Média ${avg.toFixed(1)} atingiu ou superou o corte de aprovação direta (${pass.toFixed(1)}).`,
         badgeColor: '#10B981'
       };
     }
 
-    // Formula: (CurrentAvg * 6 + Final * 4) / 10 >= finalPassThreshold (usually 5.0)
-    // => Final = (finalPassThreshold * 10 - CurrentAvg * 6) / 4
-    const needed = (finalPassThreshold * 10 - currentAverage * 6) / 4;
-    const roundedNeeded = Math.max(0, Number(needed.toFixed(2)));
-
-    if (roundedNeeded > 10.0) {
+    // Direct reproval if average is below minimum exam threshold (usually 4.0 or 3.0)
+    const minFinalThreshold = pass >= 7.0 ? 4.0 : 3.0;
+    if (avg < minFinalThreshold) {
       return {
+        neededGrade: 10.0,
         status: 'reproved',
-        neededGrade: roundedNeeded,
-        message: `Reprovado direto. Média necessária (${roundedNeeded.toFixed(1)}) excede 10.0.`,
+        message: `Média ${avg.toFixed(1)} abaixo do mínimo de ${minFinalThreshold.toFixed(1)} para ter direito à Prova Final.`,
         badgeColor: '#EF4444'
       };
     }
 
+    // Standard formula: Final Exam needed to reach 5.0 overall
+    const targetOverall = 5.0;
+    const needed = (targetOverall * 10 - avg * 6) / 4;
+    const clampedNeeded = Math.max(0, Math.min(10.0, Number(needed.toFixed(1))));
+
     return {
+      neededGrade: clampedNeeded,
       status: 'final_exam',
-      neededGrade: roundedNeeded,
-      message: `Você precisa de nota ${roundedNeeded.toFixed(1)} na Prova Final para ser aprovado.`,
+      message: `Você precisa tirar ${clampedNeeded.toFixed(1)} na Prova Final para fechar a média ponderada 5.0.`,
       badgeColor: '#F59E0B'
     };
   }
 
   /**
-   * Parses raw historical text or transcripts into structured CourseProgressData.
+   * Parses raw copy-pasted academic transcript text (SIGAA, Sophia, TOTVS, etc.)
    */
   static parseHistoryText(rawText: string, existingData?: CourseProgressData): CourseProgressData {
+    const base = (existingData && Array.isArray(existingData.semesters))
+      ? existingData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
     const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-    const parsedSubjects: CourseHistorySubject[] = [];
+    const updatedSemesters = base.semesters.map(sem => ({
+      ...sem,
+      subjects: [...(sem.subjects || [])]
+    }));
 
-    // Check if there is an explicit CR stated in the text (e.g. "CR Acumulado: 8.42" or "GPA: 3.8")
-    let extractedCR: number | undefined = undefined;
-    const crMatch = rawText.match(/(?:cr|ira|coeficiente|media\s*geral|gpa|indice)[\s:=]+(\d{1,2}[.,]\d{1,2})/i);
-    if (crMatch) {
-      extractedCR = parseFloat(crMatch[1].replace(',', '.'));
+    let extractedCR: number | null = null;
+    const crMatch = rawText.match(/(?:cr|coeficiente|ira|rendimento|gpa|media geral)[\s:=-]+([0-9]+[.,][0-9]+)/i);
+    if (crMatch && crMatch[1]) {
+      const parsed = parseFloat(crMatch[1].replace(',', '.'));
+      if (!isNaN(parsed) && parsed >= 0 && parsed <= 10) {
+        extractedCR = parsed;
+      }
     }
 
-    // Parse subjects line by line
     lines.forEach(line => {
-      // Look for patterns like: "Cálculo I - 80h - Aprovado" or "MAT101 Cálculo 1 4 cr 8.5"
-      const gradeMatch = line.match(/\b(10|\d[.,]\d|\d)\b/);
-      const hoursMatch = line.match(/(\d+)\s*(h|horas|ch|cr|créditos)/i);
-      
-      const isApproved = /aprovado|aprovada|concluído|concluída|dispensado|isento|aprov/i.test(line);
-      const isReproved = /reprovado|reprovada|trancado|cancelado|reprov/i.test(line);
+      const isApproved = /aprovado|aprovada|aprov|concluido|concluído|dispensado|dispensa|isento|aproveitado|aproveitamento/i.test(line);
 
-      const cleanName = line
-        .replace(/MAT\d+|FIS\d+|CC\d+|ENG\d+|[A-Z]{2,4}\d{3,4}/g, '')
-        .replace(/\b\d+\s*(h|horas|ch|cr|créditos)\b/gi, '')
-        .replace(/aprovado|aprovada|concluído|concluída|reprovado|reprovada|trancado|isento/gi, '')
-        .replace(/[0-9.,]+/g, '')
-        .replace(/[-|–:()]/g, '')
-        .trim();
-
-      if (cleanName.length > 3) {
-        let credits = 4;
-        const crUnitMatch = line.match(/(\d+)\s*(?:cr|créditos|cred|crédito)\b/i);
-        const hoursUnitMatch = line.match(/(\d+)\s*(?:h|horas|ch)\b/i);
-        if (crUnitMatch) {
-          credits = Math.max(parseInt(crUnitMatch[1], 10), 1);
-        } else if (hoursUnitMatch) {
-          credits = Math.max(Math.round(parseInt(hoursUnitMatch[1], 10) / 15), 1);
+      let grade: number | undefined = undefined;
+      const gradeMatches = line.match(/([0-9]{1,2}[.,][0-9]{1,2})/g);
+      if (gradeMatches) {
+        for (const match of gradeMatches) {
+          const num = parseFloat(match.replace(',', '.'));
+          if (!isNaN(num) && num >= 0 && num <= 10.0) {
+            grade = num;
+          }
         }
+      }
 
-        const grade = gradeMatch ? parseFloat(gradeMatch[1].replace(',', '.')) : undefined;
+      updatedSemesters.forEach(sem => {
+        sem.subjects.forEach(sub => {
+          const normalizedLine = line.toLowerCase();
+          const normalizedSub = sub.name.toLowerCase();
+          const words = normalizedSub.split(' ').filter(w => w.length > 3);
+          const matchCount = words.filter(w => normalizedLine.includes(w)).length;
 
-        parsedSubjects.push({
-          id: generateId(),
-          name: cleanName,
-          credits,
-          grade: !isNaN(grade as any) ? grade : undefined,
-          isCompleted: isApproved || (!isReproved && typeof grade === 'number' && grade >= 5.0)
+          if (matchCount >= Math.min(2, words.length) || (sub.code && normalizedLine.includes(sub.code.toLowerCase()))) {
+            if (isApproved || (grade !== undefined && grade >= 5.0)) {
+              sub.isCompleted = true;
+              if (grade !== undefined) sub.grade = grade;
+            }
+          }
         });
-      }
+      });
     });
-
-    const base = existingData || DEFAULT_CURRICULUM_TEMPLATE;
-    if (parsedSubjects.length === 0 && !extractedCR) return base;
-
-    // Distribute into semesters or update existing subjects with matching names
-    const updatedSemesters = [...base.semesters];
-    if (parsedSubjects.length > 0) {
-      if (updatedSemesters.length > 0) {
-        updatedSemesters[0] = {
-          ...updatedSemesters[0],
-          subjects: [...updatedSemesters[0].subjects, ...parsedSubjects]
-        };
-      }
-    }
 
     const progress = this.calculateDegreeProgress({ ...base, semesters: updatedSemesters });
     return {
@@ -486,7 +521,6 @@ export class CourseCRService {
     let currentSubjects: CourseHistorySubject[] = [];
 
     lines.forEach(line => {
-      // Check if line represents a Semester Header (e.g. "1º Semestre", "Semestre 2", "3º Período", "Fase 4", "Modulo 5")
       const semesterHeaderMatch = line.match(/(?:(\d+)[ºª°]?\s*(?:semestre|periodo|período|fase|modulo|módulo|etapa)|(?:semestre|periodo|período|fase|modulo|módulo|etapa)\s*(\d+))/i);
 
       if (semesterHeaderMatch) {
@@ -503,7 +537,6 @@ export class CourseCRService {
         return;
       }
 
-      // Check for subject line
       const isApproved = /aprovado|aprovada|concluído|concluída|feito|feita|dispensado|isento|aprov/i.test(line);
 
       const cleanName = line
@@ -518,18 +551,31 @@ export class CourseCRService {
         let credits = 4;
         const crUnitMatch = line.match(/(\d+)\s*(?:cr|créditos|cred|crédito)\b/i);
         const hoursUnitMatch = line.match(/(\d+)\s*(?:h|horas|ch)\b/i);
+
         if (crUnitMatch) {
-          credits = Math.max(parseInt(crUnitMatch[1], 10), 1);
+          credits = parseInt(crUnitMatch[1], 10);
         } else if (hoursUnitMatch) {
-          credits = Math.max(Math.round(parseInt(hoursUnitMatch[1], 10) / 15), 1);
+          credits = Math.max(1, Math.round(parseInt(hoursUnitMatch[1], 10) / 15));
+        }
+
+        let grade: number | undefined = undefined;
+        const gradeMatches = line.match(/\b([0-9]{1,2}[.,][0-9]{1,2})\b/g);
+        if (gradeMatches) {
+          for (const match of gradeMatches) {
+            const num = parseFloat(match.replace(',', '.'));
+            if (!isNaN(num) && num >= 0 && num <= 10.0) {
+              grade = num;
+            }
+          }
         }
 
         currentSubjects.push({
-          id: generateId(),
+          id: generateId('flow'),
           name: cleanName,
           credits,
           hours: credits * 15,
-          isCompleted: isApproved
+          isCompleted: isApproved || (grade !== undefined && grade >= 5.0),
+          grade
         });
       }
     });
@@ -542,10 +588,12 @@ export class CourseCRService {
       });
     }
 
-    const base = existingData || DEFAULT_CURRICULUM_TEMPLATE;
+    const base = (existingData && Array.isArray(existingData.semesters))
+      ? existingData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
     if (parsedSemesters.length === 0) return base;
 
-    // Sort semesters by number
     parsedSemesters.sort((a, b) => a.semesterNumber - b.semesterNumber);
 
     const progress = this.calculateDegreeProgress({ ...base, semesters: parsedSemesters });
@@ -563,7 +611,10 @@ export class CourseCRService {
     try {
       const stored = await AsyncStorage.getItem(COURSE_PROGRESS_STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.semesters) && parsed.semesters.length > 0) {
+          return parsed;
+        }
       }
     } catch (e) {
       console.warn('Erro ao carregar progresso do curso:', e);

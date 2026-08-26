@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState, useMemo } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import {
   AppEvent,
@@ -105,6 +105,7 @@ export default function App() {
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  const insets = useSafeAreaInsets();
   const colors = getThemeColors(theme);
   const isFullscreen = settings.fullscreen === true;
   const statusBarStyle = theme === 'light' ? 'dark' : 'light';
@@ -602,8 +603,8 @@ export default function App() {
         })}
       </View>
 
-      {/* Floating Action Button */}
-      {currentTab !== 'ia' && currentTab !== 'notas' && (
+      {/* Floating Action Button - Only on Agenda tab */}
+      {currentTab === 'agenda' && (
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
           onPress={() => setEventTypeVisible(true)}

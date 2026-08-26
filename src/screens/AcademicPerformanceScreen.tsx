@@ -24,6 +24,10 @@ interface AcademicPerformanceScreenProps {
 
 type PerformanceTab = 'cr_sim' | 'curriculum';
 
+/**
+ * AcademicPerformanceScreen - Lumen Academic Performance & Degree Flowchart
+ * 100% Offline CR Tracker, What-If Simulation Engine & Degree Matrix.
+ */
 export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps> = ({
   subjects,
   theme = 'dark',
@@ -33,7 +37,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
 
   const [activeTab, setActiveTab] = useState<PerformanceTab>('cr_sim');
   const [courseData, setCourseData] = useState<CourseProgressData>(DEFAULT_CURRICULUM_TEMPLATE);
-  const [selectedSemesterIndex, setSelectedSemesterIndex] = useState<number>(0);
+  const [selectedSemesterNumber, setSelectedSemesterNumber] = useState<number>(1);
 
   // Modals
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);

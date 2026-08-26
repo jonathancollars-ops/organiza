@@ -97,22 +97,18 @@ async function runNomenclatureTests() {
     assert(!onboardingContent.includes('Bem-vindo ao Organiza'), 'OnboardingModal does not contain "Bem-vindo ao Organiza"');
   });
 
-  // Test 6: LumenAIScreen UI branding
-  await test('6. LumenAIScreen.tsx tutor persona branding', () => {
-    const lumenAIPath = path.join(projectRoot, 'src', 'screens', 'LumenAIScreen.tsx');
-    assert(fs.existsSync(lumenAIPath), 'LumenAIScreen.tsx exists');
-    const lumenAIContent = fs.readFileSync(lumenAIPath, 'utf8');
+  // Test 6: AcademicPerformanceScreen UI branding
+  await test('6. AcademicPerformanceScreen.tsx branding & headers', () => {
+    const academicPath = path.join(projectRoot, 'src', 'screens', 'AcademicPerformanceScreen.tsx');
+    assert(fs.existsSync(academicPath), 'AcademicPerformanceScreen.tsx exists');
+    const academicContent = fs.readFileSync(academicPath, 'utf8');
     assert(
-      lumenAIContent.includes('Sou seu professor tutor do Lumen'),
-      'LumenAIScreen initial greeting identifies as "professor tutor do Lumen"'
+      academicContent.includes('Desempenho & Curso') || academicContent.includes('Meu CR Acumulado'),
+      'AcademicPerformanceScreen contains academic performance branding'
     );
     assert(
-      lumenAIContent.includes('motor nativo de estudos do Lumen'),
-      'LumenAIScreen offline fallback references "motor nativo de estudos do Lumen"'
-    );
-    assert(
-      !lumenAIContent.includes('professor tutor do Organiza'),
-      'LumenAIScreen does not reference "professor tutor do Organiza"'
+      !academicContent.includes('Organiza'),
+      'AcademicPerformanceScreen does not reference "Organiza"'
     );
   });
 
@@ -153,7 +149,7 @@ async function runNomenclatureTests() {
       path.join(projectRoot, 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml'),
       path.join(projectRoot, 'src', 'services', 'AIParsingService.ts'),
       path.join(projectRoot, 'src', 'components', 'OnboardingModal.tsx'),
-      path.join(projectRoot, 'src', 'screens', 'LumenAIScreen.tsx')
+      path.join(projectRoot, 'src', 'screens', 'AcademicPerformanceScreen.tsx')
     ];
 
     for (const f of filesToAudit) {

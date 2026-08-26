@@ -18,10 +18,14 @@ export const NotificationService = {
     try {
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
+          name: 'Lumen Acadêmico',
+          description: 'Notificações de aulas, provas e estudos do Lumen',
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#00FFAA',
+          enableLights: true,
+          enableVibrate: true,
+          showBadge: true,
         });
       }
 
@@ -52,16 +56,30 @@ export const NotificationService = {
       
       if (isNaN(eventDate.getTime())) return;
 
+      const categoryEmoji = event.category?.includes('Prova') || event.title?.toLowerCase().includes('prova')
+        ? '📝'
+        : event.category?.includes('Saúde') || event.category?.includes('Academia')
+        ? '💪'
+        : event.category?.includes('Lazer')
+        ? '☕'
+        : '📅';
+
       for (const minutesBefore of event.alerts) {
         const triggerDate = subMinutes(eventDate, minutesBefore);
         if (isNaN(triggerDate.getTime())) continue;
 
         const hour = triggerDate.getHours();
         const minute = triggerDate.getMinutes();
-        
+
+        const timeNotice = minutesBefore === 0
+          ? 'Começando agora!'
+          : minutesBefore < 60
+          ? `Começa em ${minutesBefore} minutos (${event.startTime})`
+          : `Começa em ${Math.floor(minutesBefore / 60)}h (${event.startTime})`;
+
         const content = {
-          title: event.title,
-          body: event.description ? event.description : `Começa em ${minutesBefore === 0 ? 'agora' : `${minutesBefore} minutos`}!`,
+          title: `${categoryEmoji} ${event.title}`,
+          body: event.description ? `${timeNotice} • ${event.description}` : timeNotice,
           data: { eventId: event.id },
           sound: true,
         };

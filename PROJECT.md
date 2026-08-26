@@ -32,9 +32,8 @@
 | 19 | Weighted Cumulative CR & What-If Simulation | Weighted average by subject credits with What-If simulations (Stop now, Target CR, Best case) | M5 | User Request | DONE |
 | 20 | Degree Matrix & % Completion | Progress bar, semester-by-semester matrix and clean completion confirmations | M5 | User Request | DONE |
 | 21 | Socratic AI Tutor & Local Edge Models | Socratic method tutor, subject context switcher, 3 download tiers (340MB, 1.18GB, 2.45GB) | M5 | User Request | DONE |
-| 23 | Security Hardening & Safe Sanitizer | Isolated untrusted prompts, encrypted SecureStore API keys, and XSS sanitization | M6 | User Request | DONE |
-| 24 | UI Polish & Token Refinements | WCAG AA tokens, smooth micro-interactions, responsive safe areas across all 5 tabs | M6 | User Request | DONE |
-| 25 | GitHub Actions Android APK Pipeline | Standalone APK build with Gradle, Expo Prebuild, SHA-256 and GitHub Releases | M6 | User Request | DONE |
+| 26 | Academic Performance Dashboard & Flowchart | Replaced legacy AI with 100% offline CR Tracker, Matrix importer, Final Exam calculator | M7 | User Request | DONE |
+| 27 | Transparent Silhouette Notification Icon | Monochrome alpha mask icon to eliminate Android notification white square box | M7 | User Request | DONE |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
@@ -45,6 +44,7 @@
 | 4 | EAS Android APK Build & Artifacts | Trigger EAS preview build, obtain standalone APK download link, update documentation | M3 | DONE |
 | 5 | Lumen 3.0 Major Evolution | Lumen AI Tutor, CR Tracker, Degree Matrix, Auto Semesters, Discreet Icon & Full 5 Tabs | M4 | DONE |
 | 6 | Security Hardening & GitHub CI/CD | SecureStore vault, prompt sanitization, UI polish tokens, and GitHub Actions APK release | M5 | DONE |
+| 7 | Academic Performance & Crisp Notifications | Offline CR Tracker, Curriculum Matrix importer, Final Exam calc, transparent Android notification icon | M6 | DONE |
 
 ## Interface Contracts
 ### `src/utils/date.ts` (or `src/utils/index.ts`) ↔ Consumers

@@ -156,7 +156,7 @@ export class CourseCRService {
     });
 
     const targetTotalCredits = data.totalRequiredCredits > 0 ? data.totalRequiredCredits : Math.max(totalCredits, 1);
-    const effectiveCompleted = Math.max(completedCredits, data.completedCredits || 0);
+    const effectiveCompleted = totalSubjectsCount > 0 ? completedCredits : Math.max(completedCredits, data.completedCredits || 0);
     const percentage = Math.min((effectiveCompleted / targetTotalCredits) * 100, 100.0);
 
     return {
@@ -354,31 +354,92 @@ export class CourseCRService {
   }
 
   /**
+   * Calculates the minimum grade required in the Final Exam (Prova Final) for approval.
+   * Standard Brazilian university formula: Final = (PassGrade * 2) - CurrentAverage
+   * or weighted (Average * 6 + Final * 4) / 10 >= PassGrade => Final = (PassGrade * 10 - Average * 6) / 4
+   */
+  static calculateFinalExamRequirement(
+    currentAverage: number,
+    passGrade: number = 7.0,
+    finalPassThreshold: number = 5.0
+  ): {
+    status: 'approved' | 'final_exam' | 'reproved';
+    neededGrade: number;
+    message: string;
+    badgeColor: string;
+  } {
+    if (currentAverage >= passGrade) {
+      return {
+        status: 'approved',
+        neededGrade: 0,
+        message: 'Aprovado direto! Você já atingiu a média necessária.',
+        badgeColor: '#10B981'
+      };
+    }
+
+    // Formula: (CurrentAvg * 6 + Final * 4) / 10 >= finalPassThreshold (usually 5.0)
+    // => Final = (finalPassThreshold * 10 - CurrentAvg * 6) / 4
+    const needed = (finalPassThreshold * 10 - currentAverage * 6) / 4;
+    const roundedNeeded = Math.max(0, Number(needed.toFixed(2)));
+
+    if (roundedNeeded > 10.0) {
+      return {
+        status: 'reproved',
+        neededGrade: roundedNeeded,
+        message: `Reprovado direto. Média necessária (${roundedNeeded.toFixed(1)}) excede 10.0.`,
+        badgeColor: '#EF4444'
+      };
+    }
+
+    return {
+      status: 'final_exam',
+      neededGrade: roundedNeeded,
+      message: `Você precisa de nota ${roundedNeeded.toFixed(1)} na Prova Final para ser aprovado.`,
+      badgeColor: '#F59E0B'
+    };
+  }
+
+  /**
    * Parses raw historical text or transcripts into structured CourseProgressData.
    */
   static parseHistoryText(rawText: string, existingData?: CourseProgressData): CourseProgressData {
     const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
     const parsedSubjects: CourseHistorySubject[] = [];
 
-    // Simple heuristic parser for Brazilian university transcripts (SIGAA, Portal do Aluno, Sophia)
+    // Check if there is an explicit CR stated in the text (e.g. "CR Acumulado: 8.42" or "GPA: 3.8")
+    let extractedCR: number | undefined = undefined;
+    const crMatch = rawText.match(/(?:cr|ira|coeficiente|media\s*geral|gpa|indice)[\s:=]+(\d{1,2}[.,]\d{1,2})/i);
+    if (crMatch) {
+      extractedCR = parseFloat(crMatch[1].replace(',', '.'));
+    }
+
+    // Parse subjects line by line
     lines.forEach(line => {
       // Look for patterns like: "Cálculo I - 80h - Aprovado" or "MAT101 Cálculo 1 4 cr 8.5"
       const gradeMatch = line.match(/\b(10|\d[.,]\d|\d)\b/);
       const hoursMatch = line.match(/(\d+)\s*(h|horas|ch|cr|créditos)/i);
       
-      const isApproved = /aprovado|aprovada|concluído|concluída|dispensado|isento/i.test(line);
-      const isReproved = /reprovado|reprovada|trancado|cancelado/i.test(line);
+      const isApproved = /aprovado|aprovada|concluído|concluída|dispensado|isento|aprov/i.test(line);
+      const isReproved = /reprovado|reprovada|trancado|cancelado|reprov/i.test(line);
 
       const cleanName = line
         .replace(/MAT\d+|FIS\d+|CC\d+|ENG\d+|[A-Z]{2,4}\d{3,4}/g, '')
         .replace(/\b\d+\s*(h|horas|ch|cr|créditos)\b/gi, '')
-        .replace(/aprovado|aprovada|concluído|concluída|reprovado|reprovada|trancado/gi, '')
+        .replace(/aprovado|aprovada|concluído|concluída|reprovado|reprovada|trancado|isento/gi, '')
         .replace(/[0-9.,]+/g, '')
-        .replace(/[-|–:]/g, '')
+        .replace(/[-|–:()]/g, '')
         .trim();
 
       if (cleanName.length > 3) {
-        const credits = hoursMatch ? Math.max(Math.round(parseInt(hoursMatch[1], 10) / 15), 1) : 4;
+        let credits = 4;
+        const crUnitMatch = line.match(/(\d+)\s*(?:cr|créditos|cred|crédito)\b/i);
+        const hoursUnitMatch = line.match(/(\d+)\s*(?:h|horas|ch)\b/i);
+        if (crUnitMatch) {
+          credits = Math.max(parseInt(crUnitMatch[1], 10), 1);
+        } else if (hoursUnitMatch) {
+          credits = Math.max(Math.round(parseInt(hoursUnitMatch[1], 10) / 15), 1);
+        }
+
         const grade = gradeMatch ? parseFloat(gradeMatch[1].replace(',', '.')) : undefined;
 
         parsedSubjects.push({
@@ -392,22 +453,107 @@ export class CourseCRService {
     });
 
     const base = existingData || DEFAULT_CURRICULUM_TEMPLATE;
-    if (parsedSubjects.length === 0) return base;
+    if (parsedSubjects.length === 0 && !extractedCR) return base;
 
-    // Distribute into 1st semester or append
+    // Distribute into semesters or update existing subjects with matching names
     const updatedSemesters = [...base.semesters];
-    if (updatedSemesters.length > 0) {
-      updatedSemesters[0] = {
-        ...updatedSemesters[0],
-        subjects: [...updatedSemesters[0].subjects, ...parsedSubjects]
-      };
+    if (parsedSubjects.length > 0) {
+      if (updatedSemesters.length > 0) {
+        updatedSemesters[0] = {
+          ...updatedSemesters[0],
+          subjects: [...updatedSemesters[0].subjects, ...parsedSubjects]
+        };
+      }
     }
 
     const progress = this.calculateDegreeProgress({ ...base, semesters: updatedSemesters });
     return {
       ...base,
+      baselineCR: typeof extractedCR === 'number' ? extractedCR : base.baselineCR,
       semesters: updatedSemesters,
       completedCredits: progress.completedCredits,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Parses a full Curriculum Flowchart (Fluxograma / Matriz Curricular) organized by semesters.
+   */
+  static parseCurriculumMatrixText(rawText: string, existingData?: CourseProgressData): CourseProgressData {
+    const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+    const parsedSemesters: CourseSemester[] = [];
+    let currentSemesterNumber = 1;
+    let currentSubjects: CourseHistorySubject[] = [];
+
+    lines.forEach(line => {
+      // Check if line represents a Semester Header (e.g. "1º Semestre", "Semestre 2", "3º Período", "Fase 4", "Modulo 5")
+      const semesterHeaderMatch = line.match(/(?:(\d+)[ºª°]?\s*(?:semestre|periodo|período|fase|modulo|módulo|etapa)|(?:semestre|periodo|período|fase|modulo|módulo|etapa)\s*(\d+))/i);
+
+      if (semesterHeaderMatch) {
+        if (currentSubjects.length > 0) {
+          parsedSemesters.push({
+            semesterNumber: currentSemesterNumber,
+            title: `${currentSemesterNumber}º Semestre`,
+            subjects: currentSubjects
+          });
+          currentSubjects = [];
+        }
+        const parsedNum = parseInt(semesterHeaderMatch[1] || semesterHeaderMatch[2], 10);
+        currentSemesterNumber = !isNaN(parsedNum) && parsedNum > 0 ? parsedNum : currentSemesterNumber + 1;
+        return;
+      }
+
+      // Check for subject line
+      const isApproved = /aprovado|aprovada|concluído|concluída|feito|feita|dispensado|isento|aprov/i.test(line);
+
+      const cleanName = line
+        .replace(/MAT\d+|FIS\d+|CC\d+|ENG\d+|[A-Z]{2,4}\d{3,4}/g, '')
+        .replace(/\b\d+\s*(h|horas|ch|cr|créditos)\b/gi, '')
+        .replace(/aprovado|aprovada|concluído|concluída|reprovado|reprovada|trancado|isento/gi, '')
+        .replace(/[0-9.,]+/g, '')
+        .replace(/[-|–:()]/g, '')
+        .trim();
+
+      if (cleanName.length >= 3) {
+        let credits = 4;
+        const crUnitMatch = line.match(/(\d+)\s*(?:cr|créditos|cred|crédito)\b/i);
+        const hoursUnitMatch = line.match(/(\d+)\s*(?:h|horas|ch)\b/i);
+        if (crUnitMatch) {
+          credits = Math.max(parseInt(crUnitMatch[1], 10), 1);
+        } else if (hoursUnitMatch) {
+          credits = Math.max(Math.round(parseInt(hoursUnitMatch[1], 10) / 15), 1);
+        }
+
+        currentSubjects.push({
+          id: generateId(),
+          name: cleanName,
+          credits,
+          hours: credits * 15,
+          isCompleted: isApproved
+        });
+      }
+    });
+
+    if (currentSubjects.length > 0) {
+      parsedSemesters.push({
+        semesterNumber: currentSemesterNumber,
+        title: `${currentSemesterNumber}º Semestre`,
+        subjects: currentSubjects
+      });
+    }
+
+    const base = existingData || DEFAULT_CURRICULUM_TEMPLATE;
+    if (parsedSemesters.length === 0) return base;
+
+    // Sort semesters by number
+    parsedSemesters.sort((a, b) => a.semesterNumber - b.semesterNumber);
+
+    const progress = this.calculateDegreeProgress({ ...base, semesters: parsedSemesters });
+    return {
+      ...base,
+      semesters: parsedSemesters,
+      completedCredits: progress.completedCredits,
+      totalRequiredCredits: progress.totalRequiredCredits,
       lastUpdated: new Date().toISOString()
     };
   }

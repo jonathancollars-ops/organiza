@@ -40,7 +40,7 @@ import { AttendanceScreen } from './src/screens/AttendanceScreen';
 import { ScheduleGridScreen } from './src/screens/ScheduleGridScreen';
 import { StudyScreen } from './src/screens/StudyScreen';
 import { AgendaScreen } from './src/screens/AgendaScreen';
-import { LumenAIScreen } from './src/screens/LumenAIScreen';
+import { AcademicPerformanceScreen } from './src/screens/AcademicPerformanceScreen';
 import { AIConfig } from './src/types';
 
 import { format, parseISO, addDays, getDay } from 'date-fns';
@@ -488,11 +488,9 @@ export default function App() {
           onOpenAnalytics={() => setAnalyticsModalVisible(true)}
         />
       ) : currentTab === 'ia' ? (
-        <LumenAIScreen
+        <AcademicPerformanceScreen
           subjects={subjects}
           theme={theme}
-          aiConfig={aiConfig}
-          onOpenAISettings={() => setSettingsModalVisible(true)}
         />
       ) : currentTab === 'faltas' ? (
         <AttendanceScreen
@@ -547,7 +545,7 @@ export default function App() {
         {[
           { id: 'agenda', icon: '📅', label: 'Agenda' },
           { id: 'estudos', icon: '⏱️', label: 'Estudos' },
-          { id: 'ia', icon: '✨', label: 'Lumen AI' },
+          { id: 'ia', icon: '🎯', label: 'Desempenho' },
           { id: 'faltas', icon: '📊', label: 'Faltas' },
           { id: 'notas', icon: '🎓', label: 'Notas' }
         ].map(tab => {

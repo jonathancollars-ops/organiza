@@ -34,6 +34,7 @@ import { TodaySummaryWidget } from './src/components/TodaySummaryWidget';
 import { AnalyticsAndAACCModal } from './src/components/AnalyticsAndAACCModal';
 import { AchievementsModal } from './src/components/AchievementsModal';
 import { GroupProjectsModal } from './src/components/GroupProjectsModal';
+import { AppUpdateModal } from './src/components/AppUpdateModal';
 
 import { GradesScreen } from './src/screens/GradesScreen';
 import { AttendanceScreen } from './src/screens/AttendanceScreen';
@@ -41,7 +42,8 @@ import { ScheduleGridScreen } from './src/screens/ScheduleGridScreen';
 import { StudyScreen } from './src/screens/StudyScreen';
 import { AgendaScreen } from './src/screens/AgendaScreen';
 import { AcademicPerformanceScreen } from './src/screens/AcademicPerformanceScreen';
-import { AIConfig } from './src/types';
+import { AppUpdateService } from './src/services/AppUpdateService';
+import { AIConfig, AppUpdateInfo } from './src/types';
 
 import { format, parseISO, addDays, getDay } from 'date-fns';
 import * as Haptics from 'expo-haptics';
@@ -93,6 +95,8 @@ export default function App() {
   const [analyticsModalVisible, setAnalyticsModalVisible] = useState(false);
   const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
   const [groupProjectsModalVisible, setGroupProjectsModalVisible] = useState(false);
+  const [updateModalVisible, setUpdateModalVisible] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
   // Selection states
@@ -115,6 +119,14 @@ export default function App() {
     loadData();
     NotificationService.requestPermissions();
 
+    // Check for updates in background on cold start
+    AppUpdateService.checkForUpdates(false).then(info => {
+      if (info && info.hasUpdate) {
+        setUpdateInfo(info);
+        setUpdateModalVisible(true);
+      }
+    }).catch(() => {});
+
     const timer = setInterval(async () => {
       setCurrentTime(new Date());
 
@@ -131,6 +143,22 @@ export default function App() {
 
     return () => clearInterval(timer);
   }, []);
+
+  const handleCheckForUpdates = async (manual: boolean = false) => {
+    try {
+      const info = await AppUpdateService.checkForUpdates(manual);
+      if (info && info.hasUpdate) {
+        setUpdateInfo(info);
+        setUpdateModalVisible(true);
+      } else if (manual) {
+        Alert.alert('Lumen Atualizado!', `Você já está usando a versão mais recente (v${AppUpdateService.getCurrentVersion()}).`);
+      }
+    } catch {
+      if (manual) {
+        Alert.alert('Erro ao verificar', 'Não foi possível checar atualizações. Verifique sua conexão com a internet.');
+      }
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -701,6 +729,14 @@ export default function App() {
         onUpdateSemesters={(newSemesters) => setSemesters(newSemesters)}
         onOpenGuide={() => setOnboardingVisible(true)}
         onRestoreSuccess={() => loadData()}
+        onCheckUpdates={() => handleCheckForUpdates(true)}
+      />
+
+      <AppUpdateModal
+        visible={updateModalVisible}
+        updateInfo={updateInfo}
+        theme={theme}
+        onClose={() => setUpdateModalVisible(false)}
       />
 
       <OnboardingModal

@@ -18,6 +18,7 @@ import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
 import { LocalAIModelService, DEFAULT_OFFLINE_MODEL, AVAILABLE_MODEL_TIERS } from '../services/LocalAIModelService';
 import { generateId } from '../utils/id';
+import { APP_VERSION } from '../utils/version';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -31,6 +32,7 @@ interface Props {
   onUpdateSemesters: (semesters: Semester[]) => void;
   onOpenGuide: () => void;
   onRestoreSuccess: () => void;
+  onCheckUpdates?: () => void;
 }
 
 export const SettingsModal: React.FC<Props> = ({
@@ -43,7 +45,8 @@ export const SettingsModal: React.FC<Props> = ({
   semesters,
   onUpdateSemesters,
   onOpenGuide,
-  onRestoreSuccess
+  onRestoreSuccess,
+  onCheckUpdates
 }) => {
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
@@ -414,6 +417,28 @@ export const SettingsModal: React.FC<Props> = ({
                   <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Abrir Guia do Usuário</Text>
                 </View>
                 <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '700' }}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  if (onCheckUpdates) {
+                    onCheckUpdates();
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 20, marginRight: 10 }}>🚀</Text>
+                  <View>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Verificar Atualizações</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>Versão instalada: v{APP_VERSION}</Text>
+                  </View>
+                </View>
+                <View style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>Checar</Text>
+                </View>
               </TouchableOpacity>
             </>
           ) : activeSubTab === 'semestres' ? (

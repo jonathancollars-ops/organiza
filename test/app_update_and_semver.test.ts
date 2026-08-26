@@ -1,0 +1,147 @@
+import './setup_env';
+import { parseSemver, compareSemver, isNewerVersion, bumpVersion, APP_VERSION } from '../src/utils/version';
+import { AppUpdateService } from '../src/services/AppUpdateService';
+import { AppUpdateInfo, VersionBumpType } from '../src/types';
+
+let totalTests = 0;
+let passedTests = 0;
+let failedTests = 0;
+
+function assert(condition: boolean, message: string) {
+  totalTests++;
+  if (condition) {
+    passedTests++;
+    console.log(`  ✅ [PASS] ${message}`);
+  } else {
+    failedTests++;
+    console.error(`  ❌ [FAIL] ${message}`);
+    throw new Error(`Assertion failed: ${message}`);
+  }
+}
+
+function assertEqual<T>(actual: T, expected: T, message: string) {
+  totalTests++;
+  if (actual === expected) {
+    passedTests++;
+    console.log(`  ✅ [PASS] ${message}`);
+  } else {
+    failedTests++;
+    console.error(`  ❌ [FAIL] ${message} (Expected: ${expected}, Got: ${actual})`);
+    throw new Error(`Assertion failed: ${message}`);
+  }
+}
+
+async function runSemverAndAutoUpdateTests() {
+  console.log('================================================================');
+  console.log('🚀 LUMEN 3.1: SEMVER & APP AUTO-UPDATER TEST SUITE');
+  console.log('================================================================\n');
+
+  // --- 1. SemVer Parsing Tests ---
+  console.log('--- 1. Semantic Version Parsing (parseSemver) ---');
+  {
+    const p1 = parseSemver('3.1.0');
+    assertEqual(p1.major, 3, 'Major is 3');
+    assertEqual(p1.minor, 1, 'Minor is 1');
+    assertEqual(p1.patch, 0, 'Patch is 0');
+    assertEqual(p1.raw, '3.1.0', 'Raw normalized is 3.1.0');
+
+    const p2 = parseSemver('v3.2.14');
+    assertEqual(p2.major, 3, 'v3.2.14 -> Major is 3');
+    assertEqual(p2.minor, 2, 'v3.2.14 -> Minor is 2');
+    assertEqual(p2.patch, 14, 'v3.2.14 -> Patch is 14');
+
+    const p3 = parseSemver('4.0.0-rc1');
+    assertEqual(p3.major, 4, '4.0.0-rc1 -> Major is 4');
+    assertEqual(p3.minor, 0, '4.0.0-rc1 -> Minor is 0');
+    assertEqual(p3.patch, 0, '4.0.0-rc1 -> Patch is 0');
+
+    const p4 = parseSemver('');
+    assertEqual(p4.raw, '0.0.0', 'Empty string safely yields 0.0.0');
+
+    const p5 = parseSemver(null as any);
+    assertEqual(p5.raw, '0.0.0', 'Null safely yields 0.0.0');
+  }
+
+  // --- 2. SemVer Comparison Tests ---
+  console.log('\n--- 2. Semantic Version Comparison (compareSemver & isNewerVersion) ---');
+  {
+    assertEqual(compareSemver('3.1.0', '3.0.0'), 1, '3.1.0 > 3.0.0');
+    assertEqual(compareSemver('3.0.0', '3.1.0'), -1, '3.0.0 < 3.1.0');
+    assertEqual(compareSemver('3.1.0', '3.1.0'), 0, '3.1.0 === 3.1.0');
+    assertEqual(compareSemver('v3.1.0', '3.1.0'), 0, 'v3.1.0 === 3.1.0 (ignores prefix)');
+
+    // Patch comparison
+    assertEqual(compareSemver('3.1.1', '3.1.0'), 1, '3.1.1 > 3.1.0 (patch update)');
+    assertEqual(compareSemver('3.1.0', '3.1.1'), -1, '3.1.0 < 3.1.1');
+
+    // Minor comparison
+    assertEqual(compareSemver('3.2.0', '3.1.99'), 1, '3.2.0 > 3.1.99 (minor takes precedence)');
+
+    // Major comparison
+    assertEqual(compareSemver('4.0.0', '3.99.99'), 1, '4.0.0 > 3.99.99 (major takes precedence)');
+
+    // isNewerVersion tests
+    assert(isNewerVersion('3.1.1', '3.1.0'), '3.1.1 is newer than 3.1.0');
+    assert(isNewerVersion('3.2.0', '3.1.0'), '3.2.0 is newer than 3.1.0');
+    assert(isNewerVersion('4.0.0', '3.1.0'), '4.0.0 is newer than 3.1.0');
+    assert(!isNewerVersion('3.1.0', '3.1.0'), '3.1.0 is NOT newer than 3.1.0');
+    assert(!isNewerVersion('3.0.9', '3.1.0'), '3.0.9 is NOT newer than 3.1.0');
+  }
+
+  // --- 3. Strict SemVer Increment Rules (bumpVersion) ---
+  console.log('\n--- 3. Strict SemVer Incrementing Rules (bumpVersion) ---');
+  {
+    // Rule 1: Patch +0.0.1 (bugfixes, UI tweaks)
+    const patchNext = bumpVersion('3.1.0', 'patch');
+    assertEqual(patchNext, '3.1.1', 'Patch increment from 3.1.0 -> 3.1.1 (+0.0.1)');
+
+    const patchNext2 = bumpVersion('3.1.9', 'patch');
+    assertEqual(patchNext2, '3.1.10', 'Patch increment from 3.1.9 -> 3.1.10');
+
+    // Rule 2: Minor +0.1.0 (medium features / additions, resets patch)
+    const minorNext = bumpVersion('3.1.5', 'minor');
+    assertEqual(minorNext, '3.2.0', 'Minor increment from 3.1.5 -> 3.2.0 (+0.1.0 and patch reset to 0)');
+
+    // Rule 3: Major +1.0.0 (major overhauls, resets minor and patch)
+    const majorNext = bumpVersion('3.4.7', 'major');
+    assertEqual(majorNext, '4.0.0', 'Major increment from 3.4.7 -> 4.0.0 (+1.0.0 and resets minor/patch)');
+  }
+
+  // --- 4. AppUpdateService Unit Tests ---
+  console.log('\n--- 4. AppUpdateService Mock Tests & Ignored Versions ---');
+  {
+    // Current version assertion
+    assertEqual(AppUpdateService.getCurrentVersion(), '3.1.0', 'Current version is 3.1.0');
+
+    // State persistence & ignore version
+    await AppUpdateService.ignoreVersion('3.2.0');
+    const state = await AppUpdateService.getUpdateState();
+    assertEqual(state.ignoredVersion, '3.2.0', 'Ignored version persisted correctly');
+
+    // Reset state
+    await AppUpdateService.saveUpdateState({ ignoredVersion: undefined, lastCheckedAt: undefined });
+    const resetState = await AppUpdateService.getUpdateState();
+    assert(resetState.ignoredVersion === undefined, 'State reset safely');
+  }
+
+  // --- 5. Network & Offline Resilience ---
+  console.log('\n--- 5. Offline & Network Resilience ---');
+  {
+    // Calling openDownloadUrl with empty or invalid url returns false without crash
+    const resEmpty = await AppUpdateService.openDownloadUrl('');
+    assertEqual(resEmpty, false, 'openDownloadUrl with empty string returns false safely');
+  }
+
+  console.log('\n================================================================');
+  console.log(`SUMMARY: ${passedTests}/${totalTests} Tests Passed (${failedTests} Failed)`);
+  console.log('================================================================\n');
+
+  if (failedTests > 0) {
+    process.exit(1);
+  }
+}
+
+runSemverAndAutoUpdateTests().catch(err => {
+  console.error('Fatal error in tests:', err);
+  process.exit(1);
+});

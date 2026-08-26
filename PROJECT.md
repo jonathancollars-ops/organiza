@@ -34,6 +34,7 @@
 | 21 | Socratic AI Tutor & Local Edge Models | Socratic method tutor, subject context switcher, 3 download tiers (340MB, 1.18GB, 2.45GB) | M5 | User Request | DONE |
 | 26 | Academic Performance Dashboard & Flowchart | Replaced legacy AI with 100% offline CR Tracker, Matrix importer, Final Exam calculator | M7 | User Request | DONE |
 | 27 | Transparent Silhouette Notification Icon | Monochrome alpha mask icon to eliminate Android notification white square box | M7 | User Request | DONE |
+| 28 | In-App Auto-Updater & Strict SemVer | Automatic check for GitHub Releases, update modal with changelog, SemVer rules (+0.0.1 patch, +0.1.0 minor, +1.0.0 major) | M8 | User Request | DONE |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
@@ -45,8 +46,26 @@
 | 5 | Lumen 3.0 Major Evolution | Lumen AI Tutor, CR Tracker, Degree Matrix, Auto Semesters, Discreet Icon & Full 5 Tabs | M4 | DONE |
 | 6 | Security Hardening & GitHub CI/CD | SecureStore vault, prompt sanitization, UI polish tokens, and GitHub Actions APK release | M5 | DONE |
 | 7 | Academic Performance & Crisp Notifications | Offline CR Tracker, Curriculum Matrix importer, Final Exam calc, transparent Android notification icon | M6 | DONE |
+| 8 | Auto-Updater & Strict Semantic Versioning | In-app GitHub Release checking, download triggers, SemVer standard (3.1.0 base, +0.0.1 fixes, +0.1.0 features, +1.0.0 overhauls) | M7 | DONE |
+
+## Semantic Versioning Rules
+- **Patch (`+0.0.1`, ex: `3.1.1`)**: Small fixes, UI polish, bug corrections, minor styling tweaks.
+- **Minor (`+0.1.0`, ex: `3.2.0`)**: New features, new screens/modals, medium functional extensions. (Resets patch to 0).
+- **Major (`+1.0.0`, ex: `4.0.0`)**: Major structural overhauls, breaking architecture shifts. (Resets minor & patch to 0).
 
 ## Interface Contracts
+### `src/utils/version.ts` ↔ Consumers
+- `export const APP_VERSION: string`
+- `export function parseSemver(versionString?: string): ParsedSemver`
+- `export function compareSemver(v1: string, v2: string): number`
+- `export function isNewerVersion(remoteVersion: string, currentVersion?: string): boolean`
+- `export function bumpVersion(currentVersion: string, bumpType: VersionBumpType): string`
+
+### `src/services/AppUpdateService.ts` ↔ UI Components
+- `AppUpdateService.checkForUpdates(force?: boolean): Promise<AppUpdateInfo | null>`
+- `AppUpdateService.openDownloadUrl(url: string): Promise<boolean>`
+- `AppUpdateService.ignoreVersion(version: string): Promise<void>`
+
 ### `src/utils/date.ts` (or `src/utils/index.ts`) ↔ Consumers
 - `export function getLocalDateString(d: Date = new Date()): string`
 - `export function formatDisplayDate(dateStr: string): string`

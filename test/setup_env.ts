@@ -34,6 +34,10 @@ export const mockReactNative = {
   Alert: { alert: () => {} },
   StatusBar: { setBarStyle: () => {} },
   ActivityIndicator: 'ActivityIndicator',
+  Linking: {
+    openURL: async () => true,
+    canOpenURL: async () => true,
+  },
 };
 
 export const mockReactNativeCalendars = {

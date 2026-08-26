@@ -377,3 +377,25 @@ export interface ModelTierInfo {
   localPath?: string;
   errorMessage?: string;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Lumen 3.1: In-App Auto-Updater & Semantic Versioning
+// ─────────────────────────────────────────────────────────────
+
+export type VersionBumpType = 'patch' | 'minor' | 'major';
+
+export interface AppUpdateInfo {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  releaseName?: string;
+  releaseNotes?: string;
+  downloadUrl: string;
+  publishedAt?: string;
+  isMandatory?: boolean;
+}
+
+export interface AppUpdateState {
+  lastCheckedAt?: number;
+  ignoredVersion?: string;
+}

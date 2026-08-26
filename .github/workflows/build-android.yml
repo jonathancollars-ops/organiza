@@ -82,13 +82,13 @@ jobs:
           # Locate generated APK
           APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
           if [ -n "$APK_FILE" ] && [ -f "$APK_FILE" ]; then
-            TARGET_APK="build-output/lumen-v3.1.1-standalone.apk"
+            TARGET_APK="build-output/lumen-v3.1.2-standalone.apk"
             cp "$APK_FILE" "$TARGET_APK"
             echo "apk_path=$TARGET_APK" >> $GITHUB_OUTPUT
             
             # Generate SHA-256 Checksum
             cd build-output
-            sha256sum lumen-v3.1.1-standalone.apk > SHA256SUMS.txt
+            sha256sum lumen-v3.1.2-standalone.apk > SHA256SUMS.txt
             echo "APK generated successfully: $TARGET_APK"
             cat SHA256SUMS.txt
             cd ..
@@ -100,9 +100,9 @@ jobs:
       - name: 📤 Upload Standalone APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lumen-v3.1.1-android-apk
+          name: lumen-v3.1.2-android-apk
           path: |
-            build-output/lumen-v3.1.1-standalone.apk
+            build-output/lumen-v3.1.2-standalone.apk
             build-output/SHA256SUMS.txt
           retention-days: 30
           if-no-files-found: error
@@ -112,7 +112,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build-output/lumen-v3.1.1-standalone.apk
+            build-output/lumen-v3.1.2-standalone.apk
             build-output/SHA256SUMS.txt
           body_path: CHANGELOG.md
           generate_release_notes: false
@@ -122,11 +122,11 @@ jobs:
       - name: 📝 Output GitHub Actions Job Summary
         if: always()
         run: |
-          echo "### 🚀 Lumen 3.1.1 Android CI/CD Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Lumen 3.1.2 Android CI/CD Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status == 'success' && '✅ SUCCESS' || '❌ FAILED' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Event**: \`${{ github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Artifact**: \`lumen-v3.1.1-android-apk\` (Standalone APK & SHA256SUMS.txt)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact**: \`lumen-v3.1.2-android-apk\` (Standalone APK & SHA256SUMS.txt)" >> $GITHUB_STEP_SUMMARY
           echo "- **Typecheck**: \`npx tsc --noEmit\` (0 errors)" >> $GITHUB_STEP_SUMMARY
           echo "- **Tests**: \`npm test\` (100% green)" >> $GITHUB_STEP_SUMMARY

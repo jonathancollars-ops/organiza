@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState, useMemo } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, Platform, StatusBar as RNStatusBar, ActivityIndicator, Modal } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import {
   AppEvent,
@@ -58,7 +58,7 @@ LocaleConfig.locales['pt-br'] = {
 };
 LocaleConfig.defaultLocale = 'pt-br';
 
-export default function App() {
+function MainApp() {
   const [currentTab, setCurrentTab] = useState<'agenda' | 'estudos' | 'ia' | 'faltas' | 'notas'>('agenda');
   const [aiConfig, setAiConfig] = useState<AIConfig>({ provider: 'gemini', mode: 'gemini_cloud', apiKey: '' });
   const [scheduleGridVisible, setScheduleGridVisible] = useState(false);
@@ -105,7 +105,6 @@ export default function App() {
   const [editingEvent, setEditingEvent] = useState<AppEvent | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  const insets = useSafeAreaInsets();
   const colors = getThemeColors(theme);
   const isFullscreen = settings.fullscreen === true;
   const statusBarStyle = theme === 'light' ? 'dark' : 'light';
@@ -791,6 +790,61 @@ export default function App() {
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+/**
+ * Global Error Boundary to prevent full app crashes on uncaught runtime errors.
+ */
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Lumen ErrorBoundary caught error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0B0F19', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>🎓</Text>
+          <Text style={{ fontSize: 20, fontWeight: '800', color: '#FFFFFF', marginBottom: 8, textAlign: 'center' }}>
+            Ops! O Lumen encontrou uma instabilidade
+          </Text>
+          <Text style={{ fontSize: 13, color: '#94A3B8', textAlign: 'center', marginBottom: 24, lineHeight: 18 }}>
+            Seus dados acadêmicos estão preservados com segurança. Toque no botão abaixo para reiniciar a interface.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#6366F1', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 }}
+            onPress={() => this.setState({ hasError: false, error: null })}
+            activeOpacity={0.8}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>🔄 Reiniciar Lumen</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <MainApp />
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 

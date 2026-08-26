@@ -13,6 +13,13 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 
 ---
 
+## [3.1.2] - 2026-08-25
+### 🛡️ Corrigido (Bug Fixes & Inicialização)
+- **Correção de Crash na Inicialização:** Removida chamada de hook de Safe Area fora do escopo do provedor e encapsulado o componente raiz no `<SafeAreaProvider>`.
+- **ErrorBoundary Global:** Implementado componente de captura de exceções em tempo de execução para garantir que qualquer erro pontual exiba uma tela de recuperação com botão de "Reiniciar Lumen", impedindo que o aplicativo feche abruptamente.
+
+---
+
 ## [3.1.1] - 2026-08-25
 ### 🛡️ Corrigido (Bug Fixes)
 - **Crash na Aba de Desempenho:** Corrigido erro de carregamento no CourseCRService e AcademicPerformanceScreen ao processar esquemas antigos ou incompletos do AsyncStorage sem a matriz de semestres.

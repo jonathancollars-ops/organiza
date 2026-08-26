@@ -4,7 +4,7 @@ import { VersionBumpType } from '../types';
  * Lumen Current Application Version
  * Strict Semantic Versioning: MAJOR.MINOR.PATCH
  */
-export const APP_VERSION = '3.1.1';
+export const APP_VERSION = '3.1.2';
 
 export interface ParsedSemver {
   major: number;

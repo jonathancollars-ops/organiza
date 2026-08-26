@@ -37,7 +37,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
 
   const [activeTab, setActiveTab] = useState<PerformanceTab>('cr_sim');
   const [courseData, setCourseData] = useState<CourseProgressData>(DEFAULT_CURRICULUM_TEMPLATE);
-  const [selectedSemesterNumber, setSelectedSemesterNumber] = useState<number>(1);
+  const [selectedSemesterIndex, setSelectedSemesterIndex] = useState<number>(0);
 
   // Modals
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);

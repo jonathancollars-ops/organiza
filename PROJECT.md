@@ -1,4 +1,4 @@
-# Project: Organiza Codebase Audit, Fix, Test & EAS APK Build
+# Project: Lumen (Project Lumen) Codebase Audit, Security Hardening & EAS APK Build
 
 ## Architecture
 - **Framework**: React Native with Expo SDK 52, TypeScript, React Navigation / Expo Navigation, AsyncStorage persistence.

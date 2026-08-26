@@ -116,32 +116,66 @@ function MainApp() {
   }, [isFullscreen, theme]);
 
   useEffect(() => {
-    loadData();
-    NotificationService.requestPermissions();
+    let isMounted = true;
 
-    // Check for updates in background on cold start
-    AppUpdateService.checkForUpdates(false).then(info => {
-      if (info && info.hasUpdate) {
-        setUpdateInfo(info);
-        setUpdateModalVisible(true);
+    const initializeApp = async () => {
+      try {
+        await loadData();
+      } catch (err) {
+        console.warn('App: initializeApp caught error:', err);
+        if (isMounted) setIsInitializing(false);
       }
-    }).catch(() => {});
+
+      // Safe notification permissions request
+      try {
+        await NotificationService.requestPermissions();
+      } catch (permError) {
+        console.warn('App: Notification permission request failed:', permError);
+      }
+
+      // Check for updates in background on cold start
+      try {
+        AppUpdateService.checkForUpdates(false).then(info => {
+          if (isMounted && info && info.hasUpdate) {
+            setUpdateInfo(info);
+            setUpdateModalVisible(true);
+          }
+        }).catch(() => {});
+      } catch {
+        // Silently handle update check trigger failure
+      }
+    };
+
+    initializeApp();
 
     const timer = setInterval(async () => {
-      setCurrentTime(new Date());
+      try {
+        if (!isMounted) return;
+        setCurrentTime(new Date());
 
-      // Re-check for new pending attendances every minute using optimized AttendanceService
-      const savedEvents = await StorageService.getEvents();
-      const savedAttendances = await StorageService.getAttendances();
-      const updatedAttendances = await AttendanceService.generatePendingAttendances(savedEvents, savedAttendances);
+        // Re-check for new pending attendances every minute using optimized AttendanceService
+        const savedEvents = await StorageService.getEvents().catch(() => []);
+        const savedAttendances = await StorageService.getAttendances().catch(() => []);
+        const updatedAttendances = await AttendanceService.generatePendingAttendances(savedEvents, savedAttendances);
 
-      if (updatedAttendances.length > savedAttendances.length) {
-        setAttendances(updatedAttendances);
-        setAttendanceModalVisible(true);
+        if (
+          isMounted &&
+          Array.isArray(updatedAttendances) &&
+          Array.isArray(savedAttendances) &&
+          updatedAttendances.length > savedAttendances.length
+        ) {
+          setAttendances(updatedAttendances);
+          setAttendanceModalVisible(true);
+        }
+      } catch (timerError) {
+        // Silently handle periodic background check errors
       }
     }, 60000);
 
-    return () => clearInterval(timer);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
   }, []);
 
   const handleCheckForUpdates = async (manual: boolean = false) => {
@@ -174,33 +208,117 @@ function MainApp() {
         savedGamification,
         savedStreak
       ] = await Promise.all([
-        StorageService.getTheme(),
-        StorageService.getEvents(),
-        StorageService.getSubjects(),
-        StorageService.getAttendances(),
-        StorageService.getTasks(),
-        StorageService.getStudySessions(),
-        StorageService.getSemesters(),
-        StorageService.getSettings(),
-        StorageService.getGamificationData(),
-        StorageService.getStreak(),
+        StorageService.getTheme().catch(() => 'dark' as ThemeType),
+        StorageService.getEvents().catch(() => [] as AppEvent[]),
+        StorageService.getSubjects().catch(() => [] as Subject[]),
+        StorageService.getAttendances().catch(() => [] as AttendanceRecord[]),
+        StorageService.getTasks().catch(() => [] as StudyTask[]),
+        StorageService.getStudySessions().catch(() => [] as StudySession[]),
+        StorageService.getSemesters().catch(() => [] as Semester[]),
+        StorageService.getSettings().catch(() => null),
+        StorageService.getGamificationData().catch(() => null),
+        StorageService.getStreak().catch(() => null),
       ]);
 
-      // Check for pending attendances
-      const updatedAttendances = await AttendanceService.generatePendingAttendances(savedEvents, savedAttendances);
+      // Sanitize array collections
+      const safeEvents = Array.isArray(savedEvents)
+        ? savedEvents.filter((e): e is AppEvent => Boolean(e && typeof e === 'object'))
+        : [];
+      const safeSubjects = Array.isArray(savedSubjects)
+        ? savedSubjects.filter((s): s is Subject => Boolean(s && typeof s === 'object'))
+        : [];
+      const safeAttendances = Array.isArray(savedAttendances)
+        ? savedAttendances.filter((a): a is AttendanceRecord => Boolean(a && typeof a === 'object'))
+        : [];
+      const safeTasks = Array.isArray(savedTasks)
+        ? savedTasks.filter((t): t is StudyTask => Boolean(t && typeof t === 'object'))
+        : [];
+      const safeSessions = Array.isArray(savedSessions)
+        ? savedSessions.filter((ss): ss is StudySession => Boolean(ss && typeof ss === 'object'))
+        : [];
+      const safeSemesters = Array.isArray(savedSemesters)
+        ? savedSemesters.filter((sem): sem is Semester => Boolean(sem && typeof sem === 'object'))
+        : [];
 
-      setTheme(savedTheme);
-      setEvents(savedEvents);
-      setSubjects(savedSubjects);
-      setAttendances(updatedAttendances);
-      setTasks(savedTasks);
-      setStudySessions(savedSessions);
-      setSemesters(savedSemesters);
-      setSettings(savedSettings);
-      setGamification(savedGamification);
-      setStreak(savedStreak);
+      // Check for pending attendances safely
+      let updatedAttendances = safeAttendances;
+      try {
+        updatedAttendances = await AttendanceService.generatePendingAttendances(safeEvents, safeAttendances);
+      } catch (attError) {
+        console.warn('App: Attendance calculation error in loadData:', attError);
+      }
+
+      // Sanitize theme
+      const safeTheme: ThemeType =
+        savedTheme === 'light' || savedTheme === 'amoled' || savedTheme === 'dark'
+          ? savedTheme
+          : 'dark';
+
+      // Sanitize settings with explicit numeric and boolean defaults
+      const safeSettings: AppSettings = (savedSettings && typeof savedSettings === 'object' && !Array.isArray(savedSettings))
+        ? {
+            theme: (savedSettings.theme === 'light' || savedSettings.theme === 'amoled' || savedSettings.theme === 'dark') ? savedSettings.theme : safeTheme,
+            fullscreen: Boolean(savedSettings.fullscreen),
+            pomodoroFocusMin: Number(savedSettings.pomodoroFocusMin) || 25,
+            pomodoroBreakMin: Number(savedSettings.pomodoroBreakMin) || 5,
+            pomodoroLongBreakMin: Number(savedSettings.pomodoroLongBreakMin) || 15,
+            defaultPassGrade: typeof savedSettings.defaultPassGrade === 'number' && !isNaN(savedSettings.defaultPassGrade) ? savedSettings.defaultPassGrade : 7.0,
+            examWeekMode: Boolean(savedSettings.examWeekMode),
+            soundEnabled: savedSettings.soundEnabled !== false,
+            hapticsEnabled: savedSettings.hapticsEnabled !== false,
+          }
+        : {
+            theme: safeTheme,
+            fullscreen: false,
+            pomodoroFocusMin: 25,
+            pomodoroBreakMin: 5,
+            pomodoroLongBreakMin: 15,
+            defaultPassGrade: 7.0,
+            examWeekMode: false,
+            soundEnabled: true,
+            hapticsEnabled: true,
+          };
+
+      // Sanitize gamification data
+      const safeGamification: GamificationData = (savedGamification && typeof savedGamification === 'object' && !Array.isArray(savedGamification))
+        ? {
+            xp: Number(savedGamification.xp) || 0,
+            level: Number(savedGamification.level) || 1,
+            unlockedAchievements: Array.isArray(savedGamification.unlockedAchievements) ? savedGamification.unlockedAchievements : [],
+            totalFocusMinutes: Number(savedGamification.totalFocusMinutes) || 0,
+          }
+        : {
+            xp: 0,
+            level: 1,
+            unlockedAchievements: [],
+            totalFocusMinutes: 0,
+          };
+
+      // Sanitize study streak
+      const safeStreak: StudyStreak = (savedStreak && typeof savedStreak === 'object' && !Array.isArray(savedStreak))
+        ? {
+            currentStreak: Number(savedStreak.currentStreak) || 0,
+            longestStreak: Number(savedStreak.longestStreak) || 0,
+            lastStudyDate: typeof savedStreak.lastStudyDate === 'string' ? savedStreak.lastStudyDate : '',
+          }
+        : {
+            currentStreak: 0,
+            longestStreak: 0,
+            lastStudyDate: '',
+          };
+
+      setTheme(safeTheme);
+      setEvents(safeEvents);
+      setSubjects(safeSubjects);
+      setAttendances(Array.isArray(updatedAttendances) ? updatedAttendances : safeAttendances);
+      setTasks(safeTasks);
+      setStudySessions(safeSessions);
+      setSemesters(safeSemesters);
+      setSettings(safeSettings);
+      setGamification(safeGamification);
+      setStreak(safeStreak);
     } catch (err) {
-      console.error('Error loading app data:', err);
+      console.error('Error loading app data in loadData:', err);
     } finally {
       setIsInitializing(false);
     }
@@ -838,16 +956,6 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-export default function App() {
-  return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <MainApp />
-      </ErrorBoundary>
-    </SafeAreaProvider>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1075,3 +1183,15 @@ const styles = StyleSheet.create({
   }
 });
 
+// ====================================================
+// Componente Raiz — SafeAreaProvider + ErrorBoundary
+// ====================================================
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <MainApp />
+      </ErrorBoundary>
+    </SafeAreaProvider>
+  );
+}

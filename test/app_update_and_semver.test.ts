@@ -111,7 +111,7 @@ async function runSemverAndAutoUpdateTests() {
   console.log('\n--- 4. AppUpdateService Mock Tests & Ignored Versions ---');
   {
     // Current version assertion
-    assertEqual(AppUpdateService.getCurrentVersion(), '3.2.0', 'Current version is 3.2.0');
+    assertEqual(AppUpdateService.getCurrentVersion(), '3.2.1', 'Current version is 3.2.1');
 
     // State persistence & ignore version
     await AppUpdateService.ignoreVersion('3.2.0');

@@ -42,13 +42,13 @@ async function runSemverAndAutoUpdateTests() {
     const p1 = parseSemver('3.1.0');
     assertEqual(p1.major, 3, 'Major is 3');
     assertEqual(p1.minor, 1, 'Minor is 1');
-    assertEqual(p1.patch, 0, 'Patch is 0');
+    assertEqual(p1.patch, 1, 'Patch is 0');
     assertEqual(p1.raw, '3.1.0', 'Raw normalized is 3.1.0');
 
-    const p2 = parseSemver('v3.2.14');
-    assertEqual(p2.major, 3, 'v3.2.14 -> Major is 3');
-    assertEqual(p2.minor, 2, 'v3.2.14 -> Minor is 2');
-    assertEqual(p2.patch, 14, 'v3.2.14 -> Patch is 14');
+    const p2 = parseSemver('v3.2.24');
+    assertEqual(p2.major, 3, 'v3.2.24 -> Major is 3');
+    assertEqual(p2.minor, 2, 'v3.2.24 -> Minor is 2');
+    assertEqual(p2.patch, 14, 'v3.2.24 -> Patch is 14');
 
     const p3 = parseSemver('4.0.0-rc1');
     assertEqual(p3.major, 4, '4.0.0-rc1 -> Major is 4');
@@ -75,14 +75,14 @@ async function runSemverAndAutoUpdateTests() {
     assertEqual(compareSemver('3.1.0', '3.1.1'), -1, '3.1.0 < 3.1.1');
 
     // Minor comparison
-    assertEqual(compareSemver('3.2.0', '3.1.99'), 1, '3.2.0 > 3.1.99 (minor takes precedence)');
+    assertEqual(compareSemver('3.2.2', '3.1.99'), 1, '3.2.2 > 3.1.99 (minor takes precedence)');
 
     // Major comparison
     assertEqual(compareSemver('4.0.0', '3.99.99'), 1, '4.0.0 > 3.99.99 (major takes precedence)');
 
     // isNewerVersion tests
     assert(isNewerVersion('3.1.1', '3.1.0'), '3.1.1 is newer than 3.1.0');
-    assert(isNewerVersion('3.2.0', '3.1.0'), '3.2.0 is newer than 3.1.0');
+    assert(isNewerVersion('3.2.2', '3.1.0'), '3.2.2 is newer than 3.1.0');
     assert(isNewerVersion('4.0.0', '3.1.0'), '4.0.0 is newer than 3.1.0');
     assert(!isNewerVersion('3.1.0', '3.1.0'), '3.1.0 is NOT newer than 3.1.0');
     assert(!isNewerVersion('3.0.9', '3.1.0'), '3.0.9 is NOT newer than 3.1.0');
@@ -100,7 +100,7 @@ async function runSemverAndAutoUpdateTests() {
 
     // Rule 2: Minor +0.1.0 (medium features / additions, resets patch)
     const minorNext = bumpVersion('3.1.5', 'minor');
-    assertEqual(minorNext, '3.2.0', 'Minor increment from 3.1.5 -> 3.2.0 (+0.1.0 and patch reset to 0)');
+    assertEqual(minorNext, '3.2.0', 'Minor increment from 3.1.5 -> 3.2.2 (+0.1.0 and patch reset to 0)');
 
     // Rule 3: Major +1.0.0 (major overhauls, resets minor and patch)
     const majorNext = bumpVersion('3.4.7', 'major');
@@ -111,12 +111,12 @@ async function runSemverAndAutoUpdateTests() {
   console.log('\n--- 4. AppUpdateService Mock Tests & Ignored Versions ---');
   {
     // Current version assertion
-    assertEqual(AppUpdateService.getCurrentVersion(), '3.2.1', 'Current version is 3.2.1');
+    assertEqual(AppUpdateService.getCurrentVersion(), '3.2.2', 'Current version is 3.2.2');
 
     // State persistence & ignore version
-    await AppUpdateService.ignoreVersion('3.2.0');
+    await AppUpdateService.ignoreVersion('3.2.2');
     const state = await AppUpdateService.getUpdateState();
-    assertEqual(state.ignoredVersion, '3.2.0', 'Ignored version persisted correctly');
+    assertEqual(state.ignoredVersion, '3.2.2', 'Ignored version persisted correctly');
 
     // Reset state
     await AppUpdateService.saveUpdateState({ ignoredVersion: undefined, lastCheckedAt: undefined });

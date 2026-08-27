@@ -172,16 +172,16 @@ async function runAllChallengerProbes() {
   // --------------------------------------------------------------------------
   await runSection('AppUpdateService SemVer, Remote API & Throttling Resilience', async () => {
     // 2.1 SemVer parsing and comparison matrix
-    assert(isNewerVersion('3.2.1', '3.2.1') === true, '3.2.1 is newer than 3.2.1');
-    assert(isNewerVersion('3.3.0', '3.2.1') === true, '3.3.0 is newer than 3.2.1');
+    assert(isNewerVersion('3.2.3', '3.2.2') === true, '3.2.2 is newer than 3.2.2');
+    assert(isNewerVersion('3.3.0', '3.2.2') === true, '3.3.0 is newer than 3.2.2');
     assert(isNewerVersion('4.0.0', '3.9.9') === true, '4.0.0 is newer than 3.9.9');
-    assert(isNewerVersion('3.2.1', '3.2.1') === false, '3.2.1 is NOT newer than 3.2.1');
-    assert(isNewerVersion('3.1.9', '3.2.1') === false, '3.1.9 is NOT newer than 3.2.1');
-    assert(isNewerVersion('2.9.9', '3.2.1') === false, '2.9.9 is NOT newer than 3.2.1');
-    assert(isNewerVersion('v3.2.1', '3.2.1') === true, 'v3.2.1 prefix handled cleanly');
-    assert(isNewerVersion('3.2.1-beta.1', '3.2.1') === true, 'pre-release tags stripped correctly');
-    assert(isNewerVersion('invalid', '3.2.1') === false, 'invalid remote version returns false safely');
-    assert(isNewerVersion('', '3.2.1') === false, 'empty remote version returns false safely');
+    assert(isNewerVersion('3.2.2', '3.2.2') === false, '3.2.2 is NOT newer than 3.2.2');
+    assert(isNewerVersion('3.1.9', '3.2.2') === false, '3.1.9 is NOT newer than 3.2.2');
+    assert(isNewerVersion('2.9.9', '3.2.2') === false, '2.9.9 is NOT newer than 3.2.2');
+    assert(isNewerVersion('v3.2.3', '3.2.2') === true, 'v3.2.3 prefix handled cleanly');
+    assert(isNewerVersion('3.2.3-beta.1', '3.2.2') === true, 'pre-release tags stripped correctly');
+    assert(isNewerVersion('invalid', '3.2.2') === false, 'invalid remote version returns false safely');
+    assert(isNewerVersion('', '3.2.2') === false, 'empty remote version returns false safely');
 
     // 2.2 AppUpdateService UpdateState resilience
     memoryStore['@lumen_update_state'] = 'null';

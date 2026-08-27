@@ -172,16 +172,16 @@ async function runAllChallengerProbes() {
   // --------------------------------------------------------------------------
   await runSection('AppUpdateService SemVer, Remote API & Throttling Resilience', async () => {
     // 2.1 SemVer parsing and comparison matrix
-    assert(isNewerVersion('3.1.3', '3.1.2') === true, '3.1.3 is newer than 3.1.2');
-    assert(isNewerVersion('3.2.0', '3.1.9') === true, '3.2.0 is newer than 3.1.9');
+    assert(isNewerVersion('3.2.1', '3.2.0') === true, '3.2.1 is newer than 3.2.0');
+    assert(isNewerVersion('3.3.0', '3.2.0') === true, '3.3.0 is newer than 3.2.0');
     assert(isNewerVersion('4.0.0', '3.9.9') === true, '4.0.0 is newer than 3.9.9');
-    assert(isNewerVersion('3.1.2', '3.1.2') === false, '3.1.2 is NOT newer than 3.1.2');
-    assert(isNewerVersion('3.1.1', '3.1.2') === false, '3.1.1 is NOT newer than 3.1.2');
-    assert(isNewerVersion('2.9.9', '3.1.2') === false, '2.9.9 is NOT newer than 3.1.2');
-    assert(isNewerVersion('v3.1.3', '3.1.2') === true, 'v3.1.3 prefix handled cleanly');
-    assert(isNewerVersion('3.1.3-beta.1', '3.1.2') === true, 'pre-release tags stripped correctly');
-    assert(isNewerVersion('invalid', '3.1.2') === false, 'invalid remote version returns false safely');
-    assert(isNewerVersion('', '3.1.2') === false, 'empty remote version returns false safely');
+    assert(isNewerVersion('3.2.0', '3.2.0') === false, '3.2.0 is NOT newer than 3.2.0');
+    assert(isNewerVersion('3.1.9', '3.2.0') === false, '3.1.9 is NOT newer than 3.2.0');
+    assert(isNewerVersion('2.9.9', '3.2.0') === false, '2.9.9 is NOT newer than 3.2.0');
+    assert(isNewerVersion('v3.2.1', '3.2.0') === true, 'v3.2.1 prefix handled cleanly');
+    assert(isNewerVersion('3.2.1-beta.1', '3.2.0') === true, 'pre-release tags stripped correctly');
+    assert(isNewerVersion('invalid', '3.2.0') === false, 'invalid remote version returns false safely');
+    assert(isNewerVersion('', '3.2.0') === false, 'empty remote version returns false safely');
 
     // 2.2 AppUpdateService UpdateState resilience
     memoryStore['@lumen_update_state'] = 'null';
@@ -193,9 +193,9 @@ async function runAllChallengerProbes() {
     assert(typeof state === 'object' && state !== null, 'getUpdateState returns object on invalid json');
 
     // 2.3 Ignore version lifecycle
-    await AppUpdateService.ignoreVersion('3.1.5');
+    await AppUpdateService.ignoreVersion('3.3.0');
     state = await AppUpdateService.getUpdateState();
-    assert(state.ignoredVersion === '3.1.5', 'ignoredVersion correctly persisted');
+    assert(state.ignoredVersion === '3.3.0', 'ignoredVersion correctly persisted');
 
     // 2.4 Mock fetch simulation: 500 error, 404, 403, network abort
     const originalFetch = (globalThis as any).fetch;
@@ -236,24 +236,24 @@ async function runAllChallengerProbes() {
     (globalThis as any).fetch = async () => ({
       ok: true,
       json: async () => ({
-        tag_name: 'v3.2.0',
-        name: 'Lumen v3.2.0 Release',
+        tag_name: 'v3.3.0',
+        name: 'Lumen v3.3.0 Release',
         body: 'Awesome new features',
-        html_url: 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.2.0',
+        html_url: 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.3.0',
         assets: [
           { name: 'source.zip', browser_download_url: 'https://example.com/source.zip' },
-          { name: 'lumen-v3.2.0.apk', browser_download_url: 'https://example.com/lumen.apk' }
+          { name: 'lumen-v3.3.0.apk', browser_download_url: 'https://example.com/lumen.apk' }
         ]
       })
     });
 
     const checkSuccess = await AppUpdateService.checkForUpdates(true);
-    assert(checkSuccess !== null && checkSuccess.hasUpdate === true, 'checkForUpdates detects newer v3.2.0 release');
-    assert(checkSuccess?.latestVersion === '3.2.0', 'latestVersion parsed correctly');
+    assert(checkSuccess !== null && checkSuccess.hasUpdate === true, 'checkForUpdates detects newer v3.3.0 release');
+    assert(checkSuccess?.latestVersion === '3.3.0', 'latestVersion parsed correctly');
     assert(checkSuccess?.downloadUrl === 'https://example.com/lumen.apk', 'APK asset URL extracted correctly');
 
     // 2.5 Ignored version logic
-    await AppUpdateService.ignoreVersion('3.2.0');
+    await AppUpdateService.ignoreVersion('3.3.0');
     const checkIgnored = await AppUpdateService.checkForUpdates(false);
     assert(checkIgnored === null, 'checkForUpdates returns null for ignored version on auto check');
 

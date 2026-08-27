@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -269,7 +270,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
   const safeSubjects = Array.isArray(subjects) ? subjects : [];
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header Actions - Asymmetric Dual-Zone layout clear of notch/camera */}
       <View style={styles.header}>
         <View style={{ flex: 1, paddingRight: 8 }}>
@@ -777,7 +778,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 };
 

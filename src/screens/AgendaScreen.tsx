@@ -178,13 +178,14 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
 
   // Find urgent exams in the next 7 days
   const upcomingExams = useMemo(() => {
-    return events.filter(e => {
-      if (e.category !== 'Provas/Trabalhos') return false;
+    const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+    return safeEvents.filter(e => {
+      if (!e || e.category !== 'Provas/Trabalhos' || !e.date) return false;
       const evtDate = new Date(e.date + 'T12:00:00');
       const todayDate = new Date(todayStr + 'T12:00:00');
       const diffDays = (evtDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24);
       return diffDays >= 0 && diffDays <= 7;
-    }).sort((a, b) => a.date.localeCompare(b.date));
+    }).sort((a, b) => String(a?.date || '').localeCompare(String(b?.date || '')));
   }, [events, todayStr]);
 
   const nextUrgentExam = upcomingExams[0];

@@ -21,15 +21,19 @@ export class AppUpdateService {
 
   /**
    * Retrieves stored update state (last checked timestamp and ignored version).
+   * Guaranteed to return a valid object, even when storage holds "null", corrupted strings, or empty data.
    */
   public static async getUpdateState(): Promise<AppUpdateState> {
     try {
       const raw = await AsyncStorage.getItem(UPDATE_STATE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
+      if (raw && typeof raw === 'string' && raw.trim().length > 0) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as AppUpdateState;
+        }
       }
     } catch {
-      // Ignore read errors
+      // Ignore read and parse errors safely
     }
     return {};
   }
@@ -40,7 +44,9 @@ export class AppUpdateService {
   public static async saveUpdateState(state: Partial<AppUpdateState>): Promise<void> {
     try {
       const current = await this.getUpdateState();
-      const merged = { ...current, ...state };
+      const safeCurrent = (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
+      const safeState = (state && typeof state === 'object' && !Array.isArray(state)) ? state : {};
+      const merged: AppUpdateState = { ...safeCurrent, ...safeState };
       await AsyncStorage.setItem(UPDATE_STATE_KEY, JSON.stringify(merged));
     } catch {
       // Ignore write errors
@@ -52,12 +58,13 @@ export class AppUpdateService {
    * @param force When true, bypasses automatic throttle interval.
    */
   public static async checkForUpdates(force: boolean = false): Promise<AppUpdateInfo | null> {
+    let timeoutId: any = null;
     try {
       const state = await this.getUpdateState();
       const now = Date.now();
 
       // Skip if checked recently unless forced
-      if (!force && state.lastCheckedAt && now - state.lastCheckedAt < AUTO_CHECK_INTERVAL_MS) {
+      if (!force && state?.lastCheckedAt && (now - state.lastCheckedAt) < AUTO_CHECK_INTERVAL_MS) {
         return null;
       }
 
@@ -65,7 +72,7 @@ export class AppUpdateService {
       await this.saveUpdateState({ lastCheckedAt: now });
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch(GITHUB_RELEASES_URL, {
         method: 'GET',
@@ -76,14 +83,12 @@ export class AppUpdateService {
         signal: controller.signal
       });
 
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
         return null;
       }
 
       const release = await response.json();
-      if (!release || typeof release !== 'object' || !release.tag_name) {
+      if (!release || typeof release !== 'object' || !release.tag_name || typeof release.tag_name !== 'string') {
         return null;
       }
 
@@ -97,22 +102,22 @@ export class AppUpdateService {
           hasUpdate: false,
           currentVersion: APP_VERSION,
           latestVersion: latestVersion,
-          downloadUrl: release.html_url || ''
+          downloadUrl: typeof release.html_url === 'string' ? release.html_url : ''
         };
       }
 
       // Check if user chose to ignore this specific version (unless manual force check)
-      if (!force && state.ignoredVersion === latestVersion) {
+      if (!force && state?.ignoredVersion === latestVersion) {
         return null;
       }
 
       // Locate .apk asset in release assets
-      let apkDownloadUrl = release.html_url || '';
+      let apkDownloadUrl = typeof release.html_url === 'string' ? release.html_url : '';
       if (Array.isArray(release.assets)) {
         const apkAsset = release.assets.find((asset: any) =>
-          typeof asset.name === 'string' && asset.name.toLowerCase().endsWith('.apk')
+          asset && typeof asset.name === 'string' && asset.name.toLowerCase().endsWith('.apk')
         );
-        if (apkAsset && apkAsset.browser_download_url) {
+        if (apkAsset && typeof apkAsset.browser_download_url === 'string') {
           apkDownloadUrl = apkAsset.browser_download_url;
         }
       }
@@ -121,15 +126,19 @@ export class AppUpdateService {
         hasUpdate: true,
         currentVersion: APP_VERSION,
         latestVersion: latestVersion,
-        releaseName: release.name || `Lumen v${latestVersion}`,
-        releaseNotes: release.body || 'Melhorias de estabilidade, desempenho e correções visuais.',
+        releaseName: typeof release.name === 'string' ? release.name : `Lumen v${latestVersion}`,
+        releaseNotes: typeof release.body === 'string' ? release.body : 'Melhorias de estabilidade, desempenho e correções visuais.',
         downloadUrl: apkDownloadUrl,
-        publishedAt: release.published_at,
+        publishedAt: typeof release.published_at === 'string' ? release.published_at : undefined,
         isMandatory: false
       };
     } catch (error) {
       // Network drops or offline states are handled silently
       return null;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 
@@ -138,7 +147,7 @@ export class AppUpdateService {
    */
   public static async openDownloadUrl(url: string): Promise<boolean> {
     try {
-      if (!url) return false;
+      if (!url || typeof url !== 'string' || url.trim().length === 0) return false;
       const supported = await Linking.canOpenURL(url);
       if (supported) {
         await Linking.openURL(url);
@@ -154,6 +163,8 @@ export class AppUpdateService {
    * Sets a version to be ignored on automatic checks until the next release.
    */
   public static async ignoreVersion(version: string): Promise<void> {
-    await this.saveUpdateState({ ignoredVersion: version });
+    if (version && typeof version === 'string') {
+      await this.saveUpdateState({ ignoredVersion: version });
+    }
   }
 }

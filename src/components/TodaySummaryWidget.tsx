@@ -34,14 +34,19 @@ export const TodaySummaryWidget: React.FC<Props> = ({
   const todayStr = getLocalDateString(now);
   const isToday = selectedDate === todayStr;
 
+  const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+  const safeSubjects = Array.isArray(subjects) ? subjects.filter(Boolean) : [];
+  const safeSelectedDate = typeof selectedDate === 'string' && selectedDate.trim() ? selectedDate : todayStr;
+
   // Filter today's events sorted by startTime
-  const todayEvents = events
+  const todayEvents = safeEvents
     .filter(e => {
-      if (e.date === selectedDate) return true;
+      if (!e) return false;
+      if (e.date === safeSelectedDate) return true;
       if (e.recurrence === 'weekly') {
-        if (e.date && selectedDate < e.date) return false;
-        const dayOfWeek = new Date(selectedDate + 'T12:00:00').getDay();
-        if (e.recurrenceDays && e.recurrenceDays.length > 0) {
+        if (e.date && safeSelectedDate < e.date) return false;
+        const dayOfWeek = new Date(safeSelectedDate + 'T12:00:00').getDay();
+        if (Array.isArray(e.recurrenceDays) && e.recurrenceDays.length > 0) {
           return e.recurrenceDays.includes(dayOfWeek);
         }
         if (e.date) {
@@ -52,9 +57,9 @@ export const TodaySummaryWidget: React.FC<Props> = ({
       return false;
     })
     .sort((a, b) => {
-      const [ah, am] = (a.startTime || '00:00').split(':').map(Number);
-      const [bh, bm] = (b.startTime || '00:00').split(':').map(Number);
-      return (ah * 60 + am) - (bh * 60 + bm);
+      const [ah, am] = String(a?.startTime || '00:00').split(':').map(Number);
+      const [bh, bm] = String(b?.startTime || '00:00').split(':').map(Number);
+      return ((ah || 0) * 60 + (am || 0)) - ((bh || 0) * 60 + (bm || 0));
     });
 
   // Find active or next upcoming class/event
@@ -63,10 +68,10 @@ export const TodaySummaryWidget: React.FC<Props> = ({
   let minutesUntilNext: number | null = null;
 
   for (const evt of todayEvents) {
-    const [sh, sm] = (evt.startTime || '00:00').split(':').map(Number);
-    const [eh, em] = (evt.endTime || '23:59').split(':').map(Number);
-    const startMins = sh * 60 + sm;
-    const endMins = eh * 60 + em;
+    const [sh, sm] = String(evt.startTime || '00:00').split(':').map(Number);
+    const [eh, em] = String(evt.endTime || '23:59').split(':').map(Number);
+    const startMins = (sh || 0) * 60 + (sm || 0);
+    const endMins = (eh || 0) * 60 + (em || 0);
 
     if (isToday) {
       if (currentMinutes >= startMins && currentMinutes <= endMins) {
@@ -85,16 +90,16 @@ export const TodaySummaryWidget: React.FC<Props> = ({
   }
 
   const featuredEvent = activeEvent || nextEvent;
-  const featuredSubject = featuredEvent ? subjects.find(s => s.id === featuredEvent.subjectId) : null;
+  const featuredSubject = featuredEvent ? safeSubjects.find(s => s.id === featuredEvent.subjectId) : null;
 
   // Find exams or homework in the next 7 days
-  const upcomingExams = events.filter(e => {
-    if (e.category !== 'Provas/Trabalhos') return false;
+  const upcomingExams = safeEvents.filter(e => {
+    if (!e || e.category !== 'Provas/Trabalhos' || !e.date) return false;
     const evtDate = new Date(e.date + 'T12:00:00');
     const todayDate = new Date(todayStr + 'T12:00:00');
     const diffDays = (evtDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24);
     return diffDays >= 0 && diffDays <= 7;
-  }).sort((a, b) => a.date.localeCompare(b.date));
+  }).sort((a, b) => String(a?.date || '').localeCompare(String(b?.date || '')));
 
   const nextUrgentExam = upcomingExams[0];
 
@@ -116,7 +121,7 @@ export const TodaySummaryWidget: React.FC<Props> = ({
           <View style={{ marginLeft: 10 }}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Resumo Inteligente</Text>
             <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-              {isToday ? 'Hoje' : selectedDate.split('-').reverse().join('/')} • {todayEvents.length} compromisso{todayEvents.length !== 1 ? 's' : ''}
+              {isToday ? 'Hoje' : (safeSelectedDate ? safeSelectedDate.split('-').reverse().join('/') : '')} • {todayEvents.length} compromisso{todayEvents.length !== 1 ? 's' : ''}
             </Text>
           </View>
         </View>
@@ -197,7 +202,7 @@ export const TodaySummaryWidget: React.FC<Props> = ({
                     {nextUrgentExam.title}
                   </Text>
                   <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>
-                    📅 Dia {nextUrgentExam.date.split('-').reverse().join('/')} às {nextUrgentExam.startTime}
+                    📅 Dia {nextUrgentExam?.date ? nextUrgentExam.date.split('-').reverse().join('/') : ''} às {nextUrgentExam?.startTime || ''}
                   </Text>
                 </View>
               </View>

@@ -24,6 +24,10 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
     onUpdateStatus(id, status);
   };
 
+  const safePending = Array.isArray(pendingAttendances) ? pendingAttendances.filter(Boolean) : [];
+  const safeSubjects = Array.isArray(subjects) ? subjects.filter(Boolean) : [];
+  const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
@@ -39,9 +43,9 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
             Você tem aulas passadas sem registro de presença. Atualize seu status para manter o histórico preciso:
           </Text>
 
-          {pendingAttendances.map(att => {
-            const subject = subjects.find(s => s.id === att.subjectId);
-            const event = events.find(e => e.id === att.eventId);
+          {safePending.map(att => {
+            const subject = safeSubjects.find(s => s.id === att.subjectId);
+            const event = safeEvents.find(e => e.id === att.eventId);
             if (!subject || !event) return null;
 
             return (
@@ -55,7 +59,7 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
                   </View>
                   <View style={[styles.dateBadge, { backgroundColor: colors.surfaceSubtle }]}>
                     <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
-                      📅 {att.date.split('-').reverse().join('/')} • {event.startTime} - {event.endTime}
+                      📅 {att.date ? att.date.split('-').reverse().join('/') : ''} • {event.startTime || ''} - {event.endTime || ''}
                     </Text>
                   </View>
                 </View>

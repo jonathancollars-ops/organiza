@@ -55,11 +55,14 @@ export const GroupProjectsModal: React.FC<Props> = ({
     }
   }, [visible]);
 
+  const safeSubjects = Array.isArray(subjects) ? subjects.filter(Boolean) : [];
+
   const loadProjects = async () => {
     const data = await StorageService.getGroupProjects();
-    setProjects(data);
+    const safeData = Array.isArray(data) ? data.filter(Boolean) : [];
+    setProjects(safeData);
     if (selectedProject) {
-      const refreshed = data.find(p => p.id === selectedProject.id);
+      const refreshed = safeData.find(p => p.id === selectedProject.id);
       setSelectedProject(refreshed || null);
     }
   };
@@ -114,9 +117,10 @@ export const GroupProjectsModal: React.FC<Props> = ({
       status: 'todo',
     };
 
+    const currentTasks = Array.isArray(selectedProject.tasks) ? selectedProject.tasks : [];
     const updatedProject: GroupProject = {
       ...selectedProject,
-      tasks: [...selectedProject.tasks, newTask],
+      tasks: [...currentTasks, newTask],
     };
 
     const updatedProjects = projects.map(p => p.id === selectedProject.id ? updatedProject : p);
@@ -136,7 +140,8 @@ export const GroupProjectsModal: React.FC<Props> = ({
     const nextStatus: 'todo' | 'doing' | 'done' =
       currentStatus === 'todo' ? 'doing' : currentStatus === 'doing' ? 'done' : 'todo';
 
-    const updatedTasks = selectedProject.tasks.map(t =>
+    const currentTasks = Array.isArray(selectedProject.tasks) ? selectedProject.tasks : [];
+    const updatedTasks = currentTasks.map(t =>
       t.id === taskId ? { ...t, status: nextStatus } : t
     );
 
@@ -161,7 +166,8 @@ export const GroupProjectsModal: React.FC<Props> = ({
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
 
-    const updatedTasks = selectedProject.tasks.filter(t => t.id !== taskId);
+    const currentTasks = Array.isArray(selectedProject.tasks) ? selectedProject.tasks : [];
+    const updatedTasks = currentTasks.filter(t => t.id !== taskId);
     const updatedProject: GroupProject = {
       ...selectedProject,
       tasks: updatedTasks,
@@ -255,9 +261,10 @@ export const GroupProjectsModal: React.FC<Props> = ({
               </View>
             ) : (
               projects.map(proj => {
-                const sub = subjects.find(s => s.id === proj.subjectId);
-                const totalTasks = proj.tasks.length;
-                const doneTasks = proj.tasks.filter(t => t.status === 'done').length;
+                const sub = safeSubjects.find(s => s.id === proj.subjectId);
+                const projTasks = Array.isArray(proj.tasks) ? proj.tasks.filter(Boolean) : [];
+                const totalTasks = projTasks.length;
+                const doneTasks = projTasks.filter(t => t.status === 'done').length;
                 const percent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
                 const subColor = sub?.color || colors.primary;
 
@@ -304,10 +311,10 @@ export const GroupProjectsModal: React.FC<Props> = ({
                     {/* Footer Info */}
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
                       <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                        👥 {proj.members.join(', ')}
+                        👥 {Array.isArray(proj.members) ? proj.members.join(', ') : ''}
                       </Text>
                       <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
-                        📅 Entrega: {proj.deadline.split('-').reverse().join('/')}
+                        📅 Entrega: {proj.deadline ? proj.deadline.split('-').reverse().join('/') : ''}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -331,7 +338,7 @@ export const GroupProjectsModal: React.FC<Props> = ({
 
                 <Text style={styles.inputLabel}>Matéria</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                  {subjects.map(sub => {
+                  {safeSubjects.map(sub => {
                     const isSelected = newSubjectId === sub.id;
                     return (
                       <TouchableOpacity
@@ -403,14 +410,14 @@ export const GroupProjectsModal: React.FC<Props> = ({
                 <Text style={[styles.detailsTitle, { color: colors.text }]}>{selectedProject.title}</Text>
                 <View style={[styles.deadlineBadge, { backgroundColor: colors.primaryLight }]}>
                   <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>
-                    📅 {selectedProject.deadline.split('-').reverse().join('/')}
+                    📅 {selectedProject.deadline ? selectedProject.deadline.split('-').reverse().join('/') : ''}
                   </Text>
                 </View>
               </View>
 
               {/* Members Avatars */}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                {selectedProject.members.map(member => (
+                {(Array.isArray(selectedProject.members) ? selectedProject.members : []).map(member => (
                   <View key={member} style={[styles.memberBadge, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>👤 {member}</Text>
                   </View>
@@ -422,7 +429,9 @@ export const GroupProjectsModal: React.FC<Props> = ({
             <TouchableOpacity
               style={[styles.addTaskBtn, { backgroundColor: colors.surface, borderColor: colors.primary }]}
               onPress={() => {
-                if (selectedProject.members.length > 0) setNewTaskAssignee(selectedProject.members[0]);
+                if (Array.isArray(selectedProject.members) && selectedProject.members.length > 0) {
+                  setNewTaskAssignee(selectedProject.members[0]);
+                }
                 setShowAddTask(!showAddTask);
               }}
               activeOpacity={0.8}
@@ -447,7 +456,7 @@ export const GroupProjectsModal: React.FC<Props> = ({
 
                 <Text style={styles.inputLabel}>Responsável:</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                  {selectedProject.members.map(m => {
+                  {(Array.isArray(selectedProject.members) ? selectedProject.members : []).map(m => {
                     const isSelected = newTaskAssignee === m;
                     return (
                       <TouchableOpacity
@@ -485,7 +494,8 @@ export const GroupProjectsModal: React.FC<Props> = ({
 
             {/* 3 Kanban Columns */}
             {(['todo', 'doing', 'done'] as const).map(columnStatus => {
-              const columnTasks = selectedProject.tasks.filter(t => t.status === columnStatus);
+              const projectTasks = Array.isArray(selectedProject.tasks) ? selectedProject.tasks.filter(Boolean) : [];
+              const columnTasks = projectTasks.filter(t => t.status === columnStatus);
               const columnLabel =
                 columnStatus === 'todo' ? '📌 A Fazer' : columnStatus === 'doing' ? '⏳ Em Andamento' : '✅ Concluído';
               const columnColor =

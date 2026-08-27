@@ -66,24 +66,24 @@ export const SettingsModal: React.FC<Props> = ({
   const [backupJsonText, setBackupJsonText] = useState('');
   const [isExporting, setIsExporting] = useState(false);
 
-  // Settings local state
-  const [fullscreen, setFullscreen] = useState(settings.fullscreen === true);
-  const [focusMin, setFocusMin] = useState(settings.pomodoroFocusMin.toString());
-  const [breakMin, setBreakMin] = useState(settings.pomodoroBreakMin.toString());
-  const [passGrade, setPassGrade] = useState(settings.defaultPassGrade.toString());
-  const [soundEnabled, setSoundEnabled] = useState(settings.soundEnabled);
-  const [hapticsEnabled, setHapticsEnabled] = useState(settings.hapticsEnabled);
-  const [examWeekMode, setExamWeekMode] = useState(settings.examWeekMode);
+  // Settings local state with defensive null-coalescing
+  const [fullscreen, setFullscreen] = useState(settings?.fullscreen === true);
+  const [focusMin, setFocusMin] = useState((settings?.pomodoroFocusMin ?? 25).toString());
+  const [breakMin, setBreakMin] = useState((settings?.pomodoroBreakMin ?? 5).toString());
+  const [passGrade, setPassGrade] = useState((settings?.defaultPassGrade ?? 7.0).toString());
+  const [soundEnabled, setSoundEnabled] = useState(settings?.soundEnabled ?? true);
+  const [hapticsEnabled, setHapticsEnabled] = useState(settings?.hapticsEnabled ?? true);
+  const [examWeekMode, setExamWeekMode] = useState(settings?.examWeekMode ?? false);
 
   React.useEffect(() => {
     if (visible) {
-      setFullscreen(settings.fullscreen === true);
-      setFocusMin(settings.pomodoroFocusMin.toString());
-      setBreakMin(settings.pomodoroBreakMin.toString());
-      setPassGrade(settings.defaultPassGrade.toString());
-      setSoundEnabled(settings.soundEnabled);
-      setHapticsEnabled(settings.hapticsEnabled);
-      setExamWeekMode(settings.examWeekMode);
+      setFullscreen(settings?.fullscreen === true);
+      setFocusMin((settings?.pomodoroFocusMin ?? 25).toString());
+      setBreakMin((settings?.pomodoroBreakMin ?? 5).toString());
+      setPassGrade((settings?.defaultPassGrade ?? 7.0).toString());
+      setSoundEnabled(settings?.soundEnabled ?? true);
+      setHapticsEnabled(settings?.hapticsEnabled ?? true);
+      setExamWeekMode(settings?.examWeekMode ?? false);
       setBackupJsonText('');
       loadAIData();
     }
@@ -133,16 +133,18 @@ export const SettingsModal: React.FC<Props> = ({
     Alert.alert('Sucesso', 'Configurações salvas com sucesso!');
   };
 
+  const safeSemesters = Array.isArray(semesters) ? semesters : [];
+
   const handleAddSemester = () => {
     if (!newSemesterName.trim()) return;
     Haptics.selectionAsync();
     const newSem: Semester = {
       id: generateId('sem'),
       name: newSemesterName.trim(),
-      isCurrent: semesters.length === 0,
+      isCurrent: safeSemesters.length === 0,
       isArchived: false,
     };
-    const updated = [...semesters, newSem];
+    const updated = [...safeSemesters, newSem];
     onUpdateSemesters(updated);
     StorageService.saveSemesters(updated);
     setNewSemesterName('');
@@ -150,7 +152,7 @@ export const SettingsModal: React.FC<Props> = ({
 
   const toggleCurrentSemester = (semId: string) => {
     Haptics.selectionAsync();
-    const updated = semesters.map(s => ({
+    const updated = safeSemesters.map(s => ({
       ...s,
       isCurrent: s.id === semId
     }));
@@ -160,7 +162,7 @@ export const SettingsModal: React.FC<Props> = ({
 
   const toggleArchiveSemester = (semId: string) => {
     Haptics.selectionAsync();
-    const updated = semesters.map(s => s.id === semId ? { ...s, isArchived: !s.isArchived } : s);
+    const updated = safeSemesters.map(s => s.id === semId ? { ...s, isArchived: !s.isArchived } : s);
     onUpdateSemesters(updated);
     StorageService.saveSemesters(updated);
   };
@@ -173,7 +175,7 @@ export const SettingsModal: React.FC<Props> = ({
         style: 'destructive',
         onPress: () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          const updated = semesters.filter(s => s.id !== semId);
+          const updated = safeSemesters.filter(s => s.id !== semId);
           onUpdateSemesters(updated);
           StorageService.saveSemesters(updated);
         }
@@ -455,7 +457,7 @@ export const SettingsModal: React.FC<Props> = ({
               </View>
 
               {/* Semester list */}
-              {semesters.length === 0 ? (
+              {safeSemesters.length === 0 ? (
                 <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, alignItems: 'center', padding: 25 }]}>
                   <Text style={{ fontSize: 32, marginBottom: 8 }}>🎓</Text>
                   <Text style={{ color: colors.textSecondary, textAlign: 'center', fontWeight: '500' }}>
@@ -463,7 +465,7 @@ export const SettingsModal: React.FC<Props> = ({
                   </Text>
                 </View>
               ) : (
-                semesters.map(sem => (
+                safeSemesters.map(sem => (
                   <View
                     key={sem.id}
                     style={[

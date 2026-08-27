@@ -47,7 +47,7 @@ export const StudyScreen: React.FC<Props> = ({
   const [gamification, setGamification] = useState<GamificationData | null>(null);
   
   // Pomodoro State
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(subjects.length > 0 ? subjects[0].id : null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(Array.isArray(subjects) && subjects.length > 0 ? subjects[0].id : null);
   const [activeFocusMinutes, setActiveFocusMinutes] = useState<number>(focusMinutesDefault);
   const [timeLeft, setTimeLeft] = useState(focusMinutesDefault * 60);
   const [isActive, setIsActive] = useState(false);
@@ -56,7 +56,7 @@ export const StudyScreen: React.FC<Props> = ({
   // Stopwatch (Cronômetro Livre) State
   const [stopwatchSeconds, setStopwatchSeconds] = useState(0);
   const [isStopwatchRunning, setIsStopwatchRunning] = useState(false);
-  const [stopwatchSubjectId, setStopwatchSubjectId] = useState<string | null>(subjects.length > 0 ? subjects[0].id : null);
+  const [stopwatchSubjectId, setStopwatchSubjectId] = useState<string | null>(Array.isArray(subjects) && subjects.length > 0 ? subjects[0].id : null);
 
   // Banner/Toast message instead of browser alert
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'warning' } | null>(null);

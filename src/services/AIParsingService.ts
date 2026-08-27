@@ -117,6 +117,115 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
   }
 
   /**
+   * Envia um arquivo PDF/Imagem (base64) para a API do Gemini para extrair grade ou histórico acadêmico.
+   */
+  static async parseAcademicDocument(
+    base64Data: string,
+    mimeType: string,
+    mode: 'transcript' | 'curriculum',
+    aiConfig: AIConfig
+  ): Promise<any> {
+    if (!aiConfig || !aiConfig.apiKey || aiConfig.apiKey.trim() === '') {
+      throw new Error('A leitura de PDFs e Imagens requer que a Chave de API do Lumen AI (Gemini) esteja configurada.');
+    }
+
+    if (aiConfig.provider !== 'gemini') {
+      throw new Error('No momento, o processamento de documentos suporta apenas o Google Gemini como provedor.');
+    }
+
+    const selectedModel = aiConfig.model?.trim() || 'gemini-1.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${aiConfig.apiKey.trim()}`;
+
+    let systemPrompt = '';
+    if (mode === 'transcript') {
+      systemPrompt = `Você é o assistente acadêmico do aplicativo Lumen.
+Analise este histórico escolar/boletim acadêmico em anexo.
+Identifique o Coeficiente de Rendimento (CR / IRA / Média Geral) acumulado e todas as matérias em que o aluno foi aprovado ou dispensado (ou que tenham nota >= 5.0).
+Retorne UM JSON estrito contendo:
+{
+  "baselineCR": 7.5,
+  "approvedSubjects": [
+    { "name": "Cálculo 1", "grade": 8.5, "isCompleted": true, "credits": 4 }
+  ]
+}
+Se não encontrar o CR, deixe baselineCR como null.
+Retorne APENAS o JSON, sem markdown extra.`;
+    } else {
+      systemPrompt = `Você é o assistente acadêmico do aplicativo Lumen.
+Analise este fluxograma ou matriz curricular em anexo.
+Identifique a estrutura do curso dividida por semestres (ou períodos) e as respectivas disciplinas.
+Para disciplinas que só mostram carga horária (ex: 60h), divida por 15 para obter os créditos (ex: 60h = 4 créditos). Se não houver, use 4.
+Retorne UM JSON estrito contendo:
+{
+  "semesters": [
+    {
+      "semesterNumber": 1,
+      "title": "1º Semestre",
+      "subjects": [
+        { "name": "Cálculo 1", "credits": 4 }
+      ]
+    }
+  ]
+}
+Retorne APENAS o JSON, sem markdown extra.`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: `Por favor, processe o documento acadêmico em anexo e retorne o JSON estruturado.` },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: base64Data
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: 'application/json'
+        }
+      }),
+      signal: AbortSignal.timeout(30000) // PDFs takes a bit longer
+    });
+
+    if (!response.ok) {
+      const errorJson = await response.json().catch(() => ({}));
+      const errorMsg = errorJson.error?.message || response.statusText;
+      throw new Error(`Google Gemini API erro ao ler documento: ${errorMsg}`);
+    }
+
+    const data = await response.json();
+    let outputText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!outputText) {
+      throw new Error('A IA retornou uma resposta vazia ao processar o documento.');
+    }
+    
+    outputText = outputText.trim();
+    if (outputText.startsWith('```json')) {
+      outputText = outputText.replace(/^```json/, '').replace(/```$/, '').trim();
+    }
+    
+    try {
+      return JSON.parse(outputText);
+    } catch (err) {
+      throw new Error('A IA não retornou um formato JSON válido.');
+    }
+  }
+
+  /**
    * REST call to Google Gemini API with XML delimiter wrapping.
    */
   public static async callGemini(

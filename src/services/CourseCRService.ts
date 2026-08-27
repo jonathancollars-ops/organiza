@@ -606,14 +606,122 @@ export class CourseCRService {
     };
   }
 
+  /**
+   * Aplica o resultado JSON da IA (histórico) na grade existente.
+   */
+  static applyAIParsedTranscript(aiResult: any, existingData?: CourseProgressData): CourseProgressData {
+    const base = (existingData && Array.isArray(existingData.semesters))
+      ? existingData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
+    const updatedSemesters = base.semesters.map(sem => ({
+      ...sem,
+      subjects: [...(sem.subjects || [])]
+    }));
+
+    const approvedSubjects: any[] = Array.isArray(aiResult.approvedSubjects) ? aiResult.approvedSubjects : [];
+    const baselineCR = typeof aiResult.baselineCR === 'number' ? aiResult.baselineCR : base.baselineCR;
+
+    approvedSubjects.forEach(approvedSub => {
+      if (!approvedSub.name) return;
+      
+      const normalizedApprovedName = approvedSub.name.toLowerCase().trim();
+      const approvedWords = normalizedApprovedName.split(' ').filter((w: string) => w.length > 3);
+
+      updatedSemesters.forEach(sem => {
+        sem.subjects.forEach(sub => {
+          const normalizedSubName = sub.name.toLowerCase().trim();
+          const subWords = normalizedSubName.split(' ').filter(w => w.length > 3);
+          
+          let matchCount = 0;
+          for (const w of approvedWords) {
+            if (normalizedSubName.includes(w)) matchCount++;
+          }
+          for (const w of subWords) {
+            if (normalizedApprovedName.includes(w)) matchCount++;
+          }
+          
+          const requiredMatches = Math.min(2, Math.max(subWords.length, approvedWords.length));
+          
+          if (matchCount >= requiredMatches || normalizedApprovedName === normalizedSubName || (sub.code && normalizedApprovedName.includes(sub.code.toLowerCase()))) {
+            sub.isCompleted = true;
+            if (typeof approvedSub.grade === 'number') {
+              sub.grade = approvedSub.grade;
+            }
+          }
+        });
+      });
+    });
+
+    const progress = this.calculateDegreeProgress({ ...base, semesters: updatedSemesters });
+    return {
+      ...base,
+      baselineCR,
+      semesters: updatedSemesters,
+      completedCredits: progress.completedCredits,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Aplica o resultado JSON da IA (fluxograma) como uma nova matriz.
+   */
+  static applyAIParsedCurriculum(aiResult: any, existingData?: CourseProgressData): CourseProgressData {
+    const base = (existingData && Array.isArray(existingData.semesters))
+      ? existingData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
+    const parsedSemesters = Array.isArray(aiResult.semesters) ? aiResult.semesters : [];
+    if (parsedSemesters.length === 0) return base;
+
+    const mappedSemesters: CourseSemester[] = parsedSemesters.map((sem: any, idx: number) => {
+      const num = sem.semesterNumber || idx + 1;
+      const subjects = Array.isArray(sem.subjects) ? sem.subjects.map((sub: any) => {
+        const credits = typeof sub.credits === 'number' ? sub.credits : 4;
+        return {
+          id: generateId('flow'),
+          name: sub.name || 'Disciplina',
+          credits,
+          hours: sub.hours || credits * 15,
+          isCompleted: !!sub.isCompleted,
+          grade: sub.grade
+        } as CourseHistorySubject;
+      }) : [];
+
+      return {
+        semesterNumber: num,
+        title: sem.title || `${num}º Semestre`,
+        subjects
+      };
+    });
+
+    mappedSemesters.sort((a, b) => a.semesterNumber - b.semesterNumber);
+
+    const progress = this.calculateDegreeProgress({ ...base, semesters: mappedSemesters });
+    return {
+      ...base,
+      semesters: mappedSemesters,
+      completedCredits: progress.completedCredits,
+      totalRequiredCredits: progress.totalRequiredCredits,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
   // Persistence helpers
   static async loadCourseProgress(): Promise<CourseProgressData> {
     try {
       const stored = await AsyncStorage.getItem(COURSE_PROGRESS_STORAGE_KEY);
-      if (stored) {
+      if (stored && typeof stored === 'string' && stored.trim().length > 0 && stored.trim() !== 'null' && stored.trim() !== 'undefined') {
         const parsed = JSON.parse(stored);
-        if (parsed && Array.isArray(parsed.semesters) && parsed.semesters.length > 0) {
-          return parsed;
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.semesters) && parsed.semesters.length > 0) {
+          return {
+            ...DEFAULT_CURRICULUM_TEMPLATE,
+            ...parsed,
+            semesters: parsed.semesters.filter(Boolean).map((s: any) => ({
+              ...s,
+              subjects: Array.isArray(s.subjects) ? s.subjects.filter(Boolean) : []
+            }))
+          };
         }
       }
     } catch (e) {

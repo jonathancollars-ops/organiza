@@ -48,15 +48,32 @@ export const mockReactNativeCalendars = {
 const origRequire = Module.prototype.require;
 
 export const mockSecureStore: Record<string, string> = {};
+export const mockSecureStoreImpl = {
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: 1,
+  setItemAsync: async (k: string, v: string) => { mockSecureStore[k] = v; },
+  getItemAsync: async (k: string) => mockSecureStore[k] ?? null,
+  deleteItemAsync: async (k: string) => { delete mockSecureStore[k]; },
+};
+
+export const mockNotifications = {
+  setNotificationHandler: () => {},
+  setNotificationChannelAsync: async () => {},
+  getPermissionsAsync: async () => ({ status: 'granted' }),
+  requestPermissionsAsync: async () => ({ status: 'granted' }),
+  scheduleNotificationAsync: async () => 'mock_notif_id',
+  getAllScheduledNotificationsAsync: async () => [],
+  cancelScheduledNotificationAsync: async () => {},
+  AndroidImportance: { MAX: 5 },
+  SchedulableTriggerInputTypes: {
+    DAILY: 'daily',
+    WEEKLY: 'weekly',
+    DATE: 'date',
+  },
+};
 
 Module.prototype.require = function (id: string) {
   if (id === 'expo-secure-store') {
-    return {
-      WHEN_UNLOCKED_THIS_DEVICE_ONLY: 1,
-      setItemAsync: async (k: string, v: string) => { mockSecureStore[k] = v; },
-      getItemAsync: async (k: string) => mockSecureStore[k] ?? null,
-      deleteItemAsync: async (k: string) => { delete mockSecureStore[k]; },
-    };
+    return mockSecureStoreImpl;
   }
   if (id === '@react-native-async-storage/async-storage') {
     return { default: mockAsyncStorage, ...mockAsyncStorage };
@@ -68,21 +85,7 @@ Module.prototype.require = function (id: string) {
     return mockReactNativeCalendars;
   }
   if (id === 'expo-notifications') {
-    return {
-      setNotificationHandler: () => {},
-      setNotificationChannelAsync: async () => {},
-      getPermissionsAsync: async () => ({ status: 'granted' }),
-      requestPermissionsAsync: async () => ({ status: 'granted' }),
-      scheduleNotificationAsync: async () => 'mock_notif_id',
-      getAllScheduledNotificationsAsync: async () => [],
-      cancelScheduledNotificationAsync: async () => {},
-      AndroidImportance: { MAX: 5 },
-      SchedulableTriggerInputTypes: {
-        DAILY: 'daily',
-        WEEKLY: 'weekly',
-        DATE: 'date',
-      },
-    };
+    return mockNotifications;
   }
   if (id === 'expo-haptics') {
     return {

@@ -13,6 +13,32 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 
 ---
 
+## [3.2.0] - 2026-08-27
+### ✨ Novo Recurso (Features)
+- **Extração de Dados via PDF e Imagens com IA:** Agora a tela de Desempenho & Curso permite carregar históricos escolares e fluxogramas diretamente em PDF ou Imagens (`expo-document-picker`). A IA do Gemini mapeia os documentos e cria a grade curricular e matérias cursadas magicamente.
+
+---
+
+## [3.1.3] - 2026-08-26
+### 🛡️ Blindagem de Inicialização & Deserialização no AsyncStorage (Cold Start Firewall)
+- **Firewall de Deserialização Segura (`safeParseArray` & `safeParseObject`):** Blindagem completa de todos os métodos do `StorageService` contra payloads corrompidos, strings literais `"null"`, `"undefined"`, números ou JSON malformado.
+- **Eliminação Definitiva de Null-Pointers na Montagem:** Garantia de retorno de arrays e objetos tipados não-nulos em todos os 11 repositórios de dados (`getEvents`, `getSubjects`, `getAttendances`, `getTasks`, `getStudySessions`, `getSemesters`, `getSettings`, `getStreak`, `getAACCActivities`, `getGroupProjects`, `getGamificationData`), eliminando erros de `TypeError: Cannot read properties of null (reading 'filter')` no `App.tsx` e `AttendanceService`.
+
+### 🔒 Blindagem de Ciclo de Vida & Tolerância a Falhas de Permissão do SO
+- **Resiliência a Negação de Notificações no Android 13+:** Tratamento gracioso de recusas de permissão (`POST_NOTIFICATIONS`), alarmes exatos (`SCHEDULE_EXACT_ALARM`) e canais de notificação no `NotificationService.requestPermissions()` e `scheduleEventNotifications()`, garantindo que o app nunca dispare exceções não tratadas ao agendar alertas.
+- **Cofre Seguro de Dois Níveis (SecureStore & In-Memory Vault):** Proteção de credenciais confidenciais com fallback automático para cofre seguro em memória (`inMemorySecureVault`) caso o hardware Keystore do dispositivo falhe ou esteja indisponível.
+- **Migração Automática de Chaves Legadas:** Migração transparente de chaves de API do Google Gemini armazenadas em texto plano no `@organiza_ai_config` para o `expo-secure-store`, higienizando o armazenamento não criptografado.
+
+### 🌟 Elegância em Primeira Instalação (Zero Data Bootstrap)
+- **Inicialização Limpa Sem Exceções:** Telas de Agenda, Desempenho Acadêmico, Faltas, Notas e Estudos inicializam com estados visuais elegantes e cards informativos na ausência total de dados prévios.
+- **Auto-Provisionamento de Semestre Ativo:** Criação automática do semestre corrente (ex: `2026.2`) e matriz curricular padrão de graduação no `CourseCRService` em boots de primeira instalação.
+
+### 🧪 Bateria de Testes Automatizados & Cobertura Adversarial Expandida
+- **Nova Suíte de Testes Dedicada (`test/lifecycle_and_permissions.test.ts`):** 64 novas asserções cobrindo cenários adversos de negação de permissões do SO, falha de hardware Keystore, simulação de boot limpo com dados zerados, migração de esquema legado e timeout com abort controller no `AppUpdateService`.
+- **100% de Aprovação em 27 Suítes de Testes:** Mais de 900 asserções executadas com 0 falhas e verificação estrita de tipos com `npx tsc --noEmit` (0 erros).
+
+---
+
 ## [3.1.2] - 2026-08-25
 ### 🛡️ Corrigido (Bug Fixes & Inicialização)
 - **Correção de Crash na Inicialização:** Removida chamada de hook de Safe Area fora do escopo do provedor e encapsulado o componente raiz no `<SafeAreaProvider>`.

@@ -60,7 +60,7 @@ export const AnalyticsAndAACCModal: React.FC<Props> = ({
 
   const loadAACCData = async () => {
     const data = await StorageService.getAACCActivities();
-    setAaccList(data);
+    setAaccList(Array.isArray(data) ? data.filter(Boolean) : []);
   };
 
   const handleAddAACC = async () => {
@@ -113,19 +113,24 @@ export const AnalyticsAndAACCModal: React.FC<Props> = ({
     ]);
   };
 
+  const safeSubjects = Array.isArray(subjects) ? subjects.filter(Boolean) : [];
+  const safeStudySessions = Array.isArray(studySessions) ? studySessions.filter(Boolean) : [];
+  const safeAttendances = Array.isArray(attendances) ? attendances.filter(Boolean) : [];
+  const safeAaccList = Array.isArray(aaccList) ? aaccList.filter(Boolean) : [];
+
   // Analytics Calculations
-  const totalStudyMs = studySessions.reduce((sum, s) => sum + (s.durationMs || 0), 0);
+  const totalStudyMs = safeStudySessions.reduce((sum, s) => sum + (s?.durationMs || 0), 0);
   const totalStudyHours = (totalStudyMs / (1000 * 60 * 60)).toFixed(1);
 
   // Group study time by subject
   const studyBySubject: { [subjectId: string]: number } = {};
-  studySessions.forEach(s => {
-    if (s.subjectId) {
-      studyBySubject[s.subjectId] = (studyBySubject[s.subjectId] || 0) + s.durationMs;
+  safeStudySessions.forEach(s => {
+    if (s?.subjectId) {
+      studyBySubject[s.subjectId] = (studyBySubject[s.subjectId] || 0) + (s.durationMs || 0);
     }
   });
 
-  const subjectStudyStats = subjects.map(sub => {
+  const subjectStudyStats = safeSubjects.map(sub => {
     const ms = studyBySubject[sub.id] || 0;
     const hours = ms / (1000 * 60 * 60);
     return {
@@ -138,15 +143,16 @@ export const AnalyticsAndAACCModal: React.FC<Props> = ({
   const maxSubjectHours = Math.max(...subjectStudyStats.map(s => s.hours), 1);
 
   // Attendance rate calculation
-  const totalAtts = attendances.filter(a => a.status === 'present' || a.status === 'absent');
+  const totalAtts = safeAttendances.filter(a => a && (a.status === 'present' || a.status === 'absent'));
   const totalPresents = totalAtts.filter(a => a.status === 'present').length;
   const globalAttendanceRate = totalAtts.length > 0 ? Math.round((totalPresents / totalAtts.length) * 100) : 100;
 
   // AACC Calculations
-  const totalAACCHours = aaccList.reduce((sum, a) => sum + a.hours, 0);
-  const aaccProgressPercent = Math.min(Math.round((totalAACCHours / targetHours) * 100), 100);
+  const totalAACCHours = safeAaccList.reduce((sum, a) => sum + (a?.hours || 0), 0);
+  const aaccProgressPercent = Math.min(Math.round((totalAACCHours / (targetHours || 200)) * 100), 100);
 
-  const filteredAACCList = aaccList.filter(a => {
+  const filteredAACCList = safeAaccList.filter(a => {
+    if (!a) return false;
     if (selectedFilterCategory === 'Todas') return true;
     return a.category === selectedFilterCategory;
   });
@@ -456,7 +462,7 @@ export const AnalyticsAndAACCModal: React.FC<Props> = ({
                         {item.title}
                       </Text>
                       <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>
-                        📅 Cadastrado em {item.date.split('-').reverse().join('/')}
+                        📅 Cadastrado em {item.date ? item.date.split('-').reverse().join('/') : ''}
                       </Text>
                     </View>
 

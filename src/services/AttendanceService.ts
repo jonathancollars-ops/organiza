@@ -3,70 +3,115 @@ import { StorageService } from './storage';
 import { generateId, getLocalDateString } from '../utils';
 
 export const AttendanceService = {
-  async generatePendingAttendances(events: AppEvent[], existingRecords: AttendanceRecord[]): Promise<AttendanceRecord[]> {
-    const today = new Date();
-    const todayStr = getLocalDateString(today);
-    const currentMins = today.getHours() * 60 + today.getMinutes();
-    
-    const newRecords: AttendanceRecord[] = [];
-    const classEvents = events.filter(e => e.category === 'Faculdade/Aulas' && e.recurrence === 'weekly' && e.subjectId);
+  /**
+   * Generates pending attendance records for recurring weekly classes that occurred in the past.
+   * Defensively handles nullish, non-array, or corrupted inputs without throwing.
+   */
+  async generatePendingAttendances(
+    events?: AppEvent[] | null,
+    existingRecords?: AttendanceRecord[] | null
+  ): Promise<AttendanceRecord[]> {
+    try {
+      const today = new Date();
+      const todayStr = getLocalDateString(today);
+      const currentMins = today.getHours() * 60 + today.getMinutes();
 
-    // Fast lookup for existing records: Set of "eventId:date"
-    const existingSet = new Set(existingRecords.map(r => `${r.eventId}:${r.date}`));
+      const safeEvents = Array.isArray(events)
+        ? events.filter((e): e is AppEvent => Boolean(e && typeof e === 'object'))
+        : [];
 
-    for (const event of classEvents) {
-      if (!event.subjectId || !event.date) continue;
-      
-      const startDate = new Date(event.date + 'T12:00:00');
-      if (isNaN(startDate.getTime())) continue;
+      const safeRecords = Array.isArray(existingRecords)
+        ? existingRecords.filter((r): r is AttendanceRecord => Boolean(r && typeof r === 'object'))
+        : [];
 
-      const targetDayOfWeek = startDate.getDay();
-      
-      // Align cursor to the exact first occurrence of targetDayOfWeek on or after startDate
-      const cursorDate = new Date(startDate);
-      const dayDiff = (targetDayOfWeek - cursorDate.getDay() + 7) % 7;
-      cursorDate.setDate(cursorDate.getDate() + dayDiff);
-      
-      // Step by 7 days directly instead of daily iteration
-      while (cursorDate <= today) {
-        const dateStr = getLocalDateString(cursorDate);
-        
-        // Check if class has finished
-        let isPast = false;
-        if (dateStr < todayStr) {
-          isPast = true;
-        } else if (dateStr === todayStr) {
-          const [endH, endM] = (event.endTime || '23:59').split(':').map(Number);
-          if ((endH * 60 + endM) < currentMins) {
-            isPast = true;
-          }
+      const newRecords: AttendanceRecord[] = [];
+      const classEvents = safeEvents.filter(
+        e => e.category === 'Faculdade/Aulas' && e.recurrence === 'weekly' && Boolean(e.subjectId)
+      );
+
+      // Fast lookup for existing records: Set of "eventId:date"
+      const existingSet = new Set<string>();
+      for (const r of safeRecords) {
+        if (r && r.eventId && r.date && typeof r.eventId === 'string' && typeof r.date === 'string') {
+          existingSet.add(`${r.eventId}:${r.date}`);
         }
-        
-        if (isPast) {
-          const key = `${event.id}:${dateStr}`;
-          if (!existingSet.has(key)) {
-            existingSet.add(key); // prevent duplicates in the same pass
-            newRecords.push({
-              id: generateId('att'),
-              subjectId: event.subjectId,
-              eventId: event.id,
-              date: dateStr,
-              status: 'pending'
-            });
-          }
-        }
-        
-        // Advance exactly 1 week (7 days)
-        cursorDate.setDate(cursorDate.getDate() + 7);
       }
+
+      for (const event of classEvents) {
+        if (!event.id || !event.subjectId || !event.date || typeof event.date !== 'string') {
+          continue;
+        }
+
+        const dateClean = event.date.split('T')[0];
+        const startDate = new Date(`${dateClean}T12:00:00`);
+        if (isNaN(startDate.getTime())) continue;
+
+        const targetDayOfWeek = startDate.getDay();
+
+        // Align cursor to the exact first occurrence of targetDayOfWeek on or after startDate
+        const cursorDate = new Date(startDate);
+        const dayDiff = (targetDayOfWeek - cursorDate.getDay() + 7) % 7;
+        cursorDate.setDate(cursorDate.getDate() + dayDiff);
+
+        // Step by 7 days directly with safety loop counter (max 520 weeks / 10 years)
+        let loopSafety = 0;
+        const MAX_WEEKS = 520;
+
+        while (cursorDate <= today && loopSafety < MAX_WEEKS) {
+          loopSafety++;
+          const dateStr = getLocalDateString(cursorDate);
+
+          // Check if class has finished
+          let isPast = false;
+          if (dateStr < todayStr) {
+            isPast = true;
+          } else if (dateStr === todayStr) {
+            const endTimeStr = typeof event.endTime === 'string' && event.endTime.includes(':')
+              ? event.endTime
+              : '23:59';
+            const parts = endTimeStr.split(':').map(Number);
+            const endH = Number.isFinite(parts[0]) ? parts[0] : 23;
+            const endM = Number.isFinite(parts[1]) ? parts[1] : 59;
+            if (endH * 60 + endM < currentMins) {
+              isPast = true;
+            }
+          }
+
+          if (isPast) {
+            const key = `${event.id}:${dateStr}`;
+            if (!existingSet.has(key)) {
+              existingSet.add(key); // prevent duplicates in the same pass
+              newRecords.push({
+                id: generateId('att'),
+                subjectId: event.subjectId,
+                eventId: event.id,
+                date: dateStr,
+                status: 'pending'
+              });
+            }
+          }
+
+          // Advance exactly 1 week (7 days)
+          cursorDate.setDate(cursorDate.getDate() + 7);
+        }
+      }
+
+      if (newRecords.length > 0) {
+        const updatedRecords = [...safeRecords, ...newRecords];
+        try {
+          await StorageService.saveAttendances(updatedRecords);
+        } catch (saveError) {
+          console.warn('AttendanceService: Failed to persist generated attendances', saveError);
+        }
+        return updatedRecords;
+      }
+
+      return safeRecords;
+    } catch (err) {
+      console.warn('AttendanceService.generatePendingAttendances caught unexpected error:', err);
+      return Array.isArray(existingRecords)
+        ? existingRecords.filter((r): r is AttendanceRecord => Boolean(r && typeof r === 'object'))
+        : [];
     }
-    
-    if (newRecords.length > 0) {
-      const updatedRecords = [...existingRecords, ...newRecords];
-      await StorageService.saveAttendances(updatedRecords);
-      return updatedRecords;
-    }
-    
-    return existingRecords;
   }
 };

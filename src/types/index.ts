@@ -97,6 +97,8 @@ export interface StudyStreak {
   currentStreak: number;
   longestStreak: number;
   lastStudyDate: string; // YYYY-MM-DD
+  bestStreak?: number;
+  totalStudyDays?: number;
 }
 
 export interface AppSettings {

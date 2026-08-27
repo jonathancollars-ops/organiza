@@ -43,7 +43,8 @@ export const SubjectDetailsModal: React.FC<Props> = ({
 
   if (!subject) return null;
 
-  const subjectAttendances = attendances.filter(a => a.subjectId === subject.id);
+  const safeAttendances = Array.isArray(attendances) ? attendances.filter(Boolean) : [];
+  const subjectAttendances = safeAttendances.filter(a => a && a.subjectId === subject.id);
   const totalAbsences = subjectAttendances.filter(a => a.status === 'absent').length;
 
   const handleManualAdd = (status: 'present' | 'absent' | 'cancelled') => {
@@ -52,7 +53,7 @@ export const SubjectDetailsModal: React.FC<Props> = ({
       return;
     }
     
-    const existingIndex = attendances.findIndex(a => a.subjectId === subject.id && a.date === manualDate);
+    const existingIndex = safeAttendances.findIndex(a => a.subjectId === subject.id && a.date === manualDate);
     if (existingIndex >= 0) {
       Alert.alert(
         'Atenção',
@@ -261,7 +262,7 @@ export const SubjectDetailsModal: React.FC<Props> = ({
               subjectAttendances.filter(a => a.status === 'absent').map(att => (
                 <View key={att.id} style={[styles.absenceItem, { borderBottomColor: colors.borderSubtle }]}>
                   <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500' }}>
-                    📅 {att.date.split('-').reverse().join('/')}
+                    📅 {att.date ? att.date.split('-').reverse().join('/') : ''}
                   </Text>
                   <View style={[styles.absenceBadge, { backgroundColor: colors.dangerLight }]}>
                     <Text style={{ color: theme === 'light' ? colors.dangerDark : colors.danger, fontWeight: '700', fontSize: 12 }}>Falta</Text>

@@ -39,7 +39,7 @@ async function runNomenclatureTests() {
     assert(fs.existsSync(pkgPath), 'package.json exists');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
     assert(pkg.name === 'lumen', `package.json "name" is "lumen" (got: "${pkg.name}")`);
-    assert(pkg.version === '3.1.2', `package.json "version" is "3.1.2" (got: "${pkg.version}")`);
+    assert(pkg.version === '3.1.3', `package.json "version" is "3.1.3" (got: "${pkg.version}")`);
   });
 
   // Test 2: app.json branding
@@ -49,7 +49,7 @@ async function runNomenclatureTests() {
     const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
     assert(appJson.expo.name === 'Lumen', `app.json expo.name is "Lumen" (got: "${appJson.expo.name}")`);
     assert(appJson.expo.slug === 'lumen', `app.json expo.slug is "lumen" (got: "${appJson.expo.slug}")`);
-    assert(appJson.expo.version === '3.1.2', `app.json expo.version is "3.1.2" (got: "${appJson.expo.version}")`);
+    assert(appJson.expo.version === '3.1.3', `app.json expo.version is "3.1.3" (got: "${appJson.expo.version}")`);
   });
 
   // Test 3: strings.xml Android app_name

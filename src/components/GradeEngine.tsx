@@ -53,9 +53,11 @@ export interface CalcResult {
   usedFinal: boolean;
 }
 
-export function calculateFinalGrade(gradeGroups: GradeGroup[], passGrade: number): CalcResult {
-  if (gradeGroups.length === 0)
+export function calculateFinalGrade(gradeGroups: GradeGroup[] | null | undefined, passGrade: number): CalcResult {
+  if (!gradeGroups || !Array.isArray(gradeGroups) || gradeGroups.length === 0)
     return { score: 0, hasMissingItems: false, missingItemsCount: 0, totalItemsCount: 0, minimumNeeded: null, inFinal: false, usedFinal: false };
+
+  const safeGroups = gradeGroups.filter((g): g is GradeGroup => Boolean(g && typeof g === 'object'));
 
   let totalWeight = 0;
   let totalScore = 0;
@@ -64,32 +66,36 @@ export function calculateFinalGrade(gradeGroups: GradeGroup[], passGrade: number
   let totalItemsCount = 0;
   
   let finalExamItem: GradeItem | undefined = undefined;
-  for (const group of gradeGroups) {
-    const found = group.items.find(i => i.isFinalExam);
+  for (const group of safeGroups) {
+    const items = Array.isArray(group.items) ? group.items.filter(Boolean) : [];
+    const found = items.find(i => i && i.isFinalExam);
     if (found) {
       finalExamItem = found;
       break;
     }
   }
 
-  gradeGroups.forEach(group => {
-    if (group.items.length === 0) return;
+  safeGroups.forEach(group => {
+    const items = Array.isArray(group.items) ? group.items.filter((i): i is GradeItem => Boolean(i && typeof i === 'object')) : [];
+    if (items.length === 0) return;
 
     let groupTotalWeight = 0;
     let groupCompletedWeight = 0;
     let groupTotalScore = 0;
 
-    group.items.forEach(item => {
+    items.forEach(item => {
       if (item.isFinalExam) {
         finalExamItem = item;
         return; // Don't include in normal average
       }
 
       totalItemsCount++;
-      groupTotalWeight += item.weight;
-      if (item.grade !== undefined) {
-        groupCompletedWeight += item.weight;
-        groupTotalScore += (item.grade / item.maxGrade) * 10 * item.weight;
+      const itemWeight = Number.isFinite(item.weight) ? Number(item.weight) : 1;
+      const itemMax = (Number.isFinite(item.maxGrade) && Number(item.maxGrade) > 0) ? Number(item.maxGrade) : 10;
+      groupTotalWeight += itemWeight;
+      if (item.grade !== undefined && Number.isFinite(item.grade)) {
+        groupCompletedWeight += itemWeight;
+        groupTotalScore += (Number(item.grade) / itemMax) * 10 * itemWeight;
       } else {
         hasMissingItems = true;
         missingItemsCount++;
@@ -97,10 +103,11 @@ export function calculateFinalGrade(gradeGroups: GradeGroup[], passGrade: number
     });
 
     const groupAvg = groupCompletedWeight > 0 ? groupTotalScore / groupCompletedWeight : 0;
+    const gWeight = Number.isFinite(group.weight) ? Number(group.weight) : 1;
     
-    if (groupCompletedWeight > 0) {
-      totalWeight += group.weight;
-      totalScore += groupAvg * group.weight;
+    if (groupCompletedWeight > 0 && gWeight > 0) {
+      totalWeight += gWeight;
+      totalScore += groupAvg * gWeight;
     }
   });
 
@@ -112,15 +119,17 @@ export function calculateFinalGrade(gradeGroups: GradeGroup[], passGrade: number
     let allGroupsTotalWeight = 0;
     let currentTotalPoints = 0;
 
-    gradeGroups.forEach(group => {
-      const normalItems = group.items.filter(i => !i.isFinalExam);
-      const groupTotalWeight = normalItems.reduce((s, i) => s + i.weight, 0);
-      if (groupTotalWeight > 0) {
-        allGroupsTotalWeight += group.weight;
+    safeGroups.forEach(group => {
+      const items = Array.isArray(group.items) ? group.items.filter((i): i is GradeItem => Boolean(i && typeof i === 'object')) : [];
+      const normalItems = items.filter(i => !i.isFinalExam);
+      const groupTotalWeight = normalItems.reduce((s, i) => s + (Number.isFinite(i.weight) ? Number(i.weight) : 1), 0);
+      const gWeight = Number.isFinite(group.weight) ? Number(group.weight) : 1;
+      if (groupTotalWeight > 0 && gWeight > 0) {
+        allGroupsTotalWeight += gWeight;
         const groupScore = normalItems
-          .filter(i => i.grade !== undefined)
-          .reduce((sum, i) => sum + (i.grade! / i.maxGrade) * 10 * i.weight, 0);
-        currentTotalPoints += (groupScore / groupTotalWeight) * group.weight;
+          .filter(i => i.grade !== undefined && Number.isFinite(i.grade))
+          .reduce((sum, i) => sum + (Number(i.grade!) / ((Number.isFinite(i.maxGrade) && Number(i.maxGrade) > 0) ? Number(i.maxGrade) : 10)) * 10 * (Number.isFinite(i.weight) ? Number(i.weight) : 1), 0);
+        currentTotalPoints += (groupScore / groupTotalWeight) * gWeight;
       }
     });
 
@@ -128,12 +137,14 @@ export function calculateFinalGrade(gradeGroups: GradeGroup[], passGrade: number
     const deficit = neededTotal - currentTotalPoints;
 
     let effectiveMissingWeight = 0;
-    gradeGroups.forEach(group => {
-      const normalItems = group.items.filter(i => !i.isFinalExam);
-      const groupTotalWeight = normalItems.reduce((s, i) => s + i.weight, 0);
+    safeGroups.forEach(group => {
+      const items = Array.isArray(group.items) ? group.items.filter((i): i is GradeItem => Boolean(i && typeof i === 'object')) : [];
+      const normalItems = items.filter(i => !i.isFinalExam);
+      const groupTotalWeight = normalItems.reduce((s, i) => s + (Number.isFinite(i.weight) ? Number(i.weight) : 1), 0);
+      const gWeight = Number.isFinite(group.weight) ? Number(group.weight) : 1;
       normalItems.forEach(item => {
-        if (item.grade === undefined && groupTotalWeight > 0) {
-          effectiveMissingWeight += (item.weight / groupTotalWeight) * group.weight;
+        if (item.grade === undefined && groupTotalWeight > 0 && gWeight > 0) {
+          effectiveMissingWeight += ((Number.isFinite(item.weight) ? Number(item.weight) : 1) / groupTotalWeight) * gWeight;
         }
       });
     });
@@ -150,8 +161,8 @@ export function calculateFinalGrade(gradeGroups: GradeGroup[], passGrade: number
   // Final Exam logic
   if (totalItemsCount > 0 && !hasMissingItems && normalAvg < passGrade) {
     inFinal = true;
-    if (finalExamItem && finalExamItem.grade !== undefined) {
-      finalScore = (normalAvg + (finalExamItem.grade / finalExamItem.maxGrade * 10)) / 2;
+    if (finalExamItem && finalExamItem.grade !== undefined && Number.isFinite(finalExamItem.grade)) {
+      finalScore = (normalAvg + (Number(finalExamItem.grade) / ((Number.isFinite(finalExamItem.maxGrade) && Number(finalExamItem.maxGrade) > 0) ? Number(finalExamItem.maxGrade) : 10) * 10)) / 2;
       usedFinal = true;
     } else if (finalExamItem && finalExamItem.grade === undefined) {
       minimumNeeded = Math.max(0, 10 - normalAvg);

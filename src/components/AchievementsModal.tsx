@@ -63,12 +63,18 @@ export const AchievementsModal: React.FC<Props> = ({
 
   const loadData = async () => {
     const data = await StorageService.getGamificationData();
-    setGamification(data);
+    if (data && typeof data === 'object') {
+      setGamification(data);
+    }
   };
 
-  const totalFocusMinutes = Math.round(studySessions.reduce((sum, s) => sum + (s.durationMs || 0), 0) / (1000 * 60));
-  const currentStreak = streak.currentStreak || 0;
-  const totalPresents = attendances.filter(a => a.status === 'present').length;
+  const safeStudySessions = Array.isArray(studySessions) ? studySessions.filter(Boolean) : [];
+  const safeAttendances = Array.isArray(attendances) ? attendances.filter(Boolean) : [];
+  const safeStreak = streak && typeof streak === 'object' ? streak : { currentStreak: 0, longestStreak: 0, lastStudyDate: '' };
+
+  const totalFocusMinutes = Math.round(safeStudySessions.reduce((sum, s) => sum + (s?.durationMs || 0), 0) / (1000 * 60));
+  const currentStreak = safeStreak.currentStreak || 0;
+  const totalPresents = safeAttendances.filter(a => a?.status === 'present').length;
 
   // Compute Achievements List with real-time status
   const achievements: Achievement[] = [
@@ -78,8 +84,8 @@ export const AchievementsModal: React.FC<Props> = ({
       description: 'Complete sua 1ª sessão de estudo ou Pomodoro.',
       icon: '🎯',
       xp: 50,
-      unlocked: studySessions.length >= 1,
-      progress: { current: Math.min(studySessions.length, 1), total: 1 }
+      unlocked: safeStudySessions.length >= 1,
+      progress: { current: Math.min(safeStudySessions.length, 1), total: 1 }
     },
     {
       id: 'streak_3',
@@ -129,10 +135,12 @@ export const AchievementsModal: React.FC<Props> = ({
   ];
 
   const unlockedCount = achievements.filter(a => a.unlocked).length;
-  const levelTitle = LEVEL_TITLES[gamification.level] || 'Lenda Acadêmica 🌌';
+  const currentLevel = gamification?.level ?? 1;
+  const currentXp = gamification?.xp ?? 0;
+  const levelTitle = LEVEL_TITLES[currentLevel] || 'Lenda Acadêmica 🌌';
 
   // XP calculations: 200 XP per level
-  const xpCurrentLevel = gamification.xp % 200;
+  const xpCurrentLevel = currentXp % 200;
   const xpProgressPercent = Math.min(Math.round((xpCurrentLevel / 200) * 100), 100);
 
   return (

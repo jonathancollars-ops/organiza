@@ -42,7 +42,7 @@ try {
 
 const inMemorySecureVault: Record<string, string> = {};
 
-const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   fullscreen: false,
   pomodoroFocusMin: 25,
@@ -54,18 +54,85 @@ const DEFAULT_SETTINGS: AppSettings = {
   hapticsEnabled: true,
 };
 
-const DEFAULT_GAMIFICATION: GamificationData = {
+export const DEFAULT_GAMIFICATION: GamificationData = {
   xp: 0,
   level: 1,
   unlockedAchievements: [],
   totalFocusMinutes: 0
 };
 
+export const DEFAULT_STREAK: StudyStreak = {
+  currentStreak: 0,
+  longestStreak: 0,
+  lastStudyDate: '',
+  bestStreak: 0,
+  totalStudyDays: 0,
+};
+
+const VALID_THEMES: ThemeType[] = ['dark', 'light', 'amoled'];
+
+/**
+ * Safely parses a raw JSON string into a guaranteed non-null typed array.
+ * Rules:
+ * 1. If raw is null, undefined, not a string, or empty/whitespace -> returns fallback (or []).
+ * 2. If raw is literal "null" or "undefined" -> returns fallback (or []).
+ * 3. Catches all JSON.parse syntax errors -> returns fallback (or []).
+ * 4. Ensures the parsed value is strictly an Array via Array.isArray().
+ * 5. Sanitizes array elements by filtering out null and undefined values.
+ */
+export function safeParseArray<T>(raw: string | null | undefined, fallback: T[] = []): T[] {
+  if (!raw || typeof raw !== 'string') {
+    return Array.isArray(fallback) ? fallback : [];
+  }
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') {
+    return Array.isArray(fallback) ? fallback : [];
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) {
+      return Array.isArray(fallback) ? fallback : [];
+    }
+    return parsed.filter((item): item is T => item !== null && item !== undefined);
+  } catch {
+    return Array.isArray(fallback) ? fallback : [];
+  }
+}
+
+/**
+ * Safely parses a raw JSON string into a guaranteed non-null typed object,
+ * merging with fallback values to guarantee field completeness.
+ * Rules:
+ * 1. If raw is null, undefined, not a string, or empty/whitespace -> returns shallow copy of fallback.
+ * 2. If raw is literal "null" or "undefined" -> returns shallow copy of fallback.
+ * 3. Catches all JSON.parse syntax errors -> returns shallow copy of fallback.
+ * 4. Ensures parsed value is a non-null, non-array object (typeof === 'object' && !Array.isArray).
+ * 5. Merges fallback with parsed object to supply missing/undefined fields.
+ */
+export function safeParseObject<T extends Record<string, any>>(raw: string | null | undefined, fallback: T): T {
+  if (!raw || typeof raw !== 'string') {
+    return { ...fallback };
+  }
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === 'null' || trimmed === 'undefined') {
+    return { ...fallback };
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { ...fallback, ...parsed };
+    }
+    return { ...fallback };
+  } catch {
+    return { ...fallback };
+  }
+}
+
 export const StorageService = {
   async getEvents(): Promise<AppEvent[]> {
     try {
       const jsonValue = await AsyncStorage.getItem(EVENTS_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      return safeParseArray<AppEvent>(jsonValue, []);
     } catch (e) {
       console.error('Failed to fetch events from storage', e);
       return [];
@@ -74,7 +141,8 @@ export const StorageService = {
 
   async saveEvents(events: AppEvent[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(events);
+      const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+      const jsonValue = JSON.stringify(safeEvents);
       await AsyncStorage.setItem(EVENTS_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save events to storage', e);
@@ -84,7 +152,7 @@ export const StorageService = {
   async getSubjects(): Promise<Subject[]> {
     try {
       const jsonValue = await AsyncStorage.getItem(SUBJECTS_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      return safeParseArray<Subject>(jsonValue, []);
     } catch (e) {
       console.error('Failed to fetch subjects from storage', e);
       return [];
@@ -93,7 +161,8 @@ export const StorageService = {
 
   async saveSubjects(subjects: Subject[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(subjects);
+      const safeSubjects = Array.isArray(subjects) ? subjects.filter(Boolean) : [];
+      const jsonValue = JSON.stringify(safeSubjects);
       await AsyncStorage.setItem(SUBJECTS_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save subjects to storage', e);
@@ -103,7 +172,7 @@ export const StorageService = {
   async getTheme(): Promise<ThemeType> {
     try {
       const theme = await AsyncStorage.getItem(THEME_KEY);
-      return (theme as ThemeType) || 'dark';
+      return (theme && VALID_THEMES.includes(theme as ThemeType)) ? (theme as ThemeType) : 'dark';
     } catch (e) {
       return 'dark';
     }
@@ -111,7 +180,8 @@ export const StorageService = {
 
   async saveTheme(theme: ThemeType): Promise<void> {
     try {
-      await AsyncStorage.setItem(THEME_KEY, theme);
+      const safeTheme = VALID_THEMES.includes(theme) ? theme : 'dark';
+      await AsyncStorage.setItem(THEME_KEY, safeTheme);
     } catch (e) {
       console.error('Failed to save theme', e);
     }
@@ -120,7 +190,7 @@ export const StorageService = {
   async getAttendances(): Promise<AttendanceRecord[]> {
     try {
       const jsonValue = await AsyncStorage.getItem(ATTENDANCES_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      return safeParseArray<AttendanceRecord>(jsonValue, []);
     } catch (e) {
       console.error('Failed to fetch attendances', e);
       return [];
@@ -129,7 +199,8 @@ export const StorageService = {
 
   async saveAttendances(records: AttendanceRecord[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(records);
+      const safeRecords = Array.isArray(records) ? records.filter(Boolean) : [];
+      const jsonValue = JSON.stringify(safeRecords);
       await AsyncStorage.setItem(ATTENDANCES_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save attendances', e);
@@ -139,7 +210,7 @@ export const StorageService = {
   async getTasks(): Promise<StudyTask[]> {
     try {
       const jsonValue = await AsyncStorage.getItem(TASKS_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      return safeParseArray<StudyTask>(jsonValue, []);
     } catch (e) {
       console.error('Failed to fetch tasks', e);
       return [];
@@ -148,7 +219,8 @@ export const StorageService = {
 
   async saveTasks(tasks: StudyTask[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(tasks);
+      const safeTasks = Array.isArray(tasks) ? tasks.filter(Boolean) : [];
+      const jsonValue = JSON.stringify(safeTasks);
       await AsyncStorage.setItem(TASKS_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save tasks', e);
@@ -158,7 +230,7 @@ export const StorageService = {
   async getStudySessions(): Promise<StudySession[]> {
     try {
       const jsonValue = await AsyncStorage.getItem(STUDY_SESSIONS_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      return safeParseArray<StudySession>(jsonValue, []);
     } catch (e) {
       console.error('Failed to fetch study sessions', e);
       return [];
@@ -167,7 +239,8 @@ export const StorageService = {
 
   async saveStudySessions(sessions: StudySession[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(sessions);
+      const safeSessions = Array.isArray(sessions) ? sessions.filter(Boolean) : [];
+      const jsonValue = JSON.stringify(safeSessions);
       await AsyncStorage.setItem(STUDY_SESSIONS_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save study sessions', e);
@@ -179,22 +252,22 @@ export const StorageService = {
       const currentSemId = getCurrentSemesterId();
       const currentSemName = getCurrentSemesterName();
       const jsonValue = await AsyncStorage.getItem(SEMESTERS_KEY);
-      let semesters: Semester[] = jsonValue != null ? JSON.parse(jsonValue) : [];
+      let semesters: Semester[] = safeParseArray<Semester>(jsonValue, []);
 
       if (semesters.length === 0) {
         semesters = [{
           id: currentSemId,
-          name: currentSemId,
+          name: currentSemName || currentSemId,
           isCurrent: true
         }];
         await this.saveSemesters(semesters);
       } else {
-        const hasCurrent = semesters.some(s => s.id === currentSemId || s.name === currentSemId);
+        const hasCurrent = semesters.some(s => s && (s.id === currentSemId || s.name === currentSemId || s.name === currentSemName));
         if (!hasCurrent) {
           semesters = semesters.map(s => ({ ...s, isCurrent: false }));
           semesters.unshift({
             id: currentSemId,
-            name: currentSemId,
+            name: currentSemName || currentSemId,
             isCurrent: true
           });
           await this.saveSemesters(semesters);
@@ -204,13 +277,15 @@ export const StorageService = {
     } catch (e) {
       console.error('Failed to fetch semesters from storage', e);
       const semId = getCurrentSemesterId();
-      return [{ id: semId, name: semId, isCurrent: true }];
+      const semName = getCurrentSemesterName();
+      return [{ id: semId, name: semName || semId, isCurrent: true }];
     }
   },
 
   async saveSemesters(semesters: Semester[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(semesters);
+      const safeSemesters = Array.isArray(semesters) ? semesters.filter(Boolean) : [];
+      const jsonValue = JSON.stringify(safeSemesters);
       await AsyncStorage.setItem(SEMESTERS_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save semesters', e);
@@ -220,10 +295,19 @@ export const StorageService = {
   async getSettings(): Promise<AppSettings> {
     try {
       const jsonValue = await AsyncStorage.getItem(SETTINGS_KEY);
-      if (jsonValue) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(jsonValue) };
-      }
-      return DEFAULT_SETTINGS;
+      const parsed = safeParseObject<AppSettings>(jsonValue, DEFAULT_SETTINGS);
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        fullscreen: parsed.fullscreen === true,
+        pomodoroFocusMin: Number.isFinite(parsed.pomodoroFocusMin) ? Number(parsed.pomodoroFocusMin) : DEFAULT_SETTINGS.pomodoroFocusMin,
+        pomodoroBreakMin: Number.isFinite(parsed.pomodoroBreakMin) ? Number(parsed.pomodoroBreakMin) : DEFAULT_SETTINGS.pomodoroBreakMin,
+        pomodoroLongBreakMin: Number.isFinite(parsed.pomodoroLongBreakMin) ? Number(parsed.pomodoroLongBreakMin) : DEFAULT_SETTINGS.pomodoroLongBreakMin,
+        defaultPassGrade: Number.isFinite(parsed.defaultPassGrade) ? Number(parsed.defaultPassGrade) : DEFAULT_SETTINGS.defaultPassGrade,
+        soundEnabled: parsed.soundEnabled !== false,
+        hapticsEnabled: parsed.hapticsEnabled !== false,
+        examWeekMode: parsed.examWeekMode === true,
+      };
     } catch (e) {
       return DEFAULT_SETTINGS;
     }
@@ -231,7 +315,19 @@ export const StorageService = {
 
   async saveSettings(settings: AppSettings): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(settings);
+      const safe: AppSettings = {
+        theme: (settings && VALID_THEMES.includes(settings.theme)) ? settings.theme : DEFAULT_SETTINGS.theme,
+        fullscreen: settings?.fullscreen === true,
+        pomodoroFocusMin: Math.max(1, Math.min(180, Number(settings?.pomodoroFocusMin) || DEFAULT_SETTINGS.pomodoroFocusMin)),
+        pomodoroBreakMin: Math.max(1, Math.min(60, Number(settings?.pomodoroBreakMin) || DEFAULT_SETTINGS.pomodoroBreakMin)),
+        pomodoroLongBreakMin: Math.max(1, Math.min(60, Number(settings?.pomodoroLongBreakMin) || DEFAULT_SETTINGS.pomodoroLongBreakMin)),
+        defaultPassGrade: Math.max(0, Math.min(10, Number(settings?.defaultPassGrade) || DEFAULT_SETTINGS.defaultPassGrade)),
+        examWeekMode: settings?.examWeekMode === true,
+        soundEnabled: settings?.soundEnabled !== false,
+        hapticsEnabled: settings?.hapticsEnabled !== false,
+        currentSemesterId: settings?.currentSemesterId || undefined,
+      };
+      const jsonValue = JSON.stringify(safe);
       await AsyncStorage.setItem(SETTINGS_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save settings', e);
@@ -241,15 +337,53 @@ export const StorageService = {
   async getStreak(): Promise<StudyStreak> {
     try {
       const jsonValue = await AsyncStorage.getItem(STREAK_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : { currentStreak: 0, longestStreak: 0, lastStudyDate: '' };
+      const parsed = safeParseObject<StudyStreak>(jsonValue, DEFAULT_STREAK);
+      const current = Number.isFinite(parsed.currentStreak) ? Math.max(0, Number(parsed.currentStreak)) : 0;
+      const longest = Number.isFinite(parsed.longestStreak)
+        ? Math.max(0, Number(parsed.longestStreak))
+        : Number.isFinite(parsed.bestStreak)
+        ? Math.max(0, Number(parsed.bestStreak!))
+        : 0;
+      const best = Number.isFinite(parsed.bestStreak)
+        ? Math.max(0, Number(parsed.bestStreak!))
+        : longest;
+      const totalDays = Number.isFinite(parsed.totalStudyDays)
+        ? Math.max(0, Number(parsed.totalStudyDays!))
+        : 0;
+      return {
+        currentStreak: current,
+        longestStreak: Math.max(longest, best),
+        lastStudyDate: typeof parsed.lastStudyDate === 'string' ? parsed.lastStudyDate : '',
+        bestStreak: Math.max(best, longest),
+        totalStudyDays: totalDays,
+      };
     } catch (e) {
-      return { currentStreak: 0, longestStreak: 0, lastStudyDate: '' };
+      return DEFAULT_STREAK;
     }
   },
 
   async saveStreak(streak: StudyStreak): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(streak);
+      const current = Math.max(0, Number(streak?.currentStreak) || 0);
+      const longest = Number.isFinite(streak?.longestStreak)
+        ? Math.max(0, Number(streak.longestStreak))
+        : Number.isFinite(streak?.bestStreak)
+        ? Math.max(0, Number(streak.bestStreak!))
+        : 0;
+      const best = Number.isFinite(streak?.bestStreak)
+        ? Math.max(0, Number(streak.bestStreak!))
+        : longest;
+      const totalDays = Number.isFinite(streak?.totalStudyDays)
+        ? Math.max(0, Number(streak.totalStudyDays!))
+        : 0;
+      const safe: StudyStreak = {
+        currentStreak: current,
+        longestStreak: Math.max(longest, best),
+        lastStudyDate: typeof streak?.lastStudyDate === 'string' ? streak.lastStudyDate : '',
+        bestStreak: Math.max(best, longest),
+        totalStudyDays: totalDays,
+      };
+      const jsonValue = JSON.stringify(safe);
       await AsyncStorage.setItem(STREAK_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save streak', e);
@@ -259,7 +393,7 @@ export const StorageService = {
   async getAACCActivities(): Promise<AACCActivity[]> {
     try {
       const jsonValue = await AsyncStorage.getItem(AACC_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      return safeParseArray<AACCActivity>(jsonValue, []);
     } catch (e) {
       console.error('Failed to fetch AACC activities', e);
       return [];
@@ -268,7 +402,8 @@ export const StorageService = {
 
   async saveAACCActivities(activities: AACCActivity[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(activities);
+      const safeActivities = Array.isArray(activities) ? activities.filter(Boolean) : [];
+      const jsonValue = JSON.stringify(safeActivities);
       await AsyncStorage.setItem(AACC_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save AACC activities', e);
@@ -278,7 +413,12 @@ export const StorageService = {
   async getGroupProjects(): Promise<GroupProject[]> {
     try {
       const jsonValue = await AsyncStorage.getItem(GROUP_PROJECTS_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : [];
+      const parsed = safeParseArray<GroupProject>(jsonValue, []);
+      return parsed.map(p => ({
+        ...p,
+        members: Array.isArray(p.members) ? p.members.filter(Boolean) : [],
+        tasks: Array.isArray(p.tasks) ? p.tasks.filter(Boolean) : []
+      }));
     } catch (e) {
       console.error('Failed to fetch group projects', e);
       return [];
@@ -287,7 +427,12 @@ export const StorageService = {
 
   async saveGroupProjects(projects: GroupProject[]): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(projects);
+      const safeProjects = Array.isArray(projects) ? projects.filter(Boolean).map(p => ({
+        ...p,
+        members: Array.isArray(p.members) ? p.members.filter(Boolean) : [],
+        tasks: Array.isArray(p.tasks) ? p.tasks.filter(Boolean) : []
+      })) : [];
+      const jsonValue = JSON.stringify(safeProjects);
       await AsyncStorage.setItem(GROUP_PROJECTS_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save group projects', e);
@@ -297,7 +442,13 @@ export const StorageService = {
   async getGamificationData(): Promise<GamificationData> {
     try {
       const jsonValue = await AsyncStorage.getItem(GAMIFICATION_KEY);
-      return jsonValue != null ? JSON.parse(jsonValue) : DEFAULT_GAMIFICATION;
+      const parsed = safeParseObject<GamificationData>(jsonValue, DEFAULT_GAMIFICATION);
+      return {
+        xp: Number.isFinite(parsed.xp) ? Math.max(0, Number(parsed.xp)) : 0,
+        level: Number.isFinite(parsed.level) ? Math.max(1, Number(parsed.level)) : 1,
+        unlockedAchievements: Array.isArray(parsed.unlockedAchievements) ? parsed.unlockedAchievements.filter(Boolean) : [],
+        totalFocusMinutes: Number.isFinite(parsed.totalFocusMinutes) ? Math.max(0, Number(parsed.totalFocusMinutes)) : 0,
+      };
     } catch (e) {
       return DEFAULT_GAMIFICATION;
     }
@@ -305,7 +456,13 @@ export const StorageService = {
 
   async saveGamificationData(data: GamificationData): Promise<void> {
     try {
-      const jsonValue = JSON.stringify(data);
+      const safe: GamificationData = {
+        xp: Math.max(0, Number(data?.xp) || 0),
+        level: Math.max(1, Number(data?.level) || 1),
+        unlockedAchievements: Array.isArray(data?.unlockedAchievements) ? data.unlockedAchievements.filter(Boolean) : [],
+        totalFocusMinutes: Math.max(0, Number(data?.totalFocusMinutes) || 0),
+      };
+      const jsonValue = JSON.stringify(safe);
       await AsyncStorage.setItem(GAMIFICATION_KEY, jsonValue);
     } catch (e) {
       console.error('Failed to save gamification data', e);
@@ -314,9 +471,11 @@ export const StorageService = {
 
   async addXP(amount: number, additionalMinutes: number = 0): Promise<GamificationData> {
     try {
+      const validAmount = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+      const validMinutes = Number.isFinite(additionalMinutes) ? Math.max(0, additionalMinutes) : 0;
       const current = await this.getGamificationData();
-      const newXP = (current.xp || 0) + amount;
-      const newMinutes = (current.totalFocusMinutes || 0) + additionalMinutes;
+      const newXP = (current.xp || 0) + validAmount;
+      const newMinutes = (current.totalFocusMinutes || 0) + validMinutes;
       // Formula: Level = Math.floor(XP / 200) + 1
       const newLevel = Math.floor(newXP / 200) + 1;
       
@@ -389,37 +548,35 @@ export const StorageService = {
 
     try {
       const jsonValue = await AsyncStorage.getItem(AI_CONFIG_KEY);
-      if (jsonValue != null) {
-        const parsed = JSON.parse(jsonValue);
-        const legacyApiKey = parsed.apiKey || '';
+      const parsed = safeParseObject<Partial<AIConfig>>(jsonValue, {});
+      const legacyApiKey = typeof parsed.apiKey === 'string' ? parsed.apiKey : '';
 
-        // Backward compatibility migration: migrate plaintext key from AsyncStorage to SecureStore
-        if (!secureApiKey && legacyApiKey && legacyApiKey.trim().length > 0) {
-          await this.saveSecureSecret(SECURE_AI_API_KEY, legacyApiKey.trim());
-          secureApiKey = legacyApiKey.trim();
-          const sanitized = { ...parsed, apiKey: '' };
-          await AsyncStorage.setItem(AI_CONFIG_KEY, JSON.stringify(sanitized)).catch(() => {});
-        }
-
-        return {
-          provider: parsed.provider || 'gemini',
-          mode: parsed.mode || 'local_edge',
-          apiKey: secureApiKey || '',
-          model: parsed.model || 'gemini-1.5-flash',
-          enableFallbackToCloud: parsed.enableFallbackToCloud !== false,
-          localModelPath: parsed.localModelPath
-        };
+      // Backward compatibility migration: migrate plaintext key from AsyncStorage to SecureStore
+      if (!secureApiKey && legacyApiKey && legacyApiKey.trim().length > 0) {
+        await this.saveSecureSecret(SECURE_AI_API_KEY, legacyApiKey.trim());
+        secureApiKey = legacyApiKey.trim();
+        const sanitized = { ...parsed, apiKey: '' };
+        await AsyncStorage.setItem(AI_CONFIG_KEY, JSON.stringify(sanitized)).catch(() => {});
       }
+
+      return {
+        provider: parsed.provider === 'openai' ? 'openai' : 'gemini',
+        mode: parsed.mode || 'local_edge',
+        apiKey: secureApiKey || '',
+        model: parsed.model || 'gemini-1.5-flash',
+        enableFallbackToCloud: parsed.enableFallbackToCloud !== false,
+        localModelPath: parsed.localModelPath
+      };
     } catch (e) {
       console.warn('Failed to fetch AI config from storage', e);
+      return {
+        provider: 'gemini',
+        mode: 'local_edge',
+        apiKey: secureApiKey || '',
+        model: 'gemini-1.5-flash',
+        enableFallbackToCloud: true
+      };
     }
-    return {
-      provider: 'gemini',
-      mode: 'local_edge',
-      apiKey: secureApiKey || '',
-      model: 'gemini-1.5-flash',
-      enableFallbackToCloud: true
-    };
   },
 
   async saveAIConfig(config: AIConfig): Promise<void> {
@@ -512,6 +669,7 @@ export const StorageService = {
    */
   async clearAllData(): Promise<void> {
     await this.deleteSecureSecret(SECURE_AI_API_KEY);
+    Object.keys(inMemorySecureVault).forEach(k => delete inMemorySecureVault[k]);
     await AsyncStorage.multiRemove([
       EVENTS_KEY,
       THEME_KEY,
@@ -531,5 +689,3 @@ export const StorageService = {
     ]);
   }
 };
-
-

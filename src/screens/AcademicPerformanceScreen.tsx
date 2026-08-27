@@ -10,12 +10,17 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { getThemeColors } from '../theme';
 import { Subject, CourseProgressData, ThemeType } from '../types';
 import { CourseCRService, DEFAULT_CURRICULUM_TEMPLATE } from '../services/CourseCRService';
 import { SecuritySanitizer } from '../services/SecuritySanitizer';
+import { AIParsingService } from '../services/AIParsingService';
+import { StorageService } from '../services/storage';
 
 interface AcademicPerformanceScreenProps {
   subjects: Subject[];
@@ -43,6 +48,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
   const [isImportModalVisible, setIsImportModalVisible] = useState(false);
   const [importMode, setImportMode] = useState<'transcript' | 'curriculum'>('transcript');
   const [importInputText, setImportInputText] = useState('');
+  const [isProcessingDocument, setIsProcessingDocument] = useState(false);
   
   const [isTargetModalVisible, setIsTargetModalVisible] = useState(false);
   const [targetInput, setTargetInput] = useState('8.5');
@@ -163,6 +169,57 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
     await CourseCRService.saveCourseProgress(updated);
     setImportInputText('');
     setIsImportModalVisible(false);
+  };
+
+  const handleDocumentUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const aiConfig = await StorageService.getAIConfig();
+      if (!aiConfig || !aiConfig.apiKey || aiConfig.apiKey.trim() === '') {
+        Alert.alert(
+          'Lumen AI Requerido', 
+          'A extração inteligente de PDFs e imagens exige que a API do Gemini esteja configurada na aba Lumen AI.'
+        );
+        return;
+      }
+
+      setIsProcessingDocument(true);
+      const fileUri = result.assets[0].uri;
+      const mimeType = result.assets[0].mimeType || 'application/pdf';
+
+      const base64Data = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: 'base64' as any
+      });
+
+      const parsedJSON = await AIParsingService.parseAcademicDocument(base64Data, mimeType, importMode, aiConfig);
+
+      let updated: CourseProgressData;
+      if (importMode === 'transcript') {
+        updated = CourseCRService.applyAIParsedTranscript(parsedJSON, courseData);
+        Alert.alert('Histórico Processado pela IA!', 'Seu CR e matérias aprovadas foram extraídos e atualizados com sucesso.');
+      } else {
+        updated = CourseCRService.applyAIParsedCurriculum(parsedJSON, courseData);
+        Alert.alert('Fluxograma Estruturado!', 'A Inteligência Artificial mapeou todos os semestres e matérias da matriz.');
+      }
+
+      setCourseData(updated);
+      await CourseCRService.saveCourseProgress(updated);
+      setIsImportModalVisible(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    } catch (error: any) {
+      console.warn('Erro ao processar documento com IA:', error);
+      Alert.alert('Falha na Leitura', error.message || 'Não foi possível extrair os dados do arquivo via IA. Verifique se o arquivo está legível.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsProcessingDocument(false);
+    }
   };
 
   const handleAddSubject = async () => {
@@ -568,12 +625,31 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
               multiline
               value={importInputText}
               onChangeText={setImportInputText}
+              editable={!isProcessingDocument}
             />
+
+            <View style={{ marginVertical: 12 }}>
+              <TouchableOpacity
+                style={[styles.modalActionSubmit, { backgroundColor: '#8B5CF6', paddingVertical: 14 }]}
+                onPress={handleDocumentUpload}
+                disabled={isProcessingDocument}
+              >
+                {isProcessingDocument ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.modalActionSubmitText}>📄 Analisar PDF / Imagem com Lumen AI</Text>
+                )}
+              </TouchableOpacity>
+              <Text style={{ textAlign: 'center', fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
+                A IA do Gemini vai ler seu documento e organizar a grade automaticamente.
+              </Text>
+            </View>
 
             <View style={styles.modalActionsRow}>
               <TouchableOpacity
                 style={styles.modalActionSecondary}
                 onPress={handleResetToTemplate}
+                disabled={isProcessingDocument}
               >
                 <Text style={styles.modalActionSecondaryText}>Restaurar Grade Padrão</Text>
               </TouchableOpacity>
@@ -582,6 +658,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                 <TouchableOpacity
                   style={styles.modalActionCancel}
                   onPress={() => setIsImportModalVisible(false)}
+                  disabled={isProcessingDocument}
                 >
                   <Text style={styles.modalActionCancelText}>Cancelar</Text>
                 </TouchableOpacity>
@@ -589,8 +666,9 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                 <TouchableOpacity
                   style={styles.modalActionSubmit}
                   onPress={handleExecuteImport}
+                  disabled={isProcessingDocument}
                 >
-                  <Text style={styles.modalActionSubmitText}>Processar</Text>
+                  <Text style={styles.modalActionSubmitText}>Processar Texto</Text>
                 </TouchableOpacity>
               </View>
             </View>

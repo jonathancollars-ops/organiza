@@ -236,31 +236,32 @@ export async function runR2Tests() {
   assert(sanitizePassGrade('15') === 10.0, 'Tier 3', 'Grade > 10 clamped to 10.0');
   assert(sanitizePassGrade('-2') === 7.0, 'Tier 3', 'Negative grade falls back to default 7.0');
 
-  // 3.2 XP Level Formula: Level = Math.floor(XP / 200) + 1
+  // 3.2 XP Level Formula (GamificationService)
+  const GamificationServiceModule = require('../src/services/GamificationService');
   const xpThresholds = [
     { xp: 0, level: 1 },
-    { xp: 100, level: 1 },
-    { xp: 199, level: 1 },
-    { xp: 200, level: 2 },
-    { xp: 399, level: 2 },
-    { xp: 400, level: 3 },
-    { xp: 1000, level: 6 },
-    { xp: 2500, level: 13 }
+    { xp: 99, level: 1 },
+    { xp: 100, level: 2 },
+    { xp: 282, level: 2 },
+    { xp: 283, level: 3 },
+    { xp: 519, level: 3 },
+    { xp: 520, level: 4 }
   ];
 
   xpThresholds.forEach(t => {
-    const calcLevel = Math.floor(t.xp / 200) + 1;
+    const calcLevel = GamificationServiceModule.GamificationService.calculateLevelFromXP(t.xp);
     assert(calcLevel === t.level, 'Tier 3', `XP ${t.xp} calculates to Level ${calcLevel}`);
   });
 
   // 3.3 AddXP calculation through StorageService
   await StorageService.clearAllData();
   const g1 = await StorageService.addXP(50, 25);
-  assert(g1.xp === 50 && g1.level === 1 && g1.totalFocusMinutes === 25, 'Tier 3', 'Pomodoro completion adds +50 XP and 25 min');
+  // 25m = 50 XP (study) + 50 XP (first_study) + 50 XP (generic) = 150 XP
+  assert(g1.xp === 150 && g1.level === 2 && g1.totalFocusMinutes === 25, 'Tier 3', 'Pomodoro completion adds +150 XP and 25 min');
 
   const g2 = await StorageService.addXP(160, 45);
-  // Total XP = 210 -> Level 2
-  assert(g2.xp === 210 && g2.level === 2 && g2.totalFocusMinutes === 70, 'Tier 3', 'XP accumulation (210 XP) triggers Level 2 promotion');
+  // 45m = 90 XP (study) + 160 XP (generic) = +250 XP -> Total 400 XP
+  assert(g2.xp === 400 && g2.level === 3 && g2.totalFocusMinutes === 70, 'Tier 3', 'XP accumulation (400 XP) triggers Level 3 promotion');
 
   // 3.4 Study Streak mathematical state machine
   let currentStreak: StudyStreak = { currentStreak: 0, longestStreak: 0, lastStudyDate: '' };
@@ -310,7 +311,7 @@ export async function runR2Tests() {
   streakObj = computeStreakUpdate(streakObj, getLocalDateString());
   await StorageService.saveStreak(streakObj);
 
-  assert(gamifPomo.xp === 50 && gamifPomo.totalFocusMinutes === 25, 'Tier 4', 'E2E Pomodoro Session 1 logged with +50 XP and 25 min');
+  assert(gamifPomo.xp === 150 && gamifPomo.totalFocusMinutes === 25, 'Tier 4', 'E2E Pomodoro Session 1 logged with +150 XP and 25 min');
 
   // Session 2: Stopwatch 45 min in Physics
   const sess2: StudySession = {
@@ -323,7 +324,7 @@ export async function runR2Tests() {
   const allSessions = [...currentSessions, sess2];
   await StorageService.saveStudySessions(allSessions);
   const gamifStopwatch = await StorageService.addXP(25, 45);
-  assert(gamifStopwatch.xp === 75 && gamifStopwatch.totalFocusMinutes === 70, 'Tier 4', 'E2E Stopwatch Session 2 logged with +25 XP and 45 min');
+  assert(gamifStopwatch.xp === 265 && gamifStopwatch.totalFocusMinutes === 70, 'Tier 4', 'E2E Stopwatch Session 2 logged with +115 XP and 45 min');
 
   // 4.2 Aggregate calculations
   const totalMs = allSessions.reduce((acc, curr) => acc + curr.durationMs, 0);

@@ -75,14 +75,14 @@ async function runSemverAndAutoUpdateTests() {
     assertEqual(compareSemver('3.1.0', '3.1.1'), -1, '3.1.0 < 3.1.1');
 
     // Minor comparison
-    assertEqual(compareSemver('3.2.2', '3.1.99'), 1, '3.2.2 > 3.1.99 (minor takes precedence)');
+    assertEqual(compareSemver('3.3.0', '3.1.99'), 1, '3.3.0 > 3.1.99 (minor takes precedence)');
 
     // Major comparison
     assertEqual(compareSemver('4.0.0', '3.99.99'), 1, '4.0.0 > 3.99.99 (major takes precedence)');
 
     // isNewerVersion tests
     assert(isNewerVersion('3.1.1', '3.1.0'), '3.1.1 is newer than 3.1.0');
-    assert(isNewerVersion('3.2.2', '3.1.0'), '3.2.2 is newer than 3.1.0');
+    assert(isNewerVersion('3.3.0', '3.1.0'), '3.3.0 is newer than 3.1.0');
     assert(isNewerVersion('4.0.0', '3.1.0'), '4.0.0 is newer than 3.1.0');
     assert(!isNewerVersion('3.1.0', '3.1.0'), '3.1.0 is NOT newer than 3.1.0');
     assert(!isNewerVersion('3.0.9', '3.1.0'), '3.0.9 is NOT newer than 3.1.0');
@@ -100,7 +100,7 @@ async function runSemverAndAutoUpdateTests() {
 
     // Rule 2: Minor +0.1.0 (medium features / additions, resets patch)
     const minorNext = bumpVersion('3.1.5', 'minor');
-    assertEqual(minorNext, '3.2.0', 'Minor increment from 3.1.5 -> 3.2.2 (+0.1.0 and patch reset to 0)');
+    assertEqual(minorNext, '3.2.0', 'Minor increment from 3.1.5 -> 3.3.0 (+0.1.0 and patch reset to 0)');
 
     // Rule 3: Major +1.0.0 (major overhauls, resets minor and patch)
     const majorNext = bumpVersion('3.4.7', 'major');
@@ -111,12 +111,12 @@ async function runSemverAndAutoUpdateTests() {
   console.log('\n--- 4. AppUpdateService Mock Tests & Ignored Versions ---');
   {
     // Current version assertion
-    assertEqual(AppUpdateService.getCurrentVersion(), '3.2.2', 'Current version is 3.2.2');
+    assertEqual(AppUpdateService.getCurrentVersion(), '3.3.0', 'Current version is 3.3.0');
 
     // State persistence & ignore version
-    await AppUpdateService.ignoreVersion('3.2.2');
+    await AppUpdateService.ignoreVersion('3.3.0');
     const state = await AppUpdateService.getUpdateState();
-    assertEqual(state.ignoredVersion, '3.2.2', 'Ignored version persisted correctly');
+    assertEqual(state.ignoredVersion, '3.3.0', 'Ignored version persisted correctly');
 
     // Reset state
     await AppUpdateService.saveUpdateState({ ignoredVersion: undefined, lastCheckedAt: undefined });

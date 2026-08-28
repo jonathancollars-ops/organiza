@@ -109,8 +109,8 @@ export async function runChallengerResilienceTests() {
     await StorageService.addXP(10, 5);
   }
   const seqGamification = await StorageService.getGamificationData();
-  assert(seqGamification.xp === 200, 'Storage Concurrency', 'Sequential 20x addXP(10) yields exact 200 XP');
-  assert(seqGamification.level === 2, 'Storage Concurrency', '200 XP triggers level 2 progression');
+  assert(seqGamification.xp === 450, 'Storage Concurrency', 'Sequential 20x addXP(10) yields exact 450 XP');
+  assert(seqGamification.level === 3, 'Storage Concurrency', '450 XP triggers level 3 progression');
   assert(seqGamification.totalFocusMinutes === 100, 'Storage Concurrency', '100 total focus minutes accumulated');
 
   // 1.4 Missing/Legacy Payload Fallback
@@ -373,21 +373,21 @@ export async function runChallengerResilienceTests() {
   const g0 = await StorageService.getGamificationData();
   assert(g0.level === 1 && g0.xp === 0, 'XP & Gamification', 'Initial: 0 XP = Level 1');
 
-  // Add 199 XP -> Level 1
-  const g199 = await StorageService.addXP(199, 100);
-  assert(g199.xp === 199 && g199.level === 1, 'XP & Gamification', '199 XP = Level 1 (boundary)');
+  // Add 99 XP -> Level 1
+  const g99 = await StorageService.addXP(99, 0);
+  assert(g99.xp === 99 && g99.level === 1, 'XP & Gamification', '99 XP = Level 1 (boundary)');
 
-  // Add 1 XP -> 200 XP -> Level 2
-  const g200 = await StorageService.addXP(1, 1);
-  assert(g200.xp === 200 && g200.level === 2, 'XP & Gamification', '200 XP = Level 2 (level up boundary)');
+  // Add 1 XP -> 100 XP -> Level 2
+  const g100 = await StorageService.addXP(1, 0);
+  assert(g100.xp === 100 && g100.level === 2, 'XP & Gamification', '100 XP = Level 2 (level up boundary)');
 
-  // Add 199 XP -> 399 XP -> Level 2
-  const g399 = await StorageService.addXP(199, 50);
-  assert(g399.xp === 399 && g399.level === 2, 'XP & Gamification', '399 XP = Level 2');
+  // Add 181 XP -> 281 XP -> Level 2
+  const g281 = await StorageService.addXP(181, 0);
+  assert(g281.xp === 281 && g281.level === 2, 'XP & Gamification', '281 XP = Level 2');
 
-  // Add 1 XP -> 400 XP -> Level 3
-  const g400 = await StorageService.addXP(1, 1);
-  assert(g400.xp === 400 && g400.level === 3, 'XP & Gamification', '400 XP = Level 3');
+  // Add 2 XP -> 283 XP -> Level 3
+  const g282 = await StorageService.addXP(2, 0);
+  assert(g282.xp === 283 && g282.level === 3, 'XP & Gamification', '283 XP = Level 3');
 
   // Proportional XP scaling for various durations
   // 5m -> max(10, round(5*2)) = 10 XP

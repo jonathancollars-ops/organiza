@@ -173,14 +173,14 @@ async function runColdStartTests() {
     await StorageService.saveGamificationData(DEFAULT_GAMIFICATION);
 
     const res1 = await StorageService.addXP(100, 25);
-    assert(res1.xp === 100, 'addXP(100) sets XP to 100');
+    assert(res1.xp === 200, 'addXP(100, 25) sets XP to 200 (50 study + 50 achievement + 100 generic)');
     assert(res1.totalFocusMinutes === 25, 'addXP adds 25 minutes');
-    assert(res1.level === 1, 'Level remains 1 at 100 XP');
+    assert(res1.level === 2, 'Level becomes 2 at 200 XP');
 
     const res2 = await StorageService.addXP(150, 25);
-    assert(res2.xp === 250, 'addXP(150) sets XP to 250');
+    assert(res2.xp === 400, 'addXP(150, 25) sets XP to 400');
     assert(res2.totalFocusMinutes === 50, 'addXP totalFocusMinutes is 50');
-    assert(res2.level === 2, 'Level advances to 2 at 250 XP (formula: Math.floor(250/200)+1)');
+    assert(res2.level === 3, 'Level advances to 3 at 400 XP');
 
     // Defensive NaN inputs
     const res3 = await StorageService.addXP(NaN as any, 'invalid' as any);

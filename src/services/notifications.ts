@@ -13,6 +13,23 @@ Notifications.setNotificationHandler({
   }),
 });
 
+export function formatNotificationTimeNotice(minutesBefore: number, timePart: string): string {
+  if (minutesBefore <= 0) return "Começando agora!";
+  if (minutesBefore < 60) return `Começa em ${minutesBefore} minutos (${timePart})`;
+  if (minutesBefore >= 60 && minutesBefore < 1440) {
+    const hours = Math.floor(minutesBefore / 60);
+    const remMinutes = minutesBefore % 60;
+    if (remMinutes === 0) {
+      return `Começa em ${hours} ${hours === 1 ? 'hora' : 'horas'} (${timePart})`;
+    }
+    return `Começa em ${hours}h ${remMinutes}min (${timePart})`;
+  }
+  if (minutesBefore === 1440) return `Começa amanhã às ${timePart}`;
+  if (minutesBefore === 10080) return `Começa em 1 semana (${timePart})`;
+  const days = Math.floor(minutesBefore / 1440);
+  return `Começa em ${days} dias (${timePart})`;
+}
+
 export const NotificationService = {
   async requestPermissions(): Promise<boolean> {
     try {
@@ -27,9 +44,11 @@ export const NotificationService = {
             enableLights: true,
             enableVibrate: true,
             showBadge: true,
+            bypassDnd: false,
           });
         } catch (channelErr) {
-          console.warn('Erro ao configurar canal de notificação Android', channelErr);
+          // Trata com segurança falhas de permissão de canal ou vibração no Android
+          console.warn('Erro ao configurar canal de notificação Android (vibração/permissão)', channelErr);
         }
       }
 
@@ -38,16 +57,25 @@ export const NotificationService = {
         const perm = await Notifications.getPermissionsAsync();
         existingStatus = perm?.status || 'undetermined';
       } catch (getErr) {
-        console.warn('Erro ao consultar permissões de notificação', getErr);
+        // Trata negações ou exceções de leitura de permissões
+        console.warn('Erro ao consultar permissões de notificação / alarmes exatos', getErr);
       }
 
       let finalStatus = existingStatus;
       if (existingStatus !== 'granted') {
         try {
-          const req = await Notifications.requestPermissionsAsync();
+          const req = await Notifications.requestPermissionsAsync({
+            ios: {
+              allowAlert: true,
+              allowBadge: true,
+              allowSound: true,
+            },
+            android: {},
+          });
           finalStatus = req?.status || 'denied';
         } catch (reqErr) {
-          console.warn('Erro ao requisitar permissões de notificação do SO', reqErr);
+          // Trata com try/catch seguro qualquer negação de alarme exato (SCHEDULE_EXACT_ALARM) ou restrição do Android 12+
+          console.warn('Erro ao requisitar permissões de notificação do SO (SCHEDULE_EXACT_ALARM / restrições de bateria)', reqErr);
           finalStatus = 'denied';
         }
       }
@@ -92,17 +120,14 @@ export const NotificationService = {
         const hour = triggerDate.getHours();
         const minute = triggerDate.getMinutes();
 
-        const timeNotice = minutesBefore === 0
-          ? 'Começando agora!'
-          : minutesBefore < 60
-          ? `Começa em ${minutesBefore} minutos (${timePart})`
-          : `Começa em ${Math.floor(minutesBefore / 60)}h (${timePart})`;
+        const timeNotice = formatNotificationTimeNotice(minutesBefore, timePart);
 
         const content = {
           title: `${categoryEmoji} ${event.title || 'Compromisso'}`,
           body: event.description ? `${timeNotice} • ${event.description}` : timeNotice,
           data: { eventId: event.id },
           sound: true,
+          vibrate: [0, 250, 250, 250],
         };
 
         try {

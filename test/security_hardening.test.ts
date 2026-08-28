@@ -316,6 +316,76 @@ async function runSecurityTests() {
     (globalThis as any).__mockIntentThrow = false;
   });
 
+  await test('AppUpdateService.downloadUpdateApk falls back to browser when URL is not a direct .apk', async () => {
+    let openedUrl = '';
+    const { mockReactNative } = require('./setup_env');
+    const origOpenUrl = mockReactNative.Linking.openURL;
+    mockReactNative.Linking.openURL = async (url: string) => {
+      openedUrl = url;
+      return true;
+    };
+
+    const releaseHtmlUrl = 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.1.0';
+    const result = await AppUpdateService.downloadUpdateApk(releaseHtmlUrl, () => {});
+    
+    assert(result.success === false, 'Direct download returns false');
+    assert(result.error!.includes('Redirecionando para a página de download'), 'Error message informs browser redirect');
+    assert(openedUrl === releaseHtmlUrl, 'Browser was invoked with release page URL');
+
+    mockReactNative.Linking.openURL = origOpenUrl;
+  });
+
+  // =================================================================
+  // SUITE 6: Notifications Channel & Exact Alarm Resilience
+  // =================================================================
+  console.log('\n--- SUITE 6: Notifications Channel & Exact Alarm Resilience ---');
+  const { NotificationService } = require('../src/services/notifications');
+  const { mockNotifications } = require('./setup_env');
+
+  await test('NotificationService.requestPermissions configures Android channel with MAX importance and vibration', async () => {
+    const { mockReactNative } = require('./setup_env');
+    const prevOS = mockReactNative.Platform.OS;
+    mockReactNative.Platform.OS = 'android';
+
+    let configuredChannel: any = null;
+    mockNotifications.setNotificationChannelAsync = async (id: string, channel: any) => {
+      configuredChannel = { id, ...channel };
+    };
+
+    const granted = await NotificationService.requestPermissions();
+    assert(granted === true, 'requestPermissions returns true when granted');
+    assert(configuredChannel !== null, 'Android channel was configured');
+    assert(configuredChannel.importance === 5, 'Channel importance is MAX (5)');
+    assert(configuredChannel.enableVibrate === true, 'Vibration is enabled');
+    assert(Array.isArray(configuredChannel.vibrationPattern) && configuredChannel.vibrationPattern.length === 4, 'Vibration pattern configured');
+    assert(configuredChannel.bypassDnd === false, 'bypassDnd is false');
+
+    mockReactNative.Platform.OS = prevOS;
+  });
+
+  await test('NotificationService.requestPermissions gracefully handles OS permission / channel rejections', async () => {
+    const origSetChannel = mockNotifications.setNotificationChannelAsync;
+    const origGet = mockNotifications.getPermissionsAsync;
+    const origReq = mockNotifications.requestPermissionsAsync;
+
+    mockNotifications.setNotificationChannelAsync = async () => {
+      throw new Error('SecurityException: Not allowed to set channel vibration or exact alarm');
+    };
+    mockNotifications.getPermissionsAsync = async () => {
+      throw new Error('OS Permission lookup error');
+    };
+    mockNotifications.requestPermissionsAsync = async () => {
+      throw new Error('SCHEDULE_EXACT_ALARM permission denied by user or battery saver');
+    };
+
+    const result = await NotificationService.requestPermissions();
+    assert(result === false, 'Returns false without throwing fatal exception');
+
+    mockNotifications.setNotificationChannelAsync = origSetChannel;
+    mockNotifications.getPermissionsAsync = origGet;
+    mockNotifications.requestPermissionsAsync = origReq;
+  });
+
   console.log('\n================================================================');
   console.log(`🎉 ALL SECURITY HARDENING TESTS PASSED: ${passCount}/${testCount} (100%)`);
   console.log('================================================================\n');

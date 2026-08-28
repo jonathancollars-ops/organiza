@@ -154,9 +154,13 @@ export class AppUpdateService {
       if (supported) {
         await Linking.openURL(url);
         return true;
+      } else {
+        // Fallback direto caso canOpenURL retorne false indevidamente em certas versões do Android
+        await Linking.openURL(url);
+        return true;
       }
     } catch {
-      // Fallback
+      // Fallback silencioso
     }
     return false;
   }
@@ -173,8 +177,21 @@ export class AppUpdateService {
   private static activeDownload: FileSystem.DownloadResumable | null = null;
 
   public static async downloadUpdateApk(downloadUrl: string, onProgress: (progress: number, totalBytes: number, downloadedBytes: number) => void): Promise<{ success: boolean; fileUri?: string; error?: string }> {
+    const fileUri = `${FileSystem.cacheDirectory}lumen-update.apk`;
+
     try {
-      const fileUri = `${FileSystem.cacheDirectory}lumen-update.apk`;
+      if (!downloadUrl || typeof downloadUrl !== 'string' || downloadUrl.trim().length === 0) {
+        return { success: false, error: 'URL de download inválida ou não fornecida.' };
+      }
+
+      // Se a URL não apontar para um arquivo .apk (ex: apenas a página html_url da release), faz fallback para o navegador
+      if (!downloadUrl.toLowerCase().endsWith('.apk')) {
+        await this.openDownloadUrl(downloadUrl);
+        return {
+          success: false,
+          error: 'Pacote APK direto não disponível nesta release. Redirecionando para a página de download no navegador...'
+        };
+      }
       
       const MIN_FREE_SPACE = 60 * 1024 * 1024; // 60 MB
       try {
@@ -186,9 +203,16 @@ export class AppUpdateService {
         // Ignora se getFreeDiskStorageAsync não for suportado em algum dispositivo
       }
 
-      const fileInfo = await FileSystem.getInfoAsync(fileUri);
-      if (fileInfo.exists) {
-        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      // Prevenção de lixo e corrupção: Exclui qualquer APK parcial ou corrompido de downloads anteriores
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        if (fileInfo.exists) {
+          await FileSystem.deleteAsync(fileUri, { idempotent: true });
+        }
+      } catch {
+        try {
+          await FileSystem.deleteAsync(fileUri, { idempotent: true });
+        } catch {}
       }
 
       this.activeDownload = FileSystem.createDownloadResumable(
@@ -206,8 +230,18 @@ export class AppUpdateService {
       if (result && result.uri) {
         return { success: true, fileUri: result.uri };
       }
+
+      // Se o download não retornou URI válida, limpa o arquivo corrompido
+      try {
+        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      } catch {}
+
       return { success: false, error: 'Download incompleto ou falhou.' };
     } catch (error: any) {
+      // Limpa qualquer arquivo parcial/corrompido gerado durante a falha
+      try {
+        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      } catch {}
       return { success: false, error: error.message || 'Erro durante o download' };
     } finally {
       this.activeDownload = null;

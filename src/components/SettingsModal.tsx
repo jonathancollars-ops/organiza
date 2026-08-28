@@ -10,47 +10,52 @@ import {
   Switch,
   Alert,
   Platform,
+  ActivityIndicator,
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ThemeType, AppSettings, Semester, BackupData, AIConfig } from '../types';
+import { ThemeType, AppSettings, Semester, BackupData, AIConfig, AppUpdateInfo } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
+import { AppUpdateService } from '../services/AppUpdateService';
 import { generateId } from '../utils/id';
 import { APP_VERSION } from '../utils/version';
 import * as Haptics from 'expo-haptics';
 
-interface Props {
+export interface SettingsModalProps {
   visible: boolean;
   onClose: () => void;
   theme: ThemeType;
   onThemeChange: (theme: ThemeType) => void;
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
-  semesters: Semester[];
-  onUpdateSemesters: (semesters: Semester[]) => void;
-  onOpenGuide: () => void;
-  onRestoreSuccess: () => void;
+  semesters?: Semester[];
+  onUpdateSemesters?: (semesters: Semester[]) => void;
+  onOpenGuide?: () => void;
+  onRestoreSuccess?: () => void;
   onCheckUpdates?: () => void;
+  onOpenUpdateModal?: (info: AppUpdateInfo) => void;
 }
 
-export const SettingsModal: React.FC<Props> = ({
+export const SettingsModal: React.FC<SettingsModalProps> = ({
   visible,
   onClose,
   theme,
   onThemeChange,
   settings,
   onUpdateSettings,
-  semesters,
+  semesters = [],
   onUpdateSemesters,
   onOpenGuide,
   onRestoreSuccess,
-  onCheckUpdates
+  onCheckUpdates,
+  onOpenUpdateModal
 }) => {
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
 
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'semestres' | 'ia' | 'backup'>('geral');
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
     mode: 'cloud',
@@ -128,7 +133,9 @@ export const SettingsModal: React.FC<Props> = ({
       hapticsEnabled,
       examWeekMode,
     };
-    onUpdateSettings(updated);
+    if (onUpdateSettings) {
+      onUpdateSettings(updated);
+    }
     await StorageService.saveSettings(updated);
     Alert.alert('Sucesso', 'Configurações salvas com sucesso!');
   };
@@ -145,7 +152,9 @@ export const SettingsModal: React.FC<Props> = ({
       isArchived: false,
     };
     const updated = [...safeSemesters, newSem];
-    onUpdateSemesters(updated);
+    if (onUpdateSemesters) {
+      onUpdateSemesters(updated);
+    }
     StorageService.saveSemesters(updated);
     setNewSemesterName('');
   };
@@ -156,14 +165,18 @@ export const SettingsModal: React.FC<Props> = ({
       ...s,
       isCurrent: s.id === semId
     }));
-    onUpdateSemesters(updated);
+    if (onUpdateSemesters) {
+      onUpdateSemesters(updated);
+    }
     StorageService.saveSemesters(updated);
   };
 
   const toggleArchiveSemester = (semId: string) => {
     Haptics.selectionAsync();
     const updated = safeSemesters.map(s => s.id === semId ? { ...s, isArchived: !s.isArchived } : s);
-    onUpdateSemesters(updated);
+    if (onUpdateSemesters) {
+      onUpdateSemesters(updated);
+    }
     StorageService.saveSemesters(updated);
   };
 
@@ -176,7 +189,9 @@ export const SettingsModal: React.FC<Props> = ({
         onPress: () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           const updated = safeSemesters.filter(s => s.id !== semId);
-          onUpdateSemesters(updated);
+          if (onUpdateSemesters) {
+            onUpdateSemesters(updated);
+          }
           StorageService.saveSemesters(updated);
         }
       }
@@ -212,13 +227,43 @@ export const SettingsModal: React.FC<Props> = ({
         {
           text: 'OK',
           onPress: () => {
-            onRestoreSuccess();
+            if (onRestoreSuccess) {
+              onRestoreSuccess();
+            }
             onClose();
           }
         }
       ]);
     } catch (e: any) {
       Alert.alert('Erro ao restaurar', 'JSON inválido ou corrompido: ' + (e?.message || ''));
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    Haptics.selectionAsync();
+    setIsCheckingUpdate(true);
+    try {
+      const info = await AppUpdateService.checkForUpdates(true);
+      if (info && info.hasUpdate) {
+        if (onOpenUpdateModal) {
+          onOpenUpdateModal(info);
+        } else if (onCheckUpdates) {
+          onCheckUpdates();
+        }
+      } else {
+        const currentVer = AppUpdateService.getCurrentVersion();
+        Alert.alert(
+          'Lumen Atualizado!',
+          `Você já está usando a versão mais recente (v${currentVer})!`
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        'Erro ao verificar',
+        'Não foi possível checar atualizações. Verifique sua conexão com a internet.'
+      );
+    } finally {
+      setIsCheckingUpdate(false);
     }
   };
 
@@ -391,14 +436,37 @@ export const SettingsModal: React.FC<Props> = ({
                 </View>
               </View>
 
-              {/* General App Info & Guide */}
-              <Text style={[styles.sectionTitle, { marginTop: 22 }]}>Ajuda e Informações</Text>
+              {/* Sobre o Lumen & Atualizações */}
+              <Text style={[styles.sectionTitle, { marginTop: 22 }]}>Sobre o Lumen</Text>
+              
+              <TouchableOpacity
+                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }]}
+                onPress={handleCheckForUpdates}
+                disabled={isCheckingUpdate}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                  <Text style={{ fontSize: 20, marginRight: 10 }}>🔍</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Verificar Atualizações</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>Versão instalada: v{APP_VERSION}</Text>
+                  </View>
+                </View>
+                <View style={{ backgroundColor: colors.primaryLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, minWidth: 70, alignItems: 'center', justifyContent: 'center' }}>
+                  {isCheckingUpdate ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>Checar</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
                 onPress={() => {
                   Haptics.selectionAsync();
                   onClose();
-                  onOpenGuide();
+                  if (onOpenGuide) onOpenGuide();
                 }}
                 activeOpacity={0.7}
               >
@@ -407,28 +475,6 @@ export const SettingsModal: React.FC<Props> = ({
                   <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Abrir Guia do Usuário</Text>
                 </View>
                 <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '700' }}>›</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }]}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  if (onCheckUpdates) {
-                    onCheckUpdates();
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 20, marginRight: 10 }}>🚀</Text>
-                  <View>
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Verificar Atualizações</Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>Versão instalada: v{APP_VERSION}</Text>
-                  </View>
-                </View>
-                <View style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
-                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>Checar</Text>
-                </View>
               </TouchableOpacity>
             </>
           ) : activeSubTab === 'semestres' ? (

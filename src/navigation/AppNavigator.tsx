@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
@@ -7,6 +7,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useApp } from '../contexts/AppContext';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
+import { AppUpdateService } from '../services/AppUpdateService';
+import { AppUpdateInfo } from '../types';
 
 // Screens
 import { AgendaScreenWrapper } from '../screens/AgendaScreenWrapper';
@@ -39,9 +41,24 @@ export function AppNavigator() {
   const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
   const [groupProjectsModalVisible, setGroupProjectsModalVisible] = useState(false);
   const [onboardingVisible, setOnboardingVisible] = useState(false);
+  
+  // App Update State
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [updateModalVisible, setUpdateModalVisible] = useState(false);
 
   // Agenda Modals State (Could be moved to AgendaScreen, but keeping here for FAB)
   const [eventTypeVisible, setEventTypeVisible] = useState(false);
+  
+  useEffect(() => {
+    const check = async () => {
+      const info = await AppUpdateService.checkForUpdates(false);
+      if (info && info.hasUpdate) {
+        setUpdateInfo(info);
+        setUpdateModalVisible(true);
+      }
+    };
+    check();
+  }, []);
   
   if (isInitializing) {
     return (
@@ -178,6 +195,10 @@ export function AppNavigator() {
         onUpdateSemesters={setSemesters}
         onOpenGuide={() => setOnboardingVisible(true)}
         onRestoreSuccess={() => refreshData()}
+        onOpenUpdateModal={(info) => {
+          setUpdateInfo(info);
+          setUpdateModalVisible(true);
+        }}
       />
       <OnboardingModal
         visible={onboardingVisible}
@@ -205,6 +226,12 @@ export function AppNavigator() {
         onClose={() => setGroupProjectsModalVisible(false)} 
         theme={theme} 
         subjects={subjects}
+      />
+      <AppUpdateModal 
+        visible={updateModalVisible} 
+        updateInfo={updateInfo} 
+        theme={theme} 
+        onClose={() => setUpdateModalVisible(false)} 
       />
 
       {/* Event creation flows */}

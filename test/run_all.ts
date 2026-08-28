@@ -22,7 +22,7 @@ for (const file of files) {
   const args = isWindows ? ['tsx', `"${fullPath}"`] : ['tsx', fullPath];
   const result = spawnSync('npx', args, {
     stdio: 'inherit',
-    shell: true,
+    shell: isWindows,
     cwd: path.resolve(__dirname, '..')
   });
 

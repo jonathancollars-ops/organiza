@@ -71,6 +71,7 @@ jobs:
       - name: 🔨 Build Android Standalone APK (Debug/Sideload)
         working-directory: android
         run: |
+          set -o pipefail
           ./gradlew assembleDebug --stacktrace --no-daemon \
             -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError" 2>&1 | tee ../gradle_build.log
 
@@ -78,8 +79,8 @@ jobs:
         id: prepare-artifact
         run: |
           mkdir -p build-output
-          # Locate generated APK (debug build — no keystore required for sideloading)
-          APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          # Locate generated APK across android outputs
+          APK_FILE=$(find android -name "*.apk" ! -name "*unaligned*" | head -n 1)
           if [ -n "$APK_FILE" ] && [ -f "$APK_FILE" ]; then
             TARGET_APK="build-output/lumen-v3.3.0-standalone.apk"
             cp "$APK_FILE" "$TARGET_APK"
@@ -93,6 +94,7 @@ jobs:
             cd ..
           else
             echo "❌ Error: APK output file not found!"
+            find android -name "*.apk" || true
             exit 1
           fi
 
@@ -141,8 +143,13 @@ jobs:
           echo "- **Tests**: \`npm test\` (100% green)" >> $GITHUB_STEP_SUMMARY
           if [ -f gradle_build.log ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "#### 📋 Gradle Output Log (Tail 100 lines):" >> $GITHUB_STEP_SUMMARY
+            echo "#### 📋 Gradle Exact Error:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 100 gradle_build.log >> $GITHUB_STEP_SUMMARY
+            sed -n '/What went wrong:/,/BUILD FAILED/p' gradle_build.log >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "#### 📋 Gradle Failed Tasks & Warnings:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -E "FAILED|FAILURE:|ERROR:|error:|e: " gradle_build.log | head -n 40 >> $GITHUB_STEP_SUMMARY || true
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi

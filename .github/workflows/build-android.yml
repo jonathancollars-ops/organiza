@@ -68,17 +68,17 @@ jobs:
       - name: 🔑 Grant Execute Permission to Gradle Wrapper
         run: chmod +x android/gradlew
 
-      - name: 🔨 Build Android Standalone APK (Release)
+      - name: 🔨 Build Android Standalone APK (Debug/Sideload)
         working-directory: android
         run: |
-          ./gradlew assembleRelease --no-daemon \
+          ./gradlew assembleDebug --no-daemon \
             -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError"
 
       - name: 📋 Prepare Artifacts & Calculate Checksums
         id: prepare-artifact
         run: |
           mkdir -p build-output
-          # Locate generated APK
+          # Locate generated APK (debug build — no keystore required for sideloading)
           APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
           if [ -n "$APK_FILE" ] && [ -f "$APK_FILE" ]; then
             TARGET_APK="build-output/lumen-v3.3.0-standalone.apk"

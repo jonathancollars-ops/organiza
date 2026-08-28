@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
+    "tsx": "^4.23.12",
     "typescript": "~5.9.2"
   },
   "scripts": {

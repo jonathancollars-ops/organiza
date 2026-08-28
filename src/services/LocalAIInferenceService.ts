@@ -25,6 +25,7 @@ export class LocalAIInferenceService {
       return { items: [], confidence: 1.0, rawResponse: 'Texto vazio', sourceMode: 'heuristic_offline' };
     }
 
+    const apiKey = aiConfig?.apiKey?.trim() || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
     const mode = aiConfig?.mode || 'heuristic_offline';
 
     // 1. Local Edge AI (Google AI Edge / Gemma On-Device)
@@ -36,7 +37,7 @@ export class LocalAIInferenceService {
           return { ...result, sourceMode: 'local_edge' };
         } catch (localErr) {
           console.warn('Erro na inferência local, acionando fallback:', localErr);
-          if (aiConfig?.enableFallbackToCloud && aiConfig?.apiKey) {
+          if (aiConfig?.enableFallbackToCloud && apiKey) {
             const cloudRes = await AIParsingService.parseMessage(rawText, aiConfig, context);
             return { ...cloudRes, sourceMode: 'gemini_cloud' };
           }
@@ -44,7 +45,7 @@ export class LocalAIInferenceService {
         }
       } else {
         // Model not yet downloaded on device -> Fallback to Cloud or Heuristic
-        if (aiConfig?.apiKey) {
+        if (apiKey) {
           const cloudRes = await AIParsingService.parseMessage(rawText, aiConfig, context);
           return { ...cloudRes, sourceMode: 'gemini_cloud' };
         }
@@ -54,7 +55,7 @@ export class LocalAIInferenceService {
 
     // 2. Gemini Cloud API
     if (mode === 'gemini_cloud') {
-      if (aiConfig?.apiKey && aiConfig.apiKey.trim() !== '') {
+      if (apiKey) {
         try {
           const cloudRes = await AIParsingService.parseMessage(rawText, aiConfig, context);
           return { ...cloudRes, sourceMode: 'gemini_cloud' };
@@ -101,8 +102,10 @@ export class LocalAIInferenceService {
       return this.getDefaultFormula(defaultPassGrade);
     }
 
+    const apiKey = aiConfig?.apiKey?.trim() || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+
     // If Cloud AI is available and enabled, ask Gemini to parse complex grading criteria
-    if (aiConfig?.apiKey && aiConfig.provider === 'gemini') {
+    if (apiKey && aiConfig?.provider === 'gemini') {
       try {
         const prompt = `Você é um assistente acadêmico especialista em regras de avaliação universitárias no Brasil.
 Analise a seguinte descrição de cálculo de notas e retorne estritamente um JSON com a estrutura de grupos, pesos e nota mínima para aprovação:
@@ -131,7 +134,7 @@ Responda APENAS com JSON:
   ]
 }`;
 
-        const rawJson = await AIParsingService.callGemini(criteriaText, aiConfig.apiKey, 'gemini-1.5-flash', prompt);
+        const rawJson = await AIParsingService.callGemini(criteriaText, apiKey, 'gemini-1.5-flash', prompt);
         const cleaned = rawJson.replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(cleaned);
         if (parsed.groups && Array.isArray(parsed.groups)) {

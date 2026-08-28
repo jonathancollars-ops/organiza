@@ -18,7 +18,7 @@ const failedFiles: string[] = [];
 for (const file of files) {
   const fullPath = path.join(testDir, file);
   console.log(`\n▶️  RUNNING: test/${file}`);
-  const result = spawnSync('npx', ['tsx', fullPath], {
+  const result = spawnSync('npx', ['tsx', `"${fullPath}"`], {
     stdio: 'inherit',
     shell: true,
     cwd: path.resolve(__dirname, '..')

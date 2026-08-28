@@ -23,7 +23,9 @@ export class AIParsingService {
       return { items: [], confidence: 1.0, rawResponse: 'Mensagem vazia' };
     }
 
-    if (!aiConfig || !aiConfig.apiKey || aiConfig.apiKey.trim() === '') {
+    const apiKey = aiConfig?.apiKey?.trim() || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+
+    if (!apiKey) {
       // Offline fallback when no API key is set
       return AIParsingService.parseMessageMock(sanitizedMessage, context);
     }
@@ -32,17 +34,17 @@ export class AIParsingService {
 
     try {
       let rawResponseText = '';
-      if (aiConfig.provider === 'gemini') {
+      if (aiConfig?.provider === 'gemini') {
         rawResponseText = await AIParsingService.callGemini(
           sanitizedMessage,
-          aiConfig.apiKey,
+          apiKey,
           aiConfig.model,
           systemPrompt
         );
-      } else if (aiConfig.provider === 'openai') {
+      } else if (aiConfig?.provider === 'openai') {
         rawResponseText = await AIParsingService.callOpenAI(
           sanitizedMessage,
-          aiConfig.apiKey,
+          apiKey,
           aiConfig.model,
           systemPrompt
         );
@@ -125,7 +127,9 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
     mode: 'transcript' | 'curriculum',
     aiConfig: AIConfig
   ): Promise<any> {
-    if (!aiConfig || !aiConfig.apiKey || aiConfig.apiKey.trim() === '') {
+    const apiKey = aiConfig?.apiKey?.trim() || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+
+    if (!apiKey) {
       throw new Error('A leitura de PDFs e Imagens requer que a Chave de API do Lumen AI (Gemini) esteja configurada.');
     }
 
@@ -134,7 +138,7 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
     }
 
     const selectedModel = aiConfig.model?.trim() || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${aiConfig.apiKey.trim()}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${apiKey}`;
 
     let systemPrompt = '';
     if (mode === 'transcript') {
@@ -227,6 +231,16 @@ Retorne APENAS o JSON, sem markdown extra.`;
 
   /**
    * REST call to Google Gemini API with XML delimiter wrapping.
+   * 
+   * @SECURITY_NOTICE
+   * Integrating Gemini/Lumen AI directly on the client-side exposes your API keys.
+   * For Expo apps, DO NOT hardcode keys. You can use environment variables (.env):
+   * process.env.EXPO_PUBLIC_GEMINI_API_KEY
+   * However, EXPO_PUBLIC_ variables are still bundled in the app and can be extracted.
+   * 
+   * @RECOMMENDATION
+   * For production, proxy these requests through a secure backend (Node.js/Serverless).
+   * See the `callGeminiSecureBackend` skeleton below for reference.
    */
   public static async callGemini(
     rawMessage: string,
@@ -234,8 +248,11 @@ Retorne APENAS o JSON, sem markdown extra.`;
     model: string = 'gemini-1.5-flash',
     systemPrompt: string
   ): Promise<string> {
+    // If no key is passed, fallback to environment variable (useful for development)
+    const effectiveApiKey = apiKey.trim() || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
     const selectedModel = model.trim() || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${apiKey.trim()}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${effectiveApiKey}`;
+
     const sanitized = SecuritySanitizer.sanitizeHtml(rawMessage);
     const wrappedMessage = SecuritySanitizer.wrapWithUntrustedDelimiter(sanitized, 'untrusted_content');
 
@@ -274,6 +291,35 @@ Retorne APENAS o JSON, sem markdown extra.`;
       throw new Error('Google Gemini retornou uma resposta vazia.');
     }
     return outputText;
+  }
+
+  /**
+   * SKELETON: Secure Backend Proxy Call (Recommended for Production)
+   * 
+   * This is how you should call the Gemini API in production.
+   * The app sends the payload to YOUR backend, and YOUR backend 
+   * holds the actual GEMINI_API_KEY securely.
+   */
+  public static async callGeminiSecureBackend(
+    rawMessage: string,
+    model: string = 'gemini-1.5-flash',
+    systemPrompt: string
+  ): Promise<string> {
+    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://api.seubackend.com/v1/parse';
+    const sanitized = SecuritySanitizer.sanitizeHtml(rawMessage);
+
+    const response = await fetch(backendUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: sanitized, model, systemPrompt })
+    });
+
+    if (!response.ok) {
+      throw new Error('Backend request failed.');
+    }
+
+    const data = await response.json();
+    return data.resultText;
   }
 
   /**

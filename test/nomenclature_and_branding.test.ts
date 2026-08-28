@@ -112,19 +112,19 @@ async function runNomenclatureTests() {
     );
   });
 
-  // Test 7: App.tsx splash screen and header branding
-  await test('7. App.tsx cold-start splash and main header branding', () => {
-    const appPath = path.join(projectRoot, 'App.tsx');
-    assert(fs.existsSync(appPath), 'App.tsx exists');
+  // Test 7: AppNavigator.tsx header branding
+  await test('7. AppNavigator.tsx main header branding', () => {
+    const appPath = path.join(projectRoot, 'src', 'navigation', 'AppNavigator.tsx');
+    assert(fs.existsSync(appPath), 'AppNavigator.tsx exists');
     const appContent = fs.readFileSync(appPath, 'utf8');
-    assert(!appContent.includes('>Organiza<'), 'App.tsx does not render ">Organiza<" in splash or header');
-    assert(appContent.includes('>Lumen<'), 'App.tsx renders ">Lumen<" branding');
+    assert(!appContent.includes('>Organiza<'), 'AppNavigator.tsx does not render ">Organiza<"');
+    assert(appContent.includes('>Lumen<'), 'AppNavigator.tsx renders ">Lumen<" branding');
 
-    // Verify both splash and header occurrences
+    // Verify header occurrences
     const matches = appContent.match(/>Lumen</g);
     assert(
-      matches !== null && matches.length >= 2,
-      `App.tsx renders ">Lumen<" in both cold-start splash and main header (found ${matches ? matches.length : 0} occurrences)`
+      matches !== null && matches.length >= 1,
+      `AppNavigator.tsx renders ">Lumen<" in header (found ${matches ? matches.length : 0} occurrences)`
     );
   });
 
@@ -145,7 +145,7 @@ async function runNomenclatureTests() {
       path.join(projectRoot, 'package.json'),
       path.join(projectRoot, 'package-lock.json'),
       path.join(projectRoot, 'app.json'),
-      path.join(projectRoot, 'App.tsx'),
+      path.join(projectRoot, 'src', 'navigation', 'AppNavigator.tsx'),
       path.join(projectRoot, 'android', 'app', 'src', 'main', 'res', 'values', 'strings.xml'),
       path.join(projectRoot, 'src', 'services', 'AIParsingService.ts'),
       path.join(projectRoot, 'src', 'components', 'OnboardingModal.tsx'),

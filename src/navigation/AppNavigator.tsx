@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -42,7 +42,11 @@ export function AppNavigator() {
   const [eventTypeVisible, setEventTypeVisible] = useState(false);
   
   if (isInitializing) {
-    return null; // Or ActivityIndicator
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   const CustomHeader = () => (

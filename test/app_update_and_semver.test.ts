@@ -42,7 +42,7 @@ async function runSemverAndAutoUpdateTests() {
     const p1 = parseSemver('3.1.0');
     assertEqual(p1.major, 3, 'Major is 3');
     assertEqual(p1.minor, 1, 'Minor is 1');
-    assertEqual(p1.patch, 1, 'Patch is 0');
+    assertEqual(p1.patch, 0, 'Patch is 0');
     assertEqual(p1.raw, '3.1.0', 'Raw normalized is 3.1.0');
 
     const p2 = parseSemver('v3.2.24');

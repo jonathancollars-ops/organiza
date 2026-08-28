@@ -414,23 +414,24 @@ async function runEmpiricalChallenge() {
   // ==========================================================================
   console.log('\n--- SECTION 5: Header Viewport Responsiveness & Cold-Start State ---');
 
-  const appSource = fs.readFileSync(path.resolve(__dirname, '../App.tsx'), 'utf-8');
+  const appContextSource = fs.readFileSync(path.resolve(__dirname, '../src/contexts/AppContext.tsx'), 'utf-8');
+  const appNavSource = fs.readFileSync(path.resolve(__dirname, '../src/navigation/AppNavigator.tsx'), 'utf-8');
 
   // Cold start splash check
-  const hasIsInitializing = appSource.includes('const [isInitializing, setIsInitializing] = useState(true);');
+  const hasIsInitializing = appContextSource.includes('const [isInitializing, setIsInitializing] = useState(true);');
   assert(
     hasIsInitializing,
     'App.tsx contains isInitializing state initialized to true'
   );
 
-  const rendersSplash = appSource.includes('if (isInitializing) {') && appSource.includes('ActivityIndicator');
+  const rendersSplash = appNavSource.includes('if (isInitializing) {') && appNavSource.includes('ActivityIndicator');
   assert(
     rendersSplash,
     'App.tsx renders centered splash screen with ActivityIndicator during cold start'
   );
 
   // Responsive header check
-  const hasFlexShrink = appSource.includes('flexShrink: 1') && appSource.includes('numberOfLines={1}');
+  const hasFlexShrink = appNavSource.includes('flexShrink: 1') && appNavSource.includes('numberOfLines={1}');
   assert(
     hasFlexShrink,
     'App.tsx title container uses flexShrink: 1 and numberOfLines={1} to prevent header overflow'

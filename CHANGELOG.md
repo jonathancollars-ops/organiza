@@ -14,6 +14,12 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 ---
 
 ## [3.3.0] - 2026-08-28
+### 🚀 Atualizador In-App & Instalador Direto de APK (Features)
+- **Download Direto pelo Aplicativo:** Agora o Lumen baixa as novas versões de APK diretamente dentro do app via `expo-file-system`, sem necessidade de abrir navegadores externos ou páginas do GitHub.
+- **Barra de Progresso e Métricas em Tempo Real:** Visualização ao vivo da porcentagem (`0%` a `100%`) e tamanho baixado (ex: `18.5 MB / 28.2 MB`) com opção de cancelamento.
+- **Acionamento do Instalador Nativo:** Ao término do download, o aplicativo aciona o instalador de pacotes do Android automaticamente (`ACTION_VIEW` com permissão segura de URI via `expo-intent-launcher`), permitindo atualizar o app com apenas um toque.
+- **Compilação Release Standalone:** Correção do pipeline de CI/CD para gerar APKs standalone autocontidos (`assembleRelease`), incluindo o bundle JavaScript empacotado para execução offline sem Metro.
+
 ### 🎮 Novo Recurso de Gamificação (Features)
 - **Motor de XP e Níveis:** Sistema inteligente de gamificação integrado! Estudar (Pomodoro) e marcar presença nas aulas agora rendem experiência (XP).
 - **Sistema de Conquistas:** Desbloqueie badges alcançando marcos acadêmicos.

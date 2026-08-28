@@ -96,52 +96,76 @@ Module.prototype.require = function (id: string) {
       NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' }
     };
   }
-  if (id === 'expo-file-system' || id === 'expo-file-system/legacy') {
+const fileSystemMock = {
+  documentDirectory: 'file:///mock_sandbox_app/files/',
+  cacheDirectory: 'file:///mock_sandbox_app/cache/',
+  getInfoAsync: async (uri: string) => {
+    if (mockFileSystemStore[uri]) {
+      return { exists: true, isDirectory: mockFileSystemStore[uri].isDirectory, size: mockFileSystemStore[uri].size, uri };
+    }
+    return { exists: false, isDirectory: false, uri };
+  },
+  getFreeDiskStorageAsync: async () => mockFreeDiskStorageBytes,
+  makeDirectoryAsync: async (dirUri: string) => {
+    mockFileSystemStore[dirUri] = { exists: true, isDirectory: true, size: 0 };
+  },
+  deleteAsync: async (uri: string) => {
+    delete mockFileSystemStore[uri];
+  },
+  createDownloadResumable: (url: string, fileUri: string, options: any, callback: any) => {
+    let isPaused = false;
+    let isCancelled = false;
     return {
-      documentDirectory: 'file:///mock_sandbox_app/files/',
-      cacheDirectory: 'file:///mock_sandbox_app/cache/',
-      getInfoAsync: async (uri: string) => {
-        if (mockFileSystemStore[uri]) {
-          return { exists: true, isDirectory: mockFileSystemStore[uri].isDirectory, size: mockFileSystemStore[uri].size, uri };
+      downloadAsync: async () => {
+        if (isCancelled) throw new Error('Download cancelado');
+        const totalBytes = 800000000;
+        if (callback) {
+          callback({ totalBytesWritten: Math.floor(totalBytes / 2), totalBytesExpectedToWrite: totalBytes });
+          callback({ totalBytesWritten: totalBytes, totalBytesExpectedToWrite: totalBytes });
         }
-        return { exists: false, isDirectory: false, uri };
+        mockFileSystemStore[fileUri] = { exists: true, isDirectory: false, size: totalBytes };
+        return { uri: fileUri, status: 200 };
       },
-      getFreeDiskStorageAsync: async () => mockFreeDiskStorageBytes,
-      makeDirectoryAsync: async (dirUri: string) => {
-        mockFileSystemStore[dirUri] = { exists: true, isDirectory: true, size: 0 };
+      pauseAsync: async () => {
+        isPaused = true;
+        return { url, fileUri, options, resumeData: 'mock_resume_data' };
       },
-      deleteAsync: async (uri: string) => {
-        delete mockFileSystemStore[uri];
+      resumeAsync: async () => {
+        isPaused = false;
+        return { uri: fileUri, status: 200 };
       },
-      createDownloadResumable: (url: string, fileUri: string, options: any, callback: any) => {
-        let isPaused = false;
-        let isCancelled = false;
-        return {
-          downloadAsync: async () => {
-            if (isCancelled) throw new Error('Download cancelado');
-            const totalBytes = 800000000;
-            if (callback) {
-              callback({ totalBytesWritten: Math.floor(totalBytes / 2), totalBytesExpectedToWrite: totalBytes });
-              callback({ totalBytesWritten: totalBytes, totalBytesExpectedToWrite: totalBytes });
-            }
-            mockFileSystemStore[fileUri] = { exists: true, isDirectory: false, size: totalBytes };
-            return { uri: fileUri, status: 200 };
-          },
-          pauseAsync: async () => {
-            isPaused = true;
-            return { url, fileUri, options, resumeData: 'mock_resume_data' };
-          },
-          resumeAsync: async () => {
-            isPaused = false;
-            return { uri: fileUri, status: 200 };
-          },
-          cancelAsync: async () => {
-            isCancelled = true;
-            delete mockFileSystemStore[fileUri];
-          }
-        };
+      cancelAsync: async () => {
+        isCancelled = true;
+        delete mockFileSystemStore[fileUri];
       }
     };
+  },
+  getContentUriAsync: async (uri: string) => `content://com.lumen.fileprovider/files/${uri.split('/').pop()}`,
+};
+
+const intentLauncherMock = {
+  startActivityAsync: async (action: string, options: any) => {
+    (globalThis as any).__mockIntentOptions = { action, options };
+    
+    if ((globalThis as any).__mockIntentThrow) {
+      if (action === 'android.settings.MANAGE_UNKNOWN_APP_SOURCES') {
+         return { action: 'android.intent.action.VIEW' };
+      }
+      throw new Error('SecurityException: UID 10123 does not have permission to install packages');
+    }
+    
+    if (action === 'android.settings.MANAGE_UNKNOWN_APP_SOURCES') {
+       return { action: 'android.intent.action.VIEW' };
+    }
+    return { action };
+  }
+};
+
+  if (id === 'expo-file-system' || id === 'expo-file-system/legacy') {
+    return fileSystemMock;
+  }
+  if (id === 'expo-intent-launcher') {
+    return intentLauncherMock;
   }
   return origRequire.apply(this, arguments);
 };

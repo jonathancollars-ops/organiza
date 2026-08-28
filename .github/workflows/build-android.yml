@@ -68,11 +68,11 @@ jobs:
       - name: 🔑 Grant Execute Permission to Gradle Wrapper
         run: chmod +x android/gradlew
 
-      - name: 🔨 Build Android Standalone APK (Debug/Sideload)
+      - name: 🔨 Build Android Standalone APK (Release)
         working-directory: android
         run: |
           set -o pipefail
-          ./gradlew assembleDebug --stacktrace --no-daemon \
+          ./gradlew assembleRelease --stacktrace --no-daemon \
             -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError" 2>&1 | tee ../gradle_build.log
 
       - name: 📋 Prepare Artifacts & Calculate Checksums

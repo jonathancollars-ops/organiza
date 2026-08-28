@@ -1,5 +1,7 @@
 import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { AppUpdateInfo, AppUpdateState } from '../types';
 import { APP_VERSION, isNewerVersion, parseSemver } from '../utils/version';
 
@@ -165,6 +167,87 @@ export class AppUpdateService {
   public static async ignoreVersion(version: string): Promise<void> {
     if (version && typeof version === 'string') {
       await this.saveUpdateState({ ignoredVersion: version });
+    }
+  }
+
+  private static activeDownload: FileSystem.DownloadResumable | null = null;
+
+  public static async downloadUpdateApk(downloadUrl: string, onProgress: (progress: number, totalBytes: number, downloadedBytes: number) => void): Promise<{ success: boolean; fileUri?: string; error?: string }> {
+    try {
+      const fileUri = `${FileSystem.cacheDirectory}lumen-update.apk`;
+      
+      const MIN_FREE_SPACE = 60 * 1024 * 1024; // 60 MB
+      try {
+        const freeSpace = await FileSystem.getFreeDiskStorageAsync();
+        if (freeSpace < MIN_FREE_SPACE) {
+          return { success: false, error: 'Espaço em disco insuficiente. Libere pelo menos 60 MB para baixar a atualização.' };
+        }
+      } catch (e) {
+        // Ignora se getFreeDiskStorageAsync não for suportado em algum dispositivo
+      }
+
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      if (fileInfo.exists) {
+        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      }
+
+      this.activeDownload = FileSystem.createDownloadResumable(
+        downloadUrl,
+        fileUri,
+        {},
+        (downloadProgress) => {
+          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+          onProgress(progress, downloadProgress.totalBytesExpectedToWrite, downloadProgress.totalBytesWritten);
+        }
+      );
+
+      const result = await this.activeDownload.downloadAsync();
+      
+      if (result && result.uri) {
+        return { success: true, fileUri: result.uri };
+      }
+      return { success: false, error: 'Download incompleto ou falhou.' };
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Erro durante o download' };
+    } finally {
+      this.activeDownload = null;
+    }
+  }
+
+  public static async cancelDownload(): Promise<void> {
+    try {
+      if (this.activeDownload) {
+        await this.activeDownload.cancelAsync();
+        this.activeDownload = null;
+      }
+    } catch (error) {
+      console.warn('Erro ao cancelar o download', error);
+    }
+  }
+
+  public static async installApk(fileUri: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const contentUri = await FileSystem.getContentUriAsync(fileUri);
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        flags: 1,
+        type: 'application/vnd.android.package-archive',
+      });
+      return { success: true };
+    } catch (error: any) {
+      const errMsg = error.message || '';
+      
+      // Tratamento de Permissões Android 8.0+
+      if (errMsg.includes('SecurityException') || errMsg.includes('REQUEST_INSTALL_PACKAGES')) {
+        try {
+          await IntentLauncher.startActivityAsync('android.settings.MANAGE_UNKNOWN_APP_SOURCES');
+          return { success: false, error: 'Permissão necessária para instalar fontes desconhecidas. Por favor, autorize e tente novamente.' };
+        } catch (settingsError) {
+          return { success: false, error: 'Permissão negada. Habilite a instalação de fontes desconhecidas nas configurações do Android.' };
+        }
+      }
+      
+      return { success: false, error: errMsg || 'Falha ao acionar o instalador.' };
     }
   }
 }

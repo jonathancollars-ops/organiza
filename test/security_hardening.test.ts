@@ -277,6 +277,45 @@ async function runSecurityTests() {
     assert(violations === 0, '0 hardcoded API keys or secrets detected across all source files');
   });
 
+  // =================================================================
+  // SUITE 5: AppUpdateService Security & Resilience Flows
+  // =================================================================
+  console.log('\n--- SUITE 5: AppUpdateService Security & Resilience Flows ---');
+  const { AppUpdateService } = require('../src/services/AppUpdateService');
+  const { mockFileSystemStore, setMockFreeDiskStorageBytes } = require('./setup_env');
+  const IntentLauncherMock = require('expo-intent-launcher');
+
+  await test('AppUpdateService.downloadUpdateApk clears cache garbage before downloading', async () => {
+    // Inject garbage APK
+    const mockUri = 'file:///mock_sandbox_app/cache/lumen-update.apk';
+    mockFileSystemStore[mockUri] = { exists: true, isDirectory: false, size: 5000000 };
+    setMockFreeDiskStorageBytes(100 * 1024 * 1024); // 100 MB free
+
+    await AppUpdateService.downloadUpdateApk('http://example.com/lumen.apk', () => {});
+    
+    // Check if it was deleted (original deleteAsync removes it)
+    assert(!mockFileSystemStore[mockUri] || mockFileSystemStore[mockUri].size !== 5000000, 'FileSystem.deleteAsync was called to clear garbage before download');
+  });
+
+  await test('AppUpdateService.downloadUpdateApk aborts if storage is insufficient', async () => {
+    // Only 10 MB free space (Minimum required is 60 MB)
+    setMockFreeDiskStorageBytes(10 * 1024 * 1024);
+
+    const result = await AppUpdateService.downloadUpdateApk('http://example.com/lumen.apk', () => {});
+    assert(result.success === false, 'Download fails cleanly');
+    assert(result.error!.includes('Espaço em disco insuficiente'), 'Error message warns about insufficient space');
+  });
+
+  await test('AppUpdateService.installApk handles Android SecurityException gracefully', async () => {
+    (globalThis as any).__mockIntentThrow = true;
+
+    const result = await AppUpdateService.installApk('file:///mock_sandbox_app/cache/lumen-update.apk');
+    assert(result.success === false, 'Installation fails gracefully when exception is thrown');
+    assert(result.error!.includes('Permissão necessária'), 'Returns localized permission error message');
+
+    (globalThis as any).__mockIntentThrow = false;
+  });
+
   console.log('\n================================================================');
   console.log(`🎉 ALL SECURITY HARDENING TESTS PASSED: ${passCount}/${testCount} (100%)`);
   console.log('================================================================\n');

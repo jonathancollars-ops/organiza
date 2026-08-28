@@ -1,6 +1,7 @@
 import './setup_env';
 import { memoryStore } from './setup_env';
 import { StorageService } from '../src/services/storage';
+import { GamificationService } from '../src/services/GamificationService';
 import { StudySession, StudyStreak, GamificationData, Subject, AppSettings } from '../src/types';
 import { getLocalDateString, generateId } from '../src/utils';
 
@@ -237,7 +238,6 @@ export async function runR2Tests() {
   assert(sanitizePassGrade('-2') === 7.0, 'Tier 3', 'Negative grade falls back to default 7.0');
 
   // 3.2 XP Level Formula (GamificationService)
-  const GamificationServiceModule = require('../src/services/GamificationService');
   const xpThresholds = [
     { xp: 0, level: 1 },
     { xp: 99, level: 1 },
@@ -249,7 +249,7 @@ export async function runR2Tests() {
   ];
 
   xpThresholds.forEach(t => {
-    const calcLevel = GamificationServiceModule.GamificationService.calculateLevelFromXP(t.xp);
+    const calcLevel = GamificationService.calculateLevelFromXP(t.xp);
     assert(calcLevel === t.level, 'Tier 3', `XP ${t.xp} calculates to Level ${calcLevel}`);
   });
 

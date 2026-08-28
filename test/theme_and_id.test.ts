@@ -1,4 +1,6 @@
 import './setup_env';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Colors, CategoryColors, getThemeColors, getContrastTextColor } from '../src/theme';
 import { generateId } from '../src/utils/id';
 import { EventCategory, ThemeType } from '../src/types';
@@ -23,6 +25,17 @@ async function runThemeAndIdTestSuite() {
 
   // ── 1. getContrastTextColor Tests ──
   console.log('\n--- 1. getContrastTextColor Contrast Calculations ---');
+
+  // Theme Token Contrast Verification
+  assert(getContrastTextColor(Colors.light.primary) === '#FFFFFF', `Colors.light.primary (${Colors.light.primary}) yields high-contrast white text #FFFFFF`);
+  assert(getContrastTextColor(Colors.light.background) === '#0A0A0A', `Colors.light.background (${Colors.light.background}) yields dark text #0A0A0A`);
+  assert(getContrastTextColor(Colors.light.surface) === '#0A0A0A', `Colors.light.surface (${Colors.light.surface}) yields dark text #0A0A0A`);
+  assert(getContrastTextColor(Colors.light.primaryLight) === '#0A0A0A', `Colors.light.primaryLight (${Colors.light.primaryLight}) yields dark text #0A0A0A`);
+  assert(getContrastTextColor(Colors.dark.primary) === '#0A0A0A', `Colors.dark.primary (${Colors.dark.primary}) yields dark text #0A0A0A`);
+  assert(getContrastTextColor(Colors.dark.background) === '#FFFFFF', `Colors.dark.background (${Colors.dark.background}) yields white text #FFFFFF`);
+  assert(getContrastTextColor(Colors.dark.surface) === '#FFFFFF', `Colors.dark.surface (${Colors.dark.surface}) yields white text #FFFFFF`);
+  assert(getContrastTextColor(Colors.amoled.background) === '#FFFFFF', `Colors.amoled.background (${Colors.amoled.background}) yields white text #FFFFFF`);
+  assert(getContrastTextColor(Colors.amoled.surface) === '#FFFFFF', `Colors.amoled.surface (${Colors.amoled.surface}) yields white text #FFFFFF`);
 
   // Pure White and Light Backgrounds (Expect Dark Text: #0A0A0A)
   assert(getContrastTextColor('#FFFFFF') === '#0A0A0A', 'Pure white (#FFFFFF) yields dark text #0A0A0A');
@@ -72,11 +85,15 @@ async function runThemeAndIdTestSuite() {
 
   for (const theme of themes) {
     const palette = Colors[theme];
-    assert(palette !== undefined, `Colors.${theme} is defined`);
+    assert(palette !== undefined && palette !== null, `Colors.${theme} is defined and non-null`);
     for (const key of expectedKeys) {
+      const val = (palette as any)[key];
+      const isValid = typeof val === 'string' && val.trim().length > 0 && (
+        val.startsWith('#') || val.startsWith('rgb') || val.startsWith('rgba') || val.startsWith('hsl')
+      );
       assert(
-        (palette as any)[key] !== undefined && typeof (palette as any)[key] === 'string',
-        `Colors.${theme}.${key} is properly defined as string`
+        isValid,
+        `Colors.${theme}.${key} is valid, non-null, and non-empty color string ("${val}")`
       );
     }
   }
@@ -128,6 +145,73 @@ async function runThemeAndIdTestSuite() {
     idSet.add(generateId('test'));
   }
   assert(idSet.size === NUM_IDS, `2000 consecutively generated IDs have 0 collisions (size=${idSet.size})`);
+
+  // ── 4. Static Codebase Audit: No Hardcoded Dark Theme Colors in Screens/Components ──
+  console.log('\n--- 4. Static Codebase Audit (No Hardcoded Dark Colors in Screens/Components) ---');
+
+  const FORBIDDEN_DARK_TOKENS = [
+    '#0F1115', // Dark background
+    '#181B20', // Dark surface / card
+    '#1F232B', // Dark surfaceSubtle
+    '#292E38', // Dark surfaceHighlight
+    '#2A303C', // Dark border
+    '#1E232D', // Dark borderSubtle
+    '#3E4756', // Dark borderHighlight
+    '#0A0C0E', // AMOLED surface / card
+    '#121519', // AMOLED surfaceSubtle
+    '#1A1E24', // AMOLED surfaceHighlight
+    '#1E2229', // AMOLED border
+    '#14171C', // AMOLED borderSubtle
+    '#2C323D', // AMOLED borderHighlight
+  ];
+
+  function scanDirectory(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+    const files: string[] = [];
+    for (const item of fs.readdirSync(dir)) {
+      const full = path.join(dir, item);
+      if (fs.statSync(full).isDirectory()) {
+        files.push(...scanDirectory(full));
+      } else if (full.endsWith('.ts') || full.endsWith('.tsx')) {
+        files.push(full);
+      }
+    }
+    return files;
+  }
+
+  const screensDir = path.resolve(__dirname, '../src/screens');
+  const componentsDir = path.resolve(__dirname, '../src/components');
+
+  const filesToAudit = [
+    ...scanDirectory(screensDir),
+    ...scanDirectory(componentsDir)
+  ];
+
+  assert(filesToAudit.length > 0, `Discovered ${filesToAudit.length} UI files in src/screens and src/components to audit`);
+
+  let totalHardcodedViolations = 0;
+
+  for (const filePath of filesToAudit) {
+    const relativePath = path.relative(path.resolve(__dirname, '..'), filePath).replace(/\\/g, '/');
+    const content = fs.readFileSync(filePath, 'utf8');
+    const foundTokens: string[] = [];
+
+    for (const token of FORBIDDEN_DARK_TOKENS) {
+      const regex = new RegExp(token.replace('#', '#'), 'i');
+      if (regex.test(content)) {
+        foundTokens.push(token);
+      }
+    }
+
+    if (foundTokens.length > 0) {
+      totalHardcodedViolations += foundTokens.length;
+      assert(false, `No hardcoded dark colors in ${relativePath}`, `Found tokens: ${foundTokens.join(', ')}`);
+    } else {
+      assert(true, `No hardcoded dark colors in ${relativePath}`);
+    }
+  }
+
+  assert(totalHardcodedViolations === 0, `Total hardcoded dark color violations across UI components is 0`);
 
   console.log('\n================================================================');
   console.log(`THEME & ID TESTS SUMMARY: ${passed}/${passed + failed} Passed (${failed} Failed)`);

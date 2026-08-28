@@ -74,7 +74,7 @@ export const EventTypeModal: React.FC<Props> = ({ visible, onClose, onSelect, th
 const getStyles = (colors: any) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   modalContainer: {

@@ -312,8 +312,8 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   cancelText: {
     fontSize: 15,
-    color: colors.danger,
-    fontWeight: '600',
+    color: colors.primary,
+    fontWeight: '700',
   },
   saveText: {
     fontSize: 15,

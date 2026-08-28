@@ -397,12 +397,12 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
       {/* ── "Simular Prova Final" Button ── */}
       {(riskLevel === 'failed' || riskLevel === 'impossible' || riskLevel === 'critical' || gradeInfo.inFinal) && (
         <TouchableOpacity
-          style={[styles.finalBtn, { backgroundColor: '#7c3aed' }]}
+          style={[styles.finalBtn, { backgroundColor: colors.primary }]}
           onPress={() => setFinalExamModalVisible(true)}
           activeOpacity={0.8}
         >
-          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>🛡️ Simular Prova Final</Text>
-          <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 4 }}>
+          <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 15 }}>🛡️ Simular Prova Final</Text>
+          <Text style={{ color: getContrastTextColor(colors.primary), opacity: 0.9, fontSize: 12, marginTop: 4 }}>
             Você precisa de pelo menos {minimumFinalGrade.toFixed(1)} na final para passar.
           </Text>
         </TouchableOpacity>
@@ -433,7 +433,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
               <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, flex: 1 }} numberOfLines={2}>
-                {item.name} {item.isFinalExam && <Text style={{ color: '#7c3aed', fontSize: 11 }}>(Final)</Text>}
+                {item.name} {item.isFinalExam && <Text style={{ color: colors.primary, fontSize: 11 }}>(Final)</Text>}
               </Text>
               <TouchableOpacity onPress={() => handleRemoveItem(item.groupId, item.id)} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Text style={{ color: colors.textSecondary, fontSize: 16 }}>✕</Text>
@@ -641,7 +641,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
                   <Text style={{ fontWeight: '700', color: colors.text }}>(Média + Nota da Final) / 2 ≥ 5.0</Text>
                 </Text>
                 
-                <Text style={{ color: '#a855f7', fontWeight: '700', marginBottom: 15 }}>
+                <Text style={{ color: colors.primary, fontWeight: '700', marginBottom: 15 }}>
                   Você precisa de no mínimo {minimumFinalGrade.toFixed(1)} na prova final.
                 </Text>
 
@@ -676,11 +676,11 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
                     <Text style={{ color: colors.text, fontWeight: '700' }}>Fechar</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: '#7c3aed' }]}
+                    style={[styles.actionBtn, { backgroundColor: colors.primary }]}
                     onPress={calculateFinalExamResult}
                     activeOpacity={0.8}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '700' }}>Calcular</Text>
+                    <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '700' }}>Calcular</Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
@@ -765,7 +765,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     padding: 20,
   },

@@ -227,7 +227,7 @@ export const SettingsModal: React.FC<Props> = ({
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
-            <Text style={{ fontSize: 15, color: colors.danger, fontWeight: '600' }}>✕ Fechar</Text>
+            <Text style={{ fontSize: 15, color: colors.primary, fontWeight: '700' }}>✕ Fechar</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Configurações</Text>
           <TouchableOpacity onPress={handleSaveSettings} style={styles.saveBtn} activeOpacity={0.7}>
@@ -541,11 +541,11 @@ export const SettingsModal: React.FC<Props> = ({
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.backupBtn, { backgroundColor: '#3b82f6', flex: 1 }]}
+                  style={[styles.backupBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.primary, borderWidth: 1.5, flex: 1 }]}
                   onPress={handleImportBackup}
                   activeOpacity={0.8}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>
+                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>
                     📥 Restaurar Backup
                   </Text>
                 </TouchableOpacity>

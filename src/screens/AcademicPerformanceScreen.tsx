@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { getThemeColors } from '../theme';
+import { getThemeColors, getContrastTextColor } from '../theme';
 import { Subject, CourseProgressData, ThemeType } from '../types';
 import { CourseCRService, DEFAULT_CURRICULUM_TEMPLATE } from '../services/CourseCRService';
 import { SecuritySanitizer } from '../services/SecuritySanitizer';
@@ -631,14 +631,14 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
 
             <View style={{ marginVertical: 12 }}>
               <TouchableOpacity
-                style={[styles.modalActionSubmit, { backgroundColor: '#8B5CF6', paddingVertical: 14 }]}
+                style={[styles.modalActionSubmit, { backgroundColor: colors.primary, paddingVertical: 14 }]}
                 onPress={handleDocumentUpload}
                 disabled={isProcessingDocument}
               >
                 {isProcessingDocument ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={getContrastTextColor(colors.primary)} size="small" />
                 ) : (
-                  <Text style={styles.modalActionSubmitText}>📄 Analisar PDF / Imagem com Lumen AI</Text>
+                  <Text style={[styles.modalActionSubmitText, { color: getContrastTextColor(colors.primary) }]}>📄 Analisar PDF / Imagem com Lumen AI</Text>
                 )}
               </TouchableOpacity>
               <Text style={{ textAlign: 'center', fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
@@ -833,7 +833,7 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     headerBtnPrimaryText: {
       fontSize: 12,
       fontWeight: '800',
-      color: '#000',
+      color: getContrastTextColor(colors.primary),
     },
     tabContainer: {
       flexDirection: 'row',
@@ -1213,7 +1213,7 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     checkmark: {
       fontSize: 11,
       fontWeight: '900',
-      color: '#000',
+      color: getContrastTextColor(colors.primary),
     },
     subjectItemInfo: {
       flex: 1,
@@ -1326,7 +1326,7 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       fontSize: 12,
       textAlignVertical: 'top',
       borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      borderColor: colors.border,
       marginBottom: 16,
     },
     singleInput: {
@@ -1337,7 +1337,7 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       color: colors.text,
       fontSize: 14,
       borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      borderColor: colors.border,
       marginBottom: 16,
     },
     modalActionsRow: {
@@ -1369,14 +1369,14 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     modalActionSubmitText: {
       fontSize: 13,
       fontWeight: '700',
-      color: '#000',
+      color: getContrastTextColor(colors.primary),
     },
     modalActionSecondary: {
       paddingVertical: 8,
     },
     modalActionSecondaryText: {
       fontSize: 12,
-      color: colors.danger || '#EF4444',
+      color: colors.danger,
       fontWeight: '600',
     },
   });

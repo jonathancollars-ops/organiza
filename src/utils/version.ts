@@ -4,7 +4,7 @@ import { VersionBumpType } from '../types';
  * Lumen App Version
  * Used for checking GitHub Releases
  */
-export const APP_VERSION = '3.2.2';
+export const APP_VERSION = '3.3.0';
 
 export interface ParsedSemver {
   major: number;

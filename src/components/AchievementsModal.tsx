@@ -10,7 +10,7 @@ import {
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ThemeType, GamificationData, Achievement, StudyStreak, StudySession, AttendanceRecord, AACCActivity, GroupProject } from '../types';
+import { ThemeType, GamificationData, Achievement, StudyStreak, StudySession, AttendanceRecord } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
 import * as Haptics from 'expo-haptics';
@@ -19,9 +19,9 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   theme: ThemeType;
-  studySessions: StudySession[];
-  streak: StudyStreak;
-  attendances: AttendanceRecord[];
+  studySessions?: StudySession[];
+  streak?: StudyStreak;
+  attendances?: AttendanceRecord[];
 }
 
 const LEVEL_TITLES: { [level: number]: string } = {
@@ -41,9 +41,9 @@ export const AchievementsModal: React.FC<Props> = ({
   visible,
   onClose,
   theme,
-  studySessions,
+  studySessions = [],
   streak,
-  attendances
+  attendances = []
 }) => {
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
@@ -76,12 +76,11 @@ export const AchievementsModal: React.FC<Props> = ({
   const currentStreak = safeStreak.currentStreak || 0;
   const totalPresents = safeAttendances.filter(a => a?.status === 'present').length;
 
-  // Compute Achievements List with real-time status
   const achievements: Achievement[] = [
     {
       id: 'first_focus',
       title: 'Primeiro Foco',
-      description: 'Complete sua 1ª sessão de estudo ou Pomodoro.',
+      description: 'Complete sua 1ª sessão de estudo.',
       icon: '🎯',
       xp: 50,
       unlocked: safeStudySessions.length >= 1,
@@ -90,7 +89,7 @@ export const AchievementsModal: React.FC<Props> = ({
     {
       id: 'streak_3',
       title: 'Em Chamas',
-      description: 'Mantenha um streak de 3 dias consecutivos de estudo.',
+      description: '3 dias consecutivos.',
       icon: '🔥',
       xp: 100,
       unlocked: currentStreak >= 3,
@@ -99,7 +98,7 @@ export const AchievementsModal: React.FC<Props> = ({
     {
       id: 'streak_7',
       title: 'Foco de Ferro',
-      description: 'Mantenha um streak de 7 dias consecutivos de estudo.',
+      description: '7 dias consecutivos.',
       icon: '⚡',
       xp: 200,
       unlocked: currentStreak >= 7,
@@ -107,8 +106,8 @@ export const AchievementsModal: React.FC<Props> = ({
     },
     {
       id: 'focus_5h',
-      title: 'Dedicação Total',
-      description: 'Acumule 5 horas (300 min) de estudo focado.',
+      title: 'Dedicação',
+      description: '5h de estudo focado.',
       icon: '📚',
       xp: 150,
       unlocked: totalFocusMinutes >= 300,
@@ -117,7 +116,7 @@ export const AchievementsModal: React.FC<Props> = ({
     {
       id: 'focus_20h',
       title: 'Mente Brilhante',
-      description: 'Acumule 20 horas (1200 min) de estudo focado.',
+      description: '20h de estudo focado.',
       icon: '🧠',
       xp: 300,
       unlocked: totalFocusMinutes >= 1200,
@@ -126,7 +125,7 @@ export const AchievementsModal: React.FC<Props> = ({
     {
       id: 'attendance_10',
       title: 'Presença VIP',
-      description: 'Registre 10 presenças em aulas.',
+      description: '10 presenças em aulas.',
       icon: '✅',
       xp: 100,
       unlocked: totalPresents >= 10,
@@ -139,7 +138,6 @@ export const AchievementsModal: React.FC<Props> = ({
   const currentXp = gamification?.xp ?? 0;
   const levelTitle = LEVEL_TITLES[currentLevel] || 'Lenda Acadêmica 🌌';
 
-  // XP calculations: 200 XP per level
   const xpCurrentLevel = currentXp % 200;
   const xpProgressPercent = Math.min(Math.round((xpCurrentLevel / 200) * 100), 100);
 
@@ -148,7 +146,7 @@ export const AchievementsModal: React.FC<Props> = ({
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => { Haptics.selectionAsync(); onClose(); }} style={styles.closeBtn} activeOpacity={0.7}>
             <Text style={{ fontSize: 15, color: colors.primary, fontWeight: '700' }}>✕ Fechar</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Conquistas & Nível</Text>
@@ -164,13 +162,13 @@ export const AchievementsModal: React.FC<Props> = ({
 
             <View style={[styles.levelPill, { backgroundColor: colors.primary }]}>
               <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 13 }}>
-                NÍVEL {gamification.level}
+                NÍVEL {currentLevel}
               </Text>
             </View>
 
             <Text style={[styles.levelTitleText, { color: colors.text }]}>{levelTitle}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }}>
-              {gamification.xp} XP acumulados
+              {currentXp} XP acumulados
             </Text>
 
             {/* Level XP Progress Bar */}
@@ -191,7 +189,7 @@ export const AchievementsModal: React.FC<Props> = ({
                   {xpCurrentLevel} / 200 XP
                 </Text>
                 <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
-                  {200 - xpCurrentLevel} XP para o Nível {gamification.level + 1}
+                  {200 - xpCurrentLevel} XP para Nível {currentLevel + 1}
                 </Text>
               </View>
             </View>
@@ -202,9 +200,9 @@ export const AchievementsModal: React.FC<Props> = ({
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ fontSize: 24, marginRight: 10 }}>🏆</Text>
               <View>
-                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>Medalhas Desbloqueadas</Text>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>Medalhas de Conquistas</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 1 }}>
-                  {unlockedCount} de {achievements.length} conquistas alcançadas
+                  {unlockedCount} de {achievements.length} desbloqueadas
                 </Text>
               </View>
             </View>
@@ -215,42 +213,41 @@ export const AchievementsModal: React.FC<Props> = ({
             </View>
           </View>
 
-          {/* Achievements List */}
-          <Text style={styles.sectionTitle}>Todas as Conquistas</Text>
+          {/* Achievements Grid */}
+          <Text style={styles.sectionTitle}>Mural de Medalhas</Text>
 
-          {achievements.map(ach => (
-            <View
-              key={ach.id}
-              style={[
-                styles.achievementCard,
-                {
-                  backgroundColor: colors.surface,
-                  borderColor: ach.unlocked ? colors.primary : colors.borderSubtle,
-                  borderWidth: ach.unlocked ? 1.5 : 1,
-                  opacity: ach.unlocked ? 1 : 0.75
-                }
-              ]}
-            >
-              <View style={[styles.iconBox, { backgroundColor: ach.unlocked ? colors.primaryLight : colors.surfaceSubtle }]}>
-                <Text style={{ fontSize: 26 }}>{ach.icon}</Text>
-              </View>
-
-              <View style={{ flex: 1, marginHorizontal: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={[styles.achTitle, { color: colors.text }]} numberOfLines={1}>
-                    {ach.title}
-                  </Text>
-                  <View style={[styles.xpBadge, { backgroundColor: colors.surfaceSubtle }]}>
-                    <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 11 }}>+{ach.xp} XP</Text>
-                  </View>
+          <View style={styles.gridContainer}>
+            {achievements.map((ach, idx) => (
+              <TouchableOpacity
+                key={ach.id}
+                style={[
+                  styles.medalCard,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: ach.unlocked ? colors.primary : colors.borderSubtle,
+                    opacity: ach.unlocked ? 1 : 0.5
+                  }
+                ]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (ach.unlocked) {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                }}
+              >
+                <View style={[styles.medalIconWrap, { backgroundColor: ach.unlocked ? colors.primaryLight : colors.surfaceSubtle }]}>
+                  <Text style={{ fontSize: 32 }}>{ach.unlocked ? ach.icon : '🔒'}</Text>
                 </View>
-                <Text style={[styles.achDesc, { color: colors.textSecondary }]}>
+                <Text style={[styles.medalTitle, { color: colors.text }]} numberOfLines={1}>
+                  {ach.title}
+                </Text>
+                <Text style={[styles.medalDesc, { color: colors.textSecondary }]} numberOfLines={2}>
                   {ach.description}
                 </Text>
-
-                {/* Progress bar inside card */}
+                
+                {/* Progress bar inside medal card for locked ones */}
                 {ach.progress && !ach.unlocked && (
-                  <View style={{ marginTop: 8 }}>
+                  <View style={styles.medalProgressWrap}>
                     <View style={[styles.miniBarTrack, { backgroundColor: colors.surfaceSubtle }]}>
                       <View
                         style={[
@@ -262,24 +259,18 @@ export const AchievementsModal: React.FC<Props> = ({
                         ]}
                       />
                     </View>
-                    <Text style={{ color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>
-                      Progresso: {ach.progress.current} / {ach.progress.total}
-                    </Text>
                   </View>
                 )}
-              </View>
-
-              <View style={{ justifyContent: 'center' }}>
-                {ach.unlocked ? (
-                  <View style={[styles.unlockedCheck, { backgroundColor: colors.successLight }]}>
-                    <Text style={{ color: theme === 'light' ? colors.successDark : colors.success, fontWeight: '800', fontSize: 14 }}>✓</Text>
+                {ach.unlocked && (
+                  <View style={[styles.xpBadge, { backgroundColor: colors.primary }]}>
+                     <Text style={{ color: getContrastTextColor(colors.primary), fontSize: 9, fontWeight: 'bold' }}>
+                       +{ach.xp} XP
+                     </Text>
                   </View>
-                ) : (
-                  <Text style={{ fontSize: 18 }}>🔒</Text>
                 )}
-              </View>
-            </View>
-          ))}
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -289,146 +280,79 @@ export const AchievementsModal: React.FC<Props> = ({
 };
 
 const getStyles = (colors: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 18, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
     backgroundColor: colors.surface,
   },
-  closeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -0.5,
-  },
-  content: {
-    padding: 18,
-  },
+  closeBtn: { paddingVertical: 6, paddingHorizontal: 8 },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  content: { padding: 18 },
   heroCard: {
-    alignItems: 'center',
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    alignItems: 'center', padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
   },
-  avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  levelPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginBottom: 6,
-  },
-  levelTitleText: {
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  progressContainer: {
-    width: '100%',
-    marginTop: 16,
-  },
-  xpBarTrack: {
-    height: 10,
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  xpBarFill: {
-    height: '100%',
-    borderRadius: 5,
-  },
+  avatarCircle: { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  levelPill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginBottom: 6 },
+  levelTitleText: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
+  progressContainer: { width: '100%', marginTop: 16 },
+  xpBarTrack: { height: 10, borderRadius: 5, overflow: 'hidden' },
+  xpBarFill: { height: '100%', borderRadius: 5 },
   summaryBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 20,
+  },
+  countBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 12 },
+  
+  /* Grid Styles */
+  gridContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    padding: 14,
-    borderRadius: 16,
+  },
+  medalCard: {
+    width: '48%',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    marginBottom: 20,
-  },
-  countBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  achievementCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
     borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1,
+  },
+  medalIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
   },
-  iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+  medalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
   },
-  achTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    flex: 1,
+  medalDesc: {
+    fontSize: 11,
+    textAlign: 'center',
+    lineHeight: 14,
+    marginBottom: 8,
   },
+  medalProgressWrap: {
+    width: '100%',
+    marginTop: 'auto',
+  },
+  miniBarTrack: { height: 4, borderRadius: 2, overflow: 'hidden', width: '100%' },
+  miniBarFill: { height: '100%', borderRadius: 2 },
   xpBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 6,
-  },
-  achDesc: {
-    fontSize: 12,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  miniBarTrack: {
-    height: 5,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  miniBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  unlockedCheck: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginTop: 'auto',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   }
 });

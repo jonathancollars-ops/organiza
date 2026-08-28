@@ -147,6 +147,7 @@ export interface GamificationData {
   level: number;
   unlockedAchievements: string[];
   totalFocusMinutes: number;
+  processedEventIds?: string[]; // Para impedir XP Farming
 }
 
 export interface Achievement {

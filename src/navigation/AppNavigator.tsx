@@ -29,7 +29,7 @@ import { EventModal } from '../components/EventModal';
 const Tab = createBottomTabNavigator();
 
 export function AppNavigator() {
-  const { theme, settings, gamification, isInitializing, handleThemeToggle } = useApp();
+  const { theme, settings, setSettings, gamification, isInitializing, handleThemeToggle, subjects, studySessions, attendances, streak } = useApp();
   const colors = getThemeColors(theme);
 
   // Global Modals State
@@ -148,10 +148,36 @@ export function AppNavigator() {
       </NavigationContainer>
 
       {/* Global Modals */}
-      <SettingsModal visible={settingsModalVisible} onClose={() => setSettingsModalVisible(false)} />
-      <AnalyticsAndAACCModal visible={analyticsModalVisible} onClose={() => setAnalyticsModalVisible(false)} theme={theme} />
-      <AchievementsModal visible={achievementsModalVisible} onClose={() => setAchievementsModalVisible(false)} theme={theme} />
-      <GroupProjectsModal visible={groupProjectsModalVisible} onClose={() => setGroupProjectsModalVisible(false)} theme={theme} />
+      <SettingsModal 
+        visible={settingsModalVisible} 
+        onClose={() => setSettingsModalVisible(false)} 
+        theme={theme}
+        onThemeChange={handleThemeToggle}
+        settings={settings}
+        onUpdateSettings={setSettings}
+      />
+      <AnalyticsAndAACCModal 
+        visible={analyticsModalVisible} 
+        onClose={() => setAnalyticsModalVisible(false)} 
+        theme={theme} 
+        subjects={subjects}
+        studySessions={studySessions}
+        attendances={attendances}
+      />
+      <AchievementsModal 
+        visible={achievementsModalVisible} 
+        onClose={() => setAchievementsModalVisible(false)} 
+        theme={theme}
+        studySessions={studySessions}
+        streak={streak}
+        attendances={attendances}
+      />
+      <GroupProjectsModal 
+        visible={groupProjectsModalVisible} 
+        onClose={() => setGroupProjectsModalVisible(false)} 
+        theme={theme} 
+        subjects={subjects}
+      />
 
       {/* Event creation flows */}
       <EventTypeModal

@@ -58,7 +58,8 @@ export const DEFAULT_GAMIFICATION: GamificationData = {
   xp: 0,
   level: 1,
   unlockedAchievements: [],
-  totalFocusMinutes: 0
+  totalFocusMinutes: 0,
+  processedEventIds: []
 };
 
 export const DEFAULT_STREAK: StudyStreak = {
@@ -448,6 +449,7 @@ export const StorageService = {
         level: Number.isFinite(parsed.level) ? Math.max(1, Number(parsed.level)) : 1,
         unlockedAchievements: Array.isArray(parsed.unlockedAchievements) ? parsed.unlockedAchievements.filter(Boolean) : [],
         totalFocusMinutes: Number.isFinite(parsed.totalFocusMinutes) ? Math.max(0, Number(parsed.totalFocusMinutes)) : 0,
+        processedEventIds: Array.isArray(parsed.processedEventIds) ? parsed.processedEventIds.filter(Boolean) : [],
       };
     } catch (e) {
       return DEFAULT_GAMIFICATION;
@@ -461,6 +463,7 @@ export const StorageService = {
         level: Math.max(1, Number(data?.level) || 1),
         unlockedAchievements: Array.isArray(data?.unlockedAchievements) ? data.unlockedAchievements.filter(Boolean) : [],
         totalFocusMinutes: Math.max(0, Number(data?.totalFocusMinutes) || 0),
+        processedEventIds: Array.isArray(data?.processedEventIds) ? data.processedEventIds.filter(Boolean) : [],
       };
       const jsonValue = JSON.stringify(safe);
       await AsyncStorage.setItem(GAMIFICATION_KEY, jsonValue);
@@ -469,28 +472,43 @@ export const StorageService = {
     }
   },
 
-  async addXP(amount: number, additionalMinutes: number = 0): Promise<GamificationData> {
+  async addXP(amount: number, additionalMinutes: number = 0, eventId?: string): Promise<GamificationData> {
     try {
       const validAmount = Number.isFinite(amount) ? Math.max(0, amount) : 0;
       const validMinutes = Number.isFinite(additionalMinutes) ? Math.max(0, additionalMinutes) : 0;
-      const current = await this.getGamificationData();
-      const newXP = (current.xp || 0) + validAmount;
-      const newMinutes = (current.totalFocusMinutes || 0) + validMinutes;
-      // Formula: Level = Math.floor(XP / 200) + 1
-      const newLevel = Math.floor(newXP / 200) + 1;
       
-      const updated: GamificationData = {
-        ...current,
-        xp: newXP,
-        level: newLevel,
-        totalFocusMinutes: newMinutes
-      };
+      const current = await this.getGamificationData();
+      const processedIds = current.processedEventIds || [];
+      
+      if (eventId && processedIds.includes(eventId)) {
+        return current;
+      }
+      
+      // Dependência isolada dinamicamente para evitar ciclo circular caso StorageService carregue antes
+      const GamificationServiceModule = require('./GamificationService');
+      const GamificationService = GamificationServiceModule.GamificationService;
+      
+      let updated: GamificationData;
+      if (validMinutes > 0) {
+        updated = GamificationService.awardStudyXP(current, validMinutes);
+        if (validAmount > 0) {
+           updated = GamificationService.awardGenericXP(updated, validAmount);
+        }
+      } else {
+        updated = GamificationService.awardGenericXP(current, validAmount);
+      }
+      
+      if (eventId) {
+        updated.processedEventIds = [...processedIds, eventId].slice(-5000);
+      }
+      
       await this.saveGamificationData(updated);
       return updated;
     } catch (e) {
       return DEFAULT_GAMIFICATION;
     }
   },
+
 
   async saveSecureSecret(key: string, value: string): Promise<void> {
     if (!key) return;

@@ -13,6 +13,15 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 
 ---
 
+## [3.3.0] - 2026-08-28
+### 🎮 Novo Recurso de Gamificação (Features)
+- **Motor de XP e Níveis:** Sistema inteligente de gamificação integrado! Estudar (Pomodoro) e marcar presença nas aulas agora rendem experiência (XP).
+- **Sistema de Conquistas:** Desbloqueie badges alcançando marcos acadêmicos.
+- **Painel de Conquistas:** Nova interface (`AchievementsModal`) para acompanhar o nível, o progresso até o próximo nível e todas as medalhas desbloqueadas.
+- **Notificações em Tempo Real:** Animações e *Toasts* com feedback (Haptics) toda vez que você ganhar XP.
+
+---
+
 ## [3.2.0] - 2026-08-27
 ### ✨ Novo Recurso (Features)
 - **Extração de Dados via PDF e Imagens com IA:** Agora a tela de Desempenho & Curso permite carregar históricos escolares e fluxogramas diretamente em PDF ou Imagens (`expo-document-picker`). A IA do Gemini mapeia os documentos e cria a grade curricular e matérias cursadas magicamente.

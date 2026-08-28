@@ -25,11 +25,12 @@ import { EventTypeModal } from '../components/EventTypeModal';
 import { SubjectModal } from '../components/SubjectModal';
 import { ExamModal } from '../components/ExamModal';
 import { EventModal } from '../components/EventModal';
+import { OnboardingModal } from '../components/OnboardingModal';
 
 const Tab = createBottomTabNavigator();
 
 export function AppNavigator() {
-  const { theme, settings, setSettings, gamification, isInitializing, handleThemeToggle, subjects, studySessions, attendances, streak } = useApp();
+  const { theme, settings, setSettings, gamification, isInitializing, handleThemeToggle, subjects, studySessions, attendances, streak, semesters, setSemesters, refreshData } = useApp();
   const colors = getThemeColors(theme);
 
   // Global Modals State
@@ -37,6 +38,7 @@ export function AppNavigator() {
   const [analyticsModalVisible, setAnalyticsModalVisible] = useState(false);
   const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
   const [groupProjectsModalVisible, setGroupProjectsModalVisible] = useState(false);
+  const [onboardingVisible, setOnboardingVisible] = useState(false);
 
   // Agenda Modals State (Could be moved to AgendaScreen, but keeping here for FAB)
   const [eventTypeVisible, setEventTypeVisible] = useState(false);
@@ -155,6 +157,15 @@ export function AppNavigator() {
         onThemeChange={handleThemeToggle}
         settings={settings}
         onUpdateSettings={setSettings}
+        semesters={semesters}
+        onUpdateSemesters={setSemesters}
+        onOpenGuide={() => setOnboardingVisible(true)}
+        onRestoreSuccess={() => refreshData()}
+      />
+      <OnboardingModal
+        visible={onboardingVisible}
+        onClose={() => setOnboardingVisible(false)}
+        theme={theme}
       />
       <AnalyticsAndAACCModal 
         visible={analyticsModalVisible} 

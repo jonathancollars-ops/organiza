@@ -48,7 +48,7 @@ async function runSemverAndAutoUpdateTests() {
     const p2 = parseSemver('v3.2.24');
     assertEqual(p2.major, 3, 'v3.2.24 -> Major is 3');
     assertEqual(p2.minor, 2, 'v3.2.24 -> Minor is 2');
-    assertEqual(p2.patch, 14, 'v3.2.24 -> Patch is 14');
+    assertEqual(p2.patch, 24, 'v3.2.24 -> Patch is 24');
 
     const p3 = parseSemver('4.0.0-rc1');
     assertEqual(p3.major, 4, '4.0.0-rc1 -> Major is 4');

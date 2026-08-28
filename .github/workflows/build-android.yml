@@ -106,10 +106,12 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: 🏷️ Publish GitHub Release (On Tag Push)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: 🏷️ Publish GitHub Release (On Main Branch)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v3.3.0-build-${{ github.run_number }}
+          name: Lumen Acadêmico v3.3.0 (Build #${{ github.run_number }})
           files: |
             build-output/lumen-v3.3.0-standalone.apk
             build-output/SHA256SUMS.txt

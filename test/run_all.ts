@@ -18,11 +18,9 @@ const failedFiles: string[] = [];
 for (const file of files) {
   const fullPath = path.join(testDir, file);
   console.log(`\n▶️  RUNNING: test/${file}`);
-  const isWindows = process.platform === 'win32';
-  const args = isWindows ? ['tsx', `"${fullPath}"`] : ['tsx', fullPath];
-  const result = spawnSync('npx', args, {
+  const args = ['--import', 'tsx', fullPath];
+  const result = spawnSync(process.execPath, args, {
     stdio: 'inherit',
-    shell: isWindows,
     cwd: path.resolve(__dirname, '..')
   });
 

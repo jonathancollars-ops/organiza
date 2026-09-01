@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import * as Haptics from 'expo-haptics';
 import { StorageService } from '../services/storage';
 import { AttendanceService } from '../services/AttendanceService';
+import { NotificationService } from '../services/notifications';
 import { 
   AppEvent, 
   ThemeType, 
@@ -47,6 +48,15 @@ export interface AppContextData {
   isInitializing: boolean;
   refreshData: () => Promise<void>;
   handleThemeToggle: () => Promise<void>;
+  
+  // Actions
+  toggleEventCompletion: (eventId: string) => Promise<void>;
+  toggleTaskCompletion: (taskId: string) => Promise<void>;
+  deleteEvent: (eventId: string) => Promise<void>;
+  updateAttendance: (record: AttendanceRecord) => Promise<void>;
+  archiveSubject: (subjectId: string) => Promise<void>;
+  addOrUpdateSubject: (subject: Subject) => Promise<void>;
+  addOrUpdateEvent: (event: AppEvent) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextData | undefined>(undefined);
@@ -193,6 +203,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await StorageService.saveSettings(updatedSettings);
   };
 
+  const toggleEventCompletion = async (eventId: string) => {
+    const updatedEvents = events.map(e => e.id === eventId ? { ...e, isCompleted: !e.isCompleted } : e);
+    setEvents(updatedEvents);
+    await StorageService.saveEvents(updatedEvents);
+  };
+
+  const toggleTaskCompletion = async (taskId: string) => {
+    const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, isCompleted: !t.isCompleted } : t);
+    setTasks(updatedTasks);
+    await StorageService.saveTasks(updatedTasks);
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    const updatedEvents = events.filter(e => e.id !== eventId);
+    setEvents(updatedEvents);
+    await StorageService.saveEvents(updatedEvents);
+    await NotificationService.cancelEventNotifications(eventId);
+  };
+
+  const updateAttendance = async (record: AttendanceRecord) => {
+    const exists = attendances.find(a => a.id === record.id);
+    const updated = exists 
+      ? attendances.map(a => a.id === record.id ? record : a)
+      : [...attendances, record];
+    setAttendances(updated);
+    await StorageService.saveAttendances(updated);
+  };
+
+  const archiveSubject = async (subjectId: string) => {
+    const updated = subjects.map(s => s.id === subjectId ? { ...s, isArchived: true } : s);
+    setSubjects(updated);
+    await StorageService.saveSubjects(updated);
+  };
+
+  const addOrUpdateSubject = async (subject: Subject) => {
+    const exists = subjects.find(s => s.id === subject.id);
+    const updated = exists 
+      ? subjects.map(s => s.id === subject.id ? subject : s)
+      : [...subjects, subject];
+    setSubjects(updated);
+    await StorageService.saveSubjects(updated);
+  };
+
+  const addOrUpdateEvent = async (event: AppEvent) => {
+    const exists = events.find(e => e.id === event.id);
+    const updated = exists
+      ? events.map(e => e.id === event.id ? event : e)
+      : [...events, event];
+    setEvents(updated);
+    await StorageService.saveEvents(updated);
+  };
+
   const value: AppContextData = {
     theme, setTheme,
     settings, setSettings,
@@ -207,7 +269,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     gamification, setGamification,
     isInitializing,
     refreshData: loadData,
-    handleThemeToggle
+    handleThemeToggle,
+    toggleEventCompletion,
+    toggleTaskCompletion,
+    deleteEvent,
+    updateAttendance,
+    archiveSubject,
+    addOrUpdateSubject,
+    addOrUpdateEvent
   };
 
   return (

@@ -240,11 +240,12 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
   const totalItemsCount = todaysEvents.length + todaysTasks.length;
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
       {/* 0. Pending Absences Alert Banner */}
       {pendingAttendancesCount > 0 && (
         <TouchableOpacity
@@ -955,7 +956,36 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
       {/* Spacing to prevent Bottom Navigation & FAB from overlapping content */}
       <View style={{ height: 100 }} />
     </ScrollView>
-  );
+
+    {/* Floating Action Button (FAB) Permanente */}
+    <TouchableOpacity
+      style={[
+        styles.fab,
+        {
+          backgroundColor: colors.primary,
+          shadowColor: colors.primary
+        }
+      ]}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (onAddNewEvent) {
+          onAddNewEvent();
+        }
+      }}
+      accessibilityLabel="Adicionar novo compromisso"
+      activeOpacity={0.85}
+    >
+      <Text
+        style={[
+          styles.fabIcon,
+          { color: getContrastTextColor(colors.primary) }
+        ]}
+      >
+        +
+      </Text>
+    </TouchableOpacity>
+  </View>
+);
 };
 
 const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
@@ -1354,5 +1384,26 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     fontWeight: '600',
     opacity: 0.9,
     marginTop: 2,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 20,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    zIndex: 999,
+  },
+  fabIcon: {
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: -2,
   }
 });

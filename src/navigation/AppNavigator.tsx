@@ -23,10 +23,6 @@ import { AnalyticsAndAACCModal } from '../components/AnalyticsAndAACCModal';
 import { AchievementsModal } from '../components/AchievementsModal';
 import { GroupProjectsModal } from '../components/GroupProjectsModal';
 import { AppUpdateModal } from '../components/AppUpdateModal';
-import { EventTypeModal } from '../components/EventTypeModal';
-import { SubjectModal } from '../components/SubjectModal';
-import { ExamModal } from '../components/ExamModal';
-import { EventModal } from '../components/EventModal';
 import { OnboardingModal } from '../components/OnboardingModal';
 
 const Tab = createBottomTabNavigator();
@@ -45,9 +41,6 @@ export function AppNavigator() {
   // App Update State
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [updateModalVisible, setUpdateModalVisible] = useState(false);
-
-  // Agenda Modals State (Could be moved to AgendaScreen, but keeping here for FAB)
-  const [eventTypeVisible, setEventTypeVisible] = useState(false);
   
   useEffect(() => {
     const check = async () => {
@@ -173,9 +166,7 @@ export function AppNavigator() {
             }
           })}
         >
-          <Tab.Screen name="Agenda">
-            {() => <AgendaScreenWrapper onFabPress={() => setEventTypeVisible(true)} />}
-          </Tab.Screen>
+          <Tab.Screen name="Agenda" component={AgendaScreenWrapper} />
           <Tab.Screen name="Estudos" component={StudyScreenWrapper} />
           <Tab.Screen name="Desempenho" component={AcademicPerformanceScreenWrapper} />
           <Tab.Screen name="Faltas" component={AttendanceScreenWrapper} />
@@ -232,18 +223,6 @@ export function AppNavigator() {
         updateInfo={updateInfo} 
         theme={theme} 
         onClose={() => setUpdateModalVisible(false)} 
-      />
-
-      {/* Event creation flows */}
-      <EventTypeModal
-        visible={eventTypeVisible}
-        onClose={() => setEventTypeVisible(false)}
-        theme={theme}
-        onSelect={(type) => {
-          setEventTypeVisible(false);
-          // Pass this down or manage here - simplified for this condensed wrapper
-          // Need to call real logic in AgendaScreen or AppContext
-        }}
       />
     </>
   );

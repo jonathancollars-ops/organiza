@@ -216,45 +216,50 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
       }
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    const subject = subjects.find(s => s.id === selectedSubjectId);
-    if (!subject) return;
+      const subject = subjects.find(s => s && s.id === selectedSubjectId);
+      if (!subject) return;
 
-    let nextNum = 1;
-    const prefix = examType === 'Prova' ? 'P' : 'T';
-    
-    events.forEach(e => {
-      if (e.subjectId === selectedSubjectId && e.category === 'Provas/Trabalhos') {
-        const match = e.title.match(new RegExp(`^${prefix}(\\d+)`));
-        if (match) {
-          const num = parseInt(match[1]);
-          if (num >= nextNum) nextNum = num + 1;
+      let nextNum = 1;
+      const prefix = examType === 'Prova' ? 'P' : 'T';
+      
+      const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+      safeEvents.forEach(e => {
+        if (e && e.subjectId === selectedSubjectId && e.category === 'Provas/Trabalhos' && typeof e.title === 'string') {
+          const match = e.title.match(new RegExp(`^${prefix}(\\d+)`));
+          if (match) {
+            const num = parseInt(match[1]);
+            if (num >= nextNum) nextNum = num + 1;
+          }
         }
-      }
-    });
+      });
 
-    const autoTitle = `${prefix}${nextNum} - ${subject.name}`;
+      const autoTitle = `${prefix}${nextNum} - ${subject.name || 'Avaliação'}`;
 
-    const newEvent: AppEvent = {
-      id: generateId('evt_eval'),
-      title: autoTitle,
-      category: 'Provas/Trabalhos',
-      date,
-      startTime: formatTime(startMinutes),
-      endTime: formatTime(startMinutes + durationMinutes),
-      recurrence: 'none',
-      alerts: alerts,
-      isCompleted: false,
-      isImportant: true,
-      isNotified: alerts.length > 0,
-      subjectId: subject.id,
-      weight: parseFloat(weight) || 1,
-      maxGrade: parseFloat(maxGrade) || 10,
-      isExtraPoint,
-    };
+      const newEvent: AppEvent = {
+        id: generateId('evt_eval'),
+        title: autoTitle,
+        category: 'Provas/Trabalhos',
+        date,
+        startTime: formatTime(startMinutes),
+        endTime: formatTime(startMinutes + durationMinutes),
+        recurrence: 'none',
+        alerts: alerts,
+        isCompleted: false,
+        isImportant: true,
+        isNotified: alerts.length > 0,
+        subjectId: subject.id,
+        weight: parseFloat(weight) || 1,
+        maxGrade: parseFloat(maxGrade) || 10,
+        isExtraPoint,
+      };
 
-    onSave(newEvent);
+      onSave(newEvent);
+    } catch (e) {
+      console.warn('Erro ao salvar avaliação em ExamModal:', e);
+    }
   };
 
   // Calendar markings for all valid class days

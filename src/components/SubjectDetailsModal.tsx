@@ -19,6 +19,7 @@ interface Props {
   onAddManualAttendance: (subjectId: string, date: string, status: 'present' | 'absent' | 'cancelled') => void;
   theme: ThemeType;
   semesters?: Semester[];
+  initialTab?: 'notas' | 'faltas';
 }
 
 export const SubjectDetailsModal: React.FC<Props> = ({
@@ -31,20 +32,37 @@ export const SubjectDetailsModal: React.FC<Props> = ({
   onDeleteSubject,
   onAddManualAttendance,
   theme,
-  semesters = []
+  semesters = [],
+  initialTab = 'notas'
 }) => {
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
   
-  const [activeTab, setActiveTab] = useState<'notas' | 'faltas'>('notas');
+  const [activeTab, setActiveTab] = useState<'notas' | 'faltas'>(initialTab);
   const [showManualAdd, setShowManualAdd] = useState(false);
   const [manualDate, setManualDate] = useState('');
   const [editModalVisible, setEditModalVisible] = useState(false);
 
-  if (!subject) return null;
+  React.useEffect(() => {
+    if (visible && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [visible, initialTab]);
+
+  if (!visible && !subject) return null;
+
+  const safeSubject: Subject = subject || {
+    id: '',
+    name: '',
+    color: colors.primary,
+    passGrade: 7.0,
+    maxAbsences: 15,
+    workloadHours: 60,
+    gradeGroups: []
+  };
 
   const safeAttendances = Array.isArray(attendances) ? attendances.filter(Boolean) : [];
-  const subjectAttendances = safeAttendances.filter(a => a && a.subjectId === subject.id);
+  const subjectAttendances = safeAttendances.filter(a => a && a.subjectId === safeSubject.id);
   const totalAbsences = subjectAttendances.filter(a => a.status === 'absent').length;
 
   const handleManualAdd = (status: 'present' | 'absent' | 'cancelled') => {
@@ -53,7 +71,7 @@ export const SubjectDetailsModal: React.FC<Props> = ({
       return;
     }
     
-    const existingIndex = safeAttendances.findIndex(a => a.subjectId === subject.id && a.date === manualDate);
+    const existingIndex = safeAttendances.findIndex(a => a.subjectId === safeSubject.id && a.date === manualDate);
     if (existingIndex >= 0) {
       Alert.alert(
         'Atenção',
@@ -70,10 +88,16 @@ export const SubjectDetailsModal: React.FC<Props> = ({
   };
 
   const saveManualAdd = (status: 'present' | 'absent' | 'cancelled') => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onAddManualAttendance(subject.id, manualDate, status);
-    setShowManualAdd(false);
-    setManualDate('');
+    if (!safeSubject.id) return;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onAddManualAttendance(safeSubject.id, manualDate, status);
+    } catch (e) {
+      console.warn('Erro ao salvar presença manual:', e);
+    } finally {
+      setShowManualAdd(false);
+      setManualDate('');
+    }
   };
 
   return (
@@ -86,8 +110,8 @@ export const SubjectDetailsModal: React.FC<Props> = ({
           </TouchableOpacity>
           
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center' }}>
-            <View style={[styles.subjectDot, { backgroundColor: subject.color || colors.primary }]} />
-            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{subject.name}</Text>
+            <View style={[styles.subjectDot, { backgroundColor: safeSubject.color || colors.primary }]} />
+            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{safeSubject.name}</Text>
           </View>
           
           <TouchableOpacity
@@ -103,10 +127,10 @@ export const SubjectDetailsModal: React.FC<Props> = ({
           </TouchableOpacity>
         </View>
 
-        {subject.notes && (
+        {safeSubject.notes && (
           <View style={[styles.notesBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '700', marginBottom: 2 }}>INFO / PROFESSOR:</Text>
-            <Text style={{ color: colors.text, fontSize: 13 }}>{subject.notes}</Text>
+            <Text style={{ color: colors.text, fontSize: 13 }}>{safeSubject.notes}</Text>
           </View>
         )}
 
@@ -147,7 +171,7 @@ export const SubjectDetailsModal: React.FC<Props> = ({
         {activeTab === 'notas' ? (
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             <GradeEngine 
-              subject={subject} 
+              subject={safeSubject} 
               onUpdateSubject={onUpdateSubject} 
               theme={theme} 
             />
@@ -156,14 +180,14 @@ export const SubjectDetailsModal: React.FC<Props> = ({
           <ScrollView style={{ flex: 1, padding: 18 }} showsVerticalScrollIndicator={false}>
             <View style={[styles.absencesHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: 32, fontWeight: '800', color: totalAbsences >= (subject.maxAbsences || 15) * 0.7 ? colors.danger : colors.success }}>
+                <Text style={{ fontSize: 32, fontWeight: '800', color: totalAbsences >= (safeSubject.maxAbsences || 15) * 0.7 ? colors.danger : colors.success }}>
                   {totalAbsences}
                 </Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 2 }}>Faltas Atuais</Text>
               </View>
               <View style={{ height: 40, width: 1, backgroundColor: colors.border }} />
               <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: 32, fontWeight: '800', color: colors.text }}>{subject.maxAbsences || 15}</Text>
+                <Text style={{ fontSize: 32, fontWeight: '800', color: colors.text }}>{safeSubject.maxAbsences || 15}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 2 }}>Limite (25%)</Text>
               </View>
             </View>
@@ -278,11 +302,22 @@ export const SubjectDetailsModal: React.FC<Props> = ({
         <EditSubjectModal
           visible={editModalVisible}
           onClose={() => setEditModalVisible(false)}
-          subject={subject}
-          onSave={onUpdateSubject}
+          subject={subject || safeSubject}
+          onSave={(updated) => {
+            try {
+              onUpdateSubject(updated);
+            } catch (e) {
+              console.warn('Erro ao salvar edição de matéria:', e);
+            }
+          }}
           onDelete={(id) => {
-            onDeleteSubject(id);
-            onClose();
+            try {
+              onDeleteSubject(id);
+            } catch (e) {
+              console.warn('Erro ao excluir matéria:', e);
+            } finally {
+              onClose();
+            }
           }}
           theme={theme}
           semesters={semesters}

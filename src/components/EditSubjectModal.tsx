@@ -50,7 +50,7 @@ export const EditSubjectModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (visible && subject) {
-      setName(subject.name);
+      setName(subject.name || '');
       setColor(subject.color || '#0A84FF');
       setPassGrade(subject.passGrade ?? 7.0);
       setMaxAbsences(subject.maxAbsences ?? 15);
@@ -60,7 +60,17 @@ export const EditSubjectModal: React.FC<Props> = ({
     }
   }, [visible, subject]);
 
-  if (!subject) return null;
+  if (!visible && !subject) return null;
+
+  const safeSubject: Subject = subject || {
+    id: '',
+    name: name || '',
+    color: color || '#0A84FF',
+    passGrade: passGrade ?? 7.0,
+    maxAbsences: maxAbsences ?? 15,
+    workloadHours: workloadHours ?? 60,
+    gradeGroups: []
+  };
 
   const handleSave = () => {
     if (!name.trim()) {
@@ -68,36 +78,48 @@ export const EditSubjectModal: React.FC<Props> = ({
       return;
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    const updated: Subject = {
-      ...subject,
-      name: name.trim(),
-      color,
-      passGrade,
-      maxAbsences,
-      workloadHours,
-      semesterId,
-      notes: notes.trim() || undefined
-    };
+      const updated: Subject = {
+        ...safeSubject,
+        name: name.trim(),
+        color,
+        passGrade,
+        maxAbsences,
+        workloadHours,
+        semesterId,
+        notes: notes.trim() || undefined
+      };
 
-    onSave(updated);
-    onClose();
+      onSave(updated);
+    } catch (e) {
+      console.warn('Erro ao salvar matéria editada:', e);
+    } finally {
+      onClose();
+    }
   };
 
   const confirmDelete = () => {
     Alert.alert(
       'Excluir Matéria',
-      `Tem certeza que deseja excluir "${subject.name}"? Isso removerá a matéria permanentemente.`,
+      `Tem certeza que deseja excluir "${safeSubject.name || 'esta matéria'}"? Isso removerá a matéria permanentemente.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Excluir Matéria',
           style: 'destructive',
           onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            onDelete(subject.id);
-            onClose();
+            try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              if (safeSubject.id) {
+                onDelete(safeSubject.id);
+              }
+            } catch (e) {
+              console.warn('Erro ao excluir matéria:', e);
+            } finally {
+              onClose();
+            }
           }
         }
       ]

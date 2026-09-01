@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Switch, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Switch, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Calendar } from 'react-native-calendars';
 import { AppEvent, EventCategory, RecurrenceType, ThemeType } from '../types';
@@ -144,10 +144,26 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
   };
 
   const handleDelete = () => {
-    if (initialEvent && onDelete) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      onDelete(initialEvent.id);
-    }
+    if (!initialEvent || !onDelete) return;
+    Alert.alert(
+      'Excluir Compromisso',
+      `Tem certeza que deseja excluir "${initialEvent.title || 'este compromisso'}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              onDelete(initialEvent.id);
+            } catch (e) {
+              console.warn('Erro ao excluir compromisso:', e);
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (

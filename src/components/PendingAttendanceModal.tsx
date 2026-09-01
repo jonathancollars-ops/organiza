@@ -20,13 +20,19 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
   const styles = getStyles(colors);
 
   const handleUpdateStatus = (id: string, status: 'present' | 'absent' | 'cancelled') => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onUpdateStatus(id, status);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      onUpdateStatus(id, status);
+    } catch (e) {
+      console.warn('Erro ao atualizar status de presença pendente:', e);
+    }
   };
 
   const safePending = Array.isArray(pendingAttendances) ? pendingAttendances.filter(Boolean) : [];
   const safeSubjects = Array.isArray(subjects) ? subjects.filter(Boolean) : [];
   const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+
+  if (!visible && safePending.length === 0) return null;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -39,59 +45,76 @@ export const PendingAttendanceModal: React.FC<Props> = ({ visible, onClose, pend
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={{ color: colors.textSecondary, marginBottom: 18, fontSize: 14, lineHeight: 20 }}>
-            Você tem aulas passadas sem registro de presença. Atualize seu status para manter o histórico preciso:
-          </Text>
+          {safePending.length === 0 ? (
+            <View style={{ alignItems: 'center', padding: 24, marginTop: 40 }}>
+              <Text style={{ fontSize: 36, marginBottom: 12 }}>🎉</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, textAlign: 'center' }}>
+                Nenhuma presença pendente!
+              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 18 }}>
+                Todas as presenças de aulas passadas estão devidamente registradas.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={{ color: colors.textSecondary, marginBottom: 18, fontSize: 14, lineHeight: 20 }}>
+                Você tem aulas passadas sem registro de presença. Atualize seu status para manter o histórico preciso:
+              </Text>
 
-          {safePending.map(att => {
-            const subject = safeSubjects.find(s => s.id === att.subjectId);
-            const event = safeEvents.find(e => e.id === att.eventId);
-            if (!subject || !event) return null;
+              {safePending.map(att => {
+                const subject = safeSubjects.find(s => s && s.id === att.subjectId) || {
+                  id: att.subjectId,
+                  name: 'Matéria',
+                  color: colors.primary
+                };
+                const event = safeEvents.find(e => e && e.id === att.eventId);
 
-            return (
-              <View key={att.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={{ marginBottom: 15 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                    <View style={[styles.subjectDot, { backgroundColor: subject.color || colors.primary }]} />
-                    <Text style={[styles.subjectName, { color: colors.text }]} numberOfLines={1}>
-                      {subject.name}
-                    </Text>
+                return (
+                  <View key={att.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ marginBottom: 15 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                        <View style={[styles.subjectDot, { backgroundColor: subject.color || colors.primary }]} />
+                        <Text style={[styles.subjectName, { color: colors.text }]} numberOfLines={1}>
+                          {subject.name}
+                        </Text>
+                      </View>
+                      <View style={[styles.dateBadge, { backgroundColor: colors.surfaceSubtle }]}>
+                        <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                          📅 {att.date ? att.date.split('-').reverse().join('/') : ''} {event?.startTime ? `• ${event.startTime} - ${event.endTime || ''}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.buttonRow}>
+                      <TouchableOpacity 
+                        style={[styles.actionBtn, { backgroundColor: colors.successLight, borderColor: colors.success }]}
+                        onPress={() => handleUpdateStatus(att.id, 'present')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.btnText, { color: theme === 'light' ? colors.successDark : colors.success }]}>✓ Presente</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={[styles.actionBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}
+                        onPress={() => handleUpdateStatus(att.id, 'absent')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.btnText, { color: theme === 'light' ? colors.dangerDark : colors.danger }]}>✕ Faltei</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={[styles.actionBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                        onPress={() => handleUpdateStatus(att.id, 'cancelled')}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.btnText, { color: colors.textSecondary }]}>Cancelada</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={[styles.dateBadge, { backgroundColor: colors.surfaceSubtle }]}>
-                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
-                      📅 {att.date ? att.date.split('-').reverse().join('/') : ''} • {event.startTime || ''} - {event.endTime || ''}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: colors.successLight, borderColor: colors.success }]}
-                    onPress={() => handleUpdateStatus(att.id, 'present')}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.btnText, { color: theme === 'light' ? colors.successDark : colors.success }]}>✓ Presente</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}
-                    onPress={() => handleUpdateStatus(att.id, 'absent')}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.btnText, { color: theme === 'light' ? colors.dangerDark : colors.danger }]}>✕ Faltei</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-                    onPress={() => handleUpdateStatus(att.id, 'cancelled')}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.btnText, { color: colors.textSecondary }]}>Cancelada</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
+                );
+              })}
+            </>
+          )}
           <View style={{ height: 40 }} />
         </ScrollView>
       </SafeAreaView>

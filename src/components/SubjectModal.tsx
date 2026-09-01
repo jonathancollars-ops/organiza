@@ -106,70 +106,75 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme,
 
   const handleSave = () => {
     if (!name.trim() || Object.keys(selectedDays).length === 0) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    // Generate vibrant distinct HSL color
-    const randomColor = `hsl(${Math.floor(Math.random() * 360)}, 75%, 60%)`;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    const subjectId = generateId('subj');
+      // Generate vibrant distinct HSL color
+      const randomColor = `hsl(${Math.floor(Math.random() * 360)}, 75%, 60%)`;
 
-    const subject: Subject = {
-      id: subjectId,
-      name: name.trim(),
-      color: randomColor,
-      passGrade,
-      workloadHours: weeklyClasses,
-      maxAbsences,
-      semesterId: selectedSemesterId,
-      gradeGroups: [{
-        id: generateId('group'),
-        name: 'Avaliações',
-        weight: 1,
-        items: []
-      }]
-    };
+      const subjectId = generateId('subj');
 
-    const events: AppEvent[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const totalDurationMinutes = classDuration * classCount;
-
-    Object.entries(selectedDays).forEach(([dayStr, timeObj]) => {
-      const dayId = parseInt(dayStr, 10);
-      
-      let dateCursor = new Date(today);
-      while (dateCursor.getDay() !== dayId) {
-        dateCursor.setDate(dateCursor.getDate() + 1);
-      }
-      const dateStr = getLocalDateString(dateCursor);
-
-      const startMinutes = timeObj.h * 60 + timeObj.m;
-      const endMinutes = startMinutes + totalDurationMinutes;
-
-      const formatTime = (mins: number) => {
-        const h = Math.floor((mins % 1440) / 60);
-        const m = (mins % 1440) % 60;
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+      const subject: Subject = {
+        id: subjectId,
+        name: name.trim(),
+        color: randomColor,
+        passGrade,
+        workloadHours: weeklyClasses,
+        maxAbsences,
+        semesterId: selectedSemesterId,
+        gradeGroups: [{
+          id: generateId('group'),
+          name: 'Avaliações',
+          weight: 1,
+          items: []
+        }]
       };
 
-      events.push({
-        id: generateId('evt_class'),
-        title: name.trim(),
-        category: 'Faculdade/Aulas',
-        date: dateStr,
-        startTime: formatTime(startMinutes),
-        endTime: formatTime(endMinutes),
-        recurrence: 'weekly',
-        recurrenceDays: [dayId],
-        alerts: alerts,
-        isCompleted: false,
-        isImportant: false,
-        isNotified: alerts.length > 0,
-        subjectId: subject.id,
-      });
-    });
+      const events: AppEvent[] = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const totalDurationMinutes = classDuration * classCount;
 
-    onSave(subject, events);
+      Object.entries(selectedDays).forEach(([dayStr, timeObj]) => {
+        const dayId = parseInt(dayStr, 10);
+        
+        let dateCursor = new Date(today);
+        while (dateCursor.getDay() !== dayId) {
+          dateCursor.setDate(dateCursor.getDate() + 1);
+        }
+        const dateStr = getLocalDateString(dateCursor);
+
+        const startMinutes = timeObj.h * 60 + timeObj.m;
+        const endMinutes = startMinutes + totalDurationMinutes;
+
+        const formatTime = (mins: number) => {
+          const h = Math.floor((mins % 1440) / 60);
+          const m = (mins % 1440) % 60;
+          return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        };
+
+        events.push({
+          id: generateId('evt_class'),
+          title: name.trim(),
+          category: 'Faculdade/Aulas',
+          date: dateStr,
+          startTime: formatTime(startMinutes),
+          endTime: formatTime(endMinutes),
+          recurrence: 'weekly',
+          recurrenceDays: [dayId],
+          alerts: alerts,
+          isCompleted: false,
+          isImportant: false,
+          isNotified: alerts.length > 0,
+          subjectId: subject.id,
+        });
+      });
+
+      onSave(subject, events);
+    } catch (e) {
+      console.warn('Erro ao salvar nova matéria e aulas em SubjectModal:', e);
+    }
   };
 
   return (

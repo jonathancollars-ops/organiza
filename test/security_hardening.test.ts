@@ -462,6 +462,128 @@ async function runSecurityTests() {
     assert(res1.error!.includes('URL de download inválida'), 'Informs about invalid URL');
   });
 
+  // =================================================================
+  // SUITE 8: Absence Planner Hardening, Division by Zero & Exception Resilience
+  // =================================================================
+  console.log('\n--- SUITE 8: Absence Planner Hardening, Division by Zero & Exception Resilience ---');
+  const {
+    getDayDifference,
+    getDayOfWeekName,
+    findExamsNearDate,
+    simulateSubjectAbsences,
+    simulateAbsenceForDate
+  } = require('../src/utils/absencePlanner');
+
+  await test('getDayDifference handles malformed, null or empty date strings without throwing NaN or crashing', () => {
+    assert(getDayDifference('', '2026-03-10') === 999, 'Empty string dateA returns 999');
+    assert(getDayDifference('2026-03-10', '') === 999, 'Empty string dateB returns 999');
+    assert(getDayDifference('corrupt-date', '2026-03-10') === 999, 'Invalid format dateA returns 999');
+    assert(getDayDifference(null as any, '2026-03-10') === 999, 'Null dateA returns 999');
+    assert(getDayDifference('2026-03-10', undefined as any) === 999, 'Undefined dateB returns 999');
+    assert(getDayDifference('2026-03-10', '2026-03-15') === 5, 'Valid dates compute difference correctly (5 days)');
+    assert(getDayDifference('2026-03-15', '2026-03-10') === 5, 'Order agnostic difference (5 days)');
+    assert(getDayDifference('2026-03-10', '2026-03-10') === 0, 'Same day returns 0');
+  });
+
+  await test('getDayOfWeekName handles invalid dates and returns Desconhecido safely', () => {
+    assert(getDayOfWeekName('') === 'Desconhecido', 'Empty date returns Desconhecido');
+    assert(getDayOfWeekName('not-a-date') === 'Desconhecido', 'Malformed date returns Desconhecido');
+    assert(getDayOfWeekName(null as any) === 'Desconhecido', 'Null date returns Desconhecido');
+    assert(getDayOfWeekName(undefined as any) === 'Desconhecido', 'Undefined date returns Desconhecido');
+    // 2026-03-09 was a Monday
+    assert(getDayOfWeekName('2026-03-09') === 'Segunda-feira', '2026-03-09 is Segunda-feira');
+    // 2026-03-13 was a Friday
+    assert(getDayOfWeekName('2026-03-13') === 'Sexta-feira', '2026-03-13 is Sexta-feira');
+  });
+
+  await test('findExamsNearDate survives null/corrupted events or invalid dates without exception', () => {
+    assert(findExamsNearDate('', '2026-03-10', []).hasExam === false, 'Empty subjectId returns hasExam: false');
+    assert(findExamsNearDate('sub-1', '', []).hasExam === false, 'Empty targetDateStr returns hasExam: false');
+    assert(findExamsNearDate('sub-1', 'invalid-date', []).hasExam === false, 'Invalid target date returns hasExam: false');
+    assert(findExamsNearDate('sub-1', '2026-03-10', null as any).hasExam === false, 'Null events array handled gracefully');
+
+    const corruptEvents = [
+      null,
+      undefined,
+      { id: '1', title: 'Prova P1' }, // Missing date and subjectId
+      { id: '2', title: 'Prova P2', date: 'bad-date', subjectId: 'sub-1' },
+      { id: '3', title: 'Prova P3 de Cálculo', date: '2026-03-11', subjectId: 'sub-1', category: 'Provas/Trabalhos' }
+    ];
+    const res = findExamsNearDate('sub-1', '2026-03-10', corruptEvents as any);
+    assert(res.hasExam === true, 'Finds exam despite corrupted peer events');
+    assert(res.examDetails!.includes('Prova P3 de Cálculo'), 'Details include exam title');
+    assert(res.examDetails!.includes('1 dia(s) depois'), 'Details include relative day offset');
+  });
+
+  await test('simulateSubjectAbsences is fully resilient against division by zero (maxAbsences <= 0, totalClasses <= 0)', () => {
+    // Subject with 0 maxAbsences and 0 workloadHours
+    const zeroSubject: any = {
+      id: 'sub-zero',
+      name: 'Matéria com Zero',
+      maxAbsences: 0,
+      workloadHours: 0
+    };
+
+    const sim1 = simulateSubjectAbsences(zeroSubject, 1, []);
+    assert(sim1.maxAbsences >= 1, 'maxAbsences defaulted safely to >= 1 (15)');
+    assert(sim1.currentPresenceRate === 100, 'currentPresenceRate is 100 with zero attendances without NaN');
+    assert(!isNaN(sim1.projectedPresenceRate), 'projectedPresenceRate is never NaN');
+    assert(!isNaN(sim1.remainingAbsences), 'remainingAbsences is never NaN');
+
+    // Subject with negative maxAbsences
+    const negSubject: any = {
+      id: 'sub-neg',
+      name: 'Matéria Negativa',
+      maxAbsences: -10,
+      workloadHours: 60
+    };
+    const sim2 = simulateSubjectAbsences(negSubject, 2, []);
+    assert(sim2.maxAbsences === 15, 'Negative maxAbsences falls back to workload-based 25% (15)');
+    assert(sim2.remainingAbsences === 13, 'Remaining absences calculated correctly');
+
+    // Null/undefined subject
+    const simNull = simulateSubjectAbsences(null as any, 1, []);
+    assert(simNull.subjectId === '', 'Null subject handled safely');
+    assert(simNull.maxAbsences === 15, 'Fallback maxAbsences returned');
+    assert(simNull.riskLevel === 'safe', 'Safe default risk returned');
+  });
+
+  await test('simulateAbsenceForDate handles corrupt dates and empty arrays gracefully', () => {
+    const resInvalid = simulateAbsenceForDate('not-a-date', [], [], []);
+    assert(resInvalid.overallVerdict === 'safe', 'Invalid date returns safe overallVerdict');
+    assert(resInvalid.affectedSubjects.length === 0, 'No affected subjects for invalid date');
+    assert(resInvalid.dayOfWeekName === 'Desconhecido', 'Day of week is Desconhecido');
+
+    const resEmpty = simulateAbsenceForDate('2026-03-10', [], [], []);
+    assert(resEmpty.overallVerdict === 'safe', 'Empty subjects/events returns safe verdict');
+    assert(resEmpty.affectedSubjects.length === 0, 'No affected subjects on empty list');
+    assert(resEmpty.dayOfWeekName !== 'Desconhecido', 'Valid date parses day of week name');
+
+    // Simulated date with active weekly class
+    const sampleSubjects: any[] = [
+      { id: 'subj-1', name: 'Algoritmos', maxAbsences: 10, isArchived: false }
+    ];
+    // 2026-03-10 is a Tuesday (targetDayOfWeek = 2)
+    const sampleEvents: any[] = [
+      {
+        id: 'ev-1',
+        title: 'Aula de Algoritmos',
+        subjectId: 'subj-1',
+        category: 'Faculdade/Aulas',
+        recurrence: 'weekly',
+        recurrenceDays: [2],
+        date: '2026-02-01'
+      }
+    ];
+
+    const resValid = simulateAbsenceForDate('2026-03-10', sampleSubjects, sampleEvents, []);
+    assert(resValid.affectedSubjects.length === 1, 'Found 1 affected subject for Tuesday');
+    assert(resValid.affectedSubjects[0].subjectName === 'Algoritmos', 'Subject is Algoritmos');
+    assert(resValid.affectedSubjects[0].projectedAbsences === 1, 'Projected absences is 1');
+    assert(resValid.affectedSubjects[0].remainingAbsences === 9, 'Remaining absences is 9');
+    assert(resValid.overallVerdict === 'safe', 'Verdict is safe');
+  });
+
   console.log('\n================================================================');
   console.log(`🎉 ALL SECURITY HARDENING TESTS PASSED: ${passCount}/${testCount} (100%)`);
   console.log('================================================================\n');

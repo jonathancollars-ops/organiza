@@ -4,6 +4,7 @@ import { Subject, AttendanceRecord, AppEvent, ThemeType, AttendanceStatus, Semes
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { format, parseISO, isBefore, getDay } from 'date-fns';
 import * as Haptics from 'expo-haptics';
+import { AbsencePlannerModal } from '../components/AbsencePlannerModal';
 
 interface Props {
   subjects: Subject[];
@@ -30,6 +31,7 @@ export const AttendanceScreen: React.FC<Props> = ({
   const styles = getStyles(colors);
 
   const [selectedSemester, setSelectedSemester] = useState<string | undefined>(activeSemesterId);
+  const [plannerModalVisible, setPlannerModalVisible] = useState(false);
 
   const calculateAbsences = (subjectId: string) => {
     return attendances.filter(a => a.subjectId === subjectId && a.status === 'absent').length;
@@ -126,6 +128,20 @@ export const AttendanceScreen: React.FC<Props> = ({
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Minhas Faltas</Text>
+        <TouchableOpacity
+          style={[styles.plannerBtn, { backgroundColor: colors.primary }]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setPlannerModalVisible(true);
+          }}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir simulador Posso Faltar?"
+        >
+          <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '700', fontSize: 13 }}>
+            🏖️ Posso Faltar?
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Semesters pill filter */}
@@ -358,13 +374,40 @@ export const AttendanceScreen: React.FC<Props> = ({
           <View style={{ height: 100 }} />
         </ScrollView>
       )}
+
+      {/* Simulador Inteligente de Faltas */}
+      <AbsencePlannerModal
+        visible={plannerModalVisible}
+        onClose={() => setPlannerModalVisible(false)}
+        subjects={subjects}
+        events={events}
+        attendances={attendances}
+        theme={theme}
+      />
     </View>
   );
 };
 
 const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, padding: 14 },
-  headerRow: { marginBottom: 8 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  plannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   title: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
   filterContainer: {
     height: 34,

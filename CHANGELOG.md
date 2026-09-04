@@ -14,6 +14,12 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 ---
 
 ## [3.3.1] - 2026-09-03
+### 🏖️ Planejador Estratégico de Faltas (Novo Recurso)
+- **Simulador Preditivo "Posso Faltar?":** Novo botão no cabeçalho da aba de Faltas que projeta o impacto futuro de ausências antes de você faltar.
+- **Simulação por Data com Mapeamento Completo:** Escolha uma data (ex: próxima Sexta-feira) e veja o impacto em todas as matérias daquele dia, com taxas projetadas de presença (%) e veredito inteligente (🟢 Seguro, 🟡 Atenção, 🔴 Perigo).
+- **Detecção de Provas na Mesma Semana:** Alerta inteligente avisando caso você esteja simulando faltar em uma semana que possui prova marcada na mesma disciplina.
+- **Simulador Interativo por Matéria:** Ajuste faltas adicionais (`+1`, `+2`, `+3`) com barra de progresso colorida e feedback tátil em tempo real.
+
 ### 🩹 Correções & Melhorias de Estabilidade (Fixes)
 - **Exclusão de Matérias em Cascata:** Agora ao excluir uma disciplina ela é removida imediatamente das telas de Faltas e Notas, e seus eventos e registros de presença vinculados são limpos atomicamente do banco local.
 - **Filtro de Disciplinas Ativas:** As telas de Faltas e Notas agora filtram estritamente matérias ativas, ocultando disciplinas arquivadas.

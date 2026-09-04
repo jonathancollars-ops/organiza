@@ -46,6 +46,7 @@ export const GradesScreen: React.FC<Props> = ({
 
   const filteredSubjects = useMemo(() => {
     return subjects.filter(s => {
+      if (s.isArchived) return false;
       if (selectedSemester && s.semesterId && s.semesterId !== selectedSemester) return false;
       if (searchQuery.trim() && !s.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;

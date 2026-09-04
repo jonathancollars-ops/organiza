@@ -17,7 +17,8 @@ export const AttendanceScreenWrapper = () => {
     semesters, 
     updateAttendance,
     addOrUpdateSubject,
-    archiveSubject
+    archiveSubject,
+    deleteSubject
   } = useApp();
 
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
@@ -48,10 +49,10 @@ export const AttendanceScreenWrapper = () => {
   const handleDeleteSubject = async (id: string) => {
     try {
       if (id) {
-        await archiveSubject(id);
+        await deleteSubject(id);
       }
     } catch (e) {
-      console.warn('Erro ao arquivar matéria no AttendanceScreenWrapper:', e);
+      console.warn('Erro ao excluir matéria no AttendanceScreenWrapper:', e);
     } finally {
       handleCloseDetails();
     }

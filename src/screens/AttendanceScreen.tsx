@@ -93,6 +93,7 @@ export const AttendanceScreen: React.FC<Props> = ({
 
   const filteredSubjects = useMemo(() => {
     return subjects.filter(s => {
+      if (s.isArchived) return false;
       if (selectedSemester && s.semesterId && s.semesterId !== selectedSemester) return false;
       return true;
     });

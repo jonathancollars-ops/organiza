@@ -100,6 +100,31 @@ export const SubjectDetailsModal: React.FC<Props> = ({
     }
   };
 
+  const confirmDeleteSubject = () => {
+    if (!safeSubject.id) return;
+    Alert.alert(
+      'Excluir Matéria',
+      `Tem certeza que deseja excluir a matéria "${safeSubject.name || 'esta matéria'}"? Todas as notas, faltas e configurações vinculadas serão removidas permanentemente.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir Matéria',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              onDeleteSubject(safeSubject.id);
+            } catch (e) {
+              console.warn('Erro ao excluir matéria:', e);
+            } finally {
+              onClose();
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -114,17 +139,28 @@ export const SubjectDetailsModal: React.FC<Props> = ({
             <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>{safeSubject.name}</Text>
           </View>
           
-          <TouchableOpacity
-            style={[styles.editBtn, { backgroundColor: colors.surfaceSubtle }]}
-            onPress={() => {
-              Haptics.selectionAsync();
-              setEditModalVisible(true);
-            }}
-            accessibilityLabel="Editar Matéria"
-            activeOpacity={0.7}
-          >
-            <Text style={{ fontSize: 16 }}>⚙️</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.editBtn, { backgroundColor: colors.surfaceSubtle }]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setEditModalVisible(true);
+              }}
+              accessibilityLabel="Editar Matéria"
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 16 }}>⚙️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.editBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger, borderWidth: 1 }]}
+              onPress={confirmDeleteSubject}
+              accessibilityLabel="Excluir Matéria"
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 16 }}>🗑️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {safeSubject.notes && (
@@ -175,6 +211,18 @@ export const SubjectDetailsModal: React.FC<Props> = ({
               onUpdateSubject={onUpdateSubject} 
               theme={theme} 
             />
+            <View style={{ paddingHorizontal: 18, marginTop: 24, marginBottom: 40 }}>
+              <TouchableOpacity
+                style={[styles.deleteSubjectBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}
+                onPress={confirmDeleteSubject}
+                activeOpacity={0.7}
+                accessibilityLabel="Excluir Matéria"
+              >
+                <Text style={{ color: theme === 'light' ? colors.dangerDark : colors.danger, fontWeight: '800', fontSize: 14 }}>
+                  🗑️ Excluir Matéria
+                </Text>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         ) : (
           <ScrollView style={{ flex: 1, padding: 18 }} showsVerticalScrollIndicator={false}>
@@ -295,7 +343,20 @@ export const SubjectDetailsModal: React.FC<Props> = ({
               ))
             )}
             
-            <View style={{ height: 100 }} />
+            <View style={{ marginTop: 24, marginBottom: 40 }}>
+              <TouchableOpacity
+                style={[styles.deleteSubjectBtn, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}
+                onPress={confirmDeleteSubject}
+                activeOpacity={0.7}
+                accessibilityLabel="Excluir Matéria"
+              >
+                <Text style={{ color: theme === 'light' ? colors.dangerDark : colors.danger, fontWeight: '800', fontSize: 14 }}>
+                  🗑️ Excluir Matéria
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ height: 60 }} />
           </ScrollView>
         )}
 
@@ -311,13 +372,7 @@ export const SubjectDetailsModal: React.FC<Props> = ({
             }
           }}
           onDelete={(id) => {
-            try {
-              onDeleteSubject(id);
-            } catch (e) {
-              console.warn('Erro ao excluir matéria:', e);
-            } finally {
-              onClose();
-            }
+            confirmDeleteSubject();
           }}
           theme={theme}
           semesters={semesters}
@@ -434,6 +489,14 @@ const getStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8
+  },
+  deleteSubjectBtn: {
+    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
   }
 });
 

@@ -55,6 +55,7 @@ export interface AppContextData {
   deleteEvent: (eventId: string) => Promise<void>;
   updateAttendance: (record: AttendanceRecord) => Promise<void>;
   archiveSubject: (subjectId: string) => Promise<void>;
+  deleteSubject: (subjectId: string) => Promise<void>;
   addOrUpdateSubject: (subject: Subject) => Promise<void>;
   addOrUpdateEvent: (event: AppEvent) => Promise<void>;
 }
@@ -237,6 +238,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await StorageService.saveSubjects(updated);
   };
 
+  const deleteSubject = async (subjectId: string) => {
+    const updatedSubjects = subjects.filter(s => s.id !== subjectId);
+    const removedEvents = events.filter(e => e.subjectId === subjectId);
+    const updatedEvents = events.filter(e => e.subjectId !== subjectId);
+    const updatedAttendances = attendances.filter(a => a.subjectId !== subjectId);
+
+    setSubjects(updatedSubjects);
+    setEvents(updatedEvents);
+    setAttendances(updatedAttendances);
+
+    await Promise.all([
+      StorageService.saveSubjects(updatedSubjects),
+      StorageService.saveEvents(updatedEvents),
+      StorageService.saveAttendances(updatedAttendances),
+      ...removedEvents.map(e => NotificationService.cancelEventNotifications(e.id)),
+    ]);
+  };
+
   const addOrUpdateSubject = async (subject: Subject) => {
     const exists = subjects.find(s => s.id === subject.id);
     const updated = exists 
@@ -275,6 +294,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     deleteEvent,
     updateAttendance,
     archiveSubject,
+    deleteSubject,
     addOrUpdateSubject,
     addOrUpdateEvent
   };

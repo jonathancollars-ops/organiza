@@ -15,6 +15,7 @@ export const GradesScreenWrapper = () => {
     theme, 
     semesters, 
     archiveSubject,
+    deleteSubject,
     addOrUpdateSubject,
     updateAttendance
   } = useApp();
@@ -47,10 +48,10 @@ export const GradesScreenWrapper = () => {
   const handleDeleteSubject = async (id: string) => {
     try {
       if (id) {
-        await archiveSubject(id);
+        await deleteSubject(id);
       }
     } catch (e) {
-      console.warn('Erro ao arquivar matéria no GradesScreenWrapper:', e);
+      console.warn('Erro ao excluir matéria no GradesScreenWrapper:', e);
     } finally {
       handleCloseDetails();
     }

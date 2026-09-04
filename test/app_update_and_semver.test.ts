@@ -54,12 +54,21 @@ async function runSemverAndAutoUpdateTests() {
     assertEqual(p3.major, 4, '4.0.0-rc1 -> Major is 4');
     assertEqual(p3.minor, 0, '4.0.0-rc1 -> Minor is 0');
     assertEqual(p3.patch, 0, '4.0.0-rc1 -> Patch is 0');
+    assertEqual(p3.build, 0, '4.0.0-rc1 -> Build is 0');
+
+    const pBuild = parseSemver('v3.3.0-build-54');
+    assertEqual(pBuild.major, 3, 'v3.3.0-build-54 -> Major is 3');
+    assertEqual(pBuild.minor, 3, 'v3.3.0-build-54 -> Minor is 3');
+    assertEqual(pBuild.patch, 0, 'v3.3.0-build-54 -> Patch is 0');
+    assertEqual(pBuild.build, 54, 'v3.3.0-build-54 -> Build is 54');
 
     const p4 = parseSemver('');
     assertEqual(p4.raw, '0.0.0', 'Empty string safely yields 0.0.0');
+    assertEqual(p4.build, 0, 'Empty string build is 0');
 
     const p5 = parseSemver(null as any);
     assertEqual(p5.raw, '0.0.0', 'Null safely yields 0.0.0');
+    assertEqual(p5.build, 0, 'Null safely yields build 0');
   }
 
   // --- 2. SemVer Comparison Tests ---
@@ -80,12 +89,19 @@ async function runSemverAndAutoUpdateTests() {
     // Major comparison
     assertEqual(compareSemver('4.0.0', '3.99.99'), 1, '4.0.0 > 3.99.99 (major takes precedence)');
 
+    // Build tiebreaker comparison
+    assertEqual(compareSemver('v3.3.0-build-54', 'v3.3.0-build-53'), 1, 'v3.3.0-build-54 > v3.3.0-build-53 (build tiebreaker)');
+    assertEqual(compareSemver('v3.3.0-build-53', 'v3.3.0-build-54'), -1, 'v3.3.0-build-53 < v3.3.0-build-54');
+    assertEqual(compareSemver('v3.3.0-build-54', 'v3.3.0'), 1, 'v3.3.0-build-54 > v3.3.0 (build > 0)');
+    assertEqual(compareSemver('v3.3.0-build-54', 'v3.3.0-build-54'), 0, 'Equal versions and builds yield 0');
+
     // isNewerVersion tests
     assert(isNewerVersion('3.1.1', '3.1.0'), '3.1.1 is newer than 3.1.0');
     assert(isNewerVersion('3.3.0', '3.1.0'), '3.3.0 is newer than 3.1.0');
     assert(isNewerVersion('4.0.0', '3.1.0'), '4.0.0 is newer than 3.1.0');
     assert(!isNewerVersion('3.1.0', '3.1.0'), '3.1.0 is NOT newer than 3.1.0');
     assert(!isNewerVersion('3.0.9', '3.1.0'), '3.0.9 is NOT newer than 3.1.0');
+    assert(isNewerVersion('v3.3.0-build-54', 'v3.3.0-build-53'), 'v3.3.0-build-54 is newer than v3.3.0-build-53');
   }
 
   // --- 3. Strict SemVer Increment Rules (bumpVersion) ---
@@ -111,12 +127,12 @@ async function runSemverAndAutoUpdateTests() {
   console.log('\n--- 4. AppUpdateService Mock Tests & Ignored Versions ---');
   {
     // Current version assertion
-    assertEqual(AppUpdateService.getCurrentVersion(), '3.3.0', 'Current version is 3.3.0');
+    assertEqual(AppUpdateService.getCurrentVersion(), '3.3.1', 'Current version is 3.3.1');
 
     // State persistence & ignore version
-    await AppUpdateService.ignoreVersion('3.3.0');
+    await AppUpdateService.ignoreVersion('3.3.1');
     const state = await AppUpdateService.getUpdateState();
-    assertEqual(state.ignoredVersion, '3.3.0', 'Ignored version persisted correctly');
+    assertEqual(state.ignoredVersion, '3.3.1', 'Ignored version persisted correctly');
 
     // Reset state
     await AppUpdateService.saveUpdateState({ ignoredVersion: undefined, lastCheckedAt: undefined });

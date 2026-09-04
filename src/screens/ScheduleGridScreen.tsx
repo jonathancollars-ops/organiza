@@ -187,7 +187,7 @@ export const ScheduleGridScreen: React.FC<Props> = ({
                             if (startMinutes < 0) return null;
                             
                             const subject = subjects.find(s => s.id === evt.subjectId);
-                            const blockBg = subject?.color || colors.primary;
+                            const blockBg = (subject?.color && subject.color.trim().length > 0) ? subject.color : colors.primary;
                             const contrastText = getContrastTextColor(blockBg);
 
                             return (
@@ -197,6 +197,8 @@ export const ScheduleGridScreen: React.FC<Props> = ({
                                   styles.eventBlock,
                                   {
                                     backgroundColor: blockBg,
+                                    borderColor: contrastText === '#FFFFFF' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.15)',
+                                    borderWidth: 1,
                                     top: (startMinutes / 60) * HOUR_HEIGHT,
                                     height: Math.max((duration / 60) * HOUR_HEIGHT - 2, 22),
                                   }
@@ -206,7 +208,7 @@ export const ScheduleGridScreen: React.FC<Props> = ({
                                   {subject?.name || evt.title}
                                 </Text>
                                 {duration >= 40 && (
-                                  <Text style={[styles.eventTimeText, { color: contrastText, opacity: 0.9 }]} numberOfLines={1}>
+                                  <Text style={[styles.eventTimeText, { color: contrastText, opacity: 0.95 }]} numberOfLines={1}>
                                     {evt.startTime} - {evt.endTime}
                                   </Text>
                                 )}

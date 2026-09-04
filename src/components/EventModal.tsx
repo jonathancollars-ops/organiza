@@ -30,6 +30,7 @@ const ALERT_OPTIONS = [
 
 export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave, onDelete, theme, initialEvent, initialDate, isDateLocked }) => {
   const colors = getThemeColors(theme);
+  const styles = React.useMemo(() => getStyles(colors), [colors]);
   
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<EventCategory>('Saúde/Academia');
@@ -488,17 +489,36 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
   );
 };
 
-const styles = StyleSheet.create({
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '90%' },
-  dragHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(150,150,150,0.4)', alignSelf: 'center', marginBottom: 16 },
-  title: { fontSize: 20, fontWeight: '800', marginBottom: 18, letterSpacing: -0.5 },
-  input: { height: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 15, marginBottom: 14, fontSize: 15 },
-  label: { fontSize: 14, marginBottom: 8, fontWeight: '700', marginTop: 8 },
-  horizontalScroll: { flexDirection: 'row', marginBottom: 14 },
-  badge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8, marginBottom: 5 },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
-  sliderCard: { padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 14 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
-  actionBtn: { flex: 1, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' }
-});
+const getStyles = (colors: ReturnType<typeof getThemeColors>) =>
+  StyleSheet.create({
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.65)', justifyContent: 'flex-end' },
+    modalContent: {
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      padding: 20,
+      maxHeight: '90%',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border
+    },
+    dragHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(150,150,150,0.4)', alignSelf: 'center', marginBottom: 16 },
+    title: { fontSize: 20, fontWeight: '800', marginBottom: 18, letterSpacing: -0.5, color: colors.text },
+    input: {
+      height: 48,
+      borderWidth: 1.5,
+      borderRadius: 12,
+      paddingHorizontal: 15,
+      marginBottom: 14,
+      fontSize: 15,
+      color: colors.text,
+      backgroundColor: colors.background,
+      borderColor: colors.border
+    },
+    label: { fontSize: 14, marginBottom: 8, fontWeight: '700', marginTop: 8, color: colors.text },
+    horizontalScroll: { flexDirection: 'row', marginBottom: 14 },
+    badge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8, marginBottom: 5 },
+    row: { flexDirection: 'row', justifyContent: 'space-between' },
+    sliderCard: { padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 14, backgroundColor: colors.background, borderColor: colors.border },
+    switchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+    actionBtn: { flex: 1, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' }
+  });

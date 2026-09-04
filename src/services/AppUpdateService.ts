@@ -4,6 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { AppUpdateInfo, AppUpdateState } from '../types';
 import { APP_VERSION, isNewerVersion, parseSemver } from '../utils/version';
+import { SecuritySanitizer } from './SecuritySanitizer';
 
 const GITHUB_REPO_OWNER = 'jonathancollars-ops';
 const GITHUB_REPO_NAME = 'organiza';
@@ -95,16 +96,23 @@ export class AppUpdateService {
       }
 
       const rawTag = release.tag_name as string;
-      const latestVersion = rawTag.replace(/^v/i, '');
+      const latestVersion = rawTag.trim().replace(/^refs\/tags\//i, '').replace(/^v/i, '');
+      if (!latestVersion) {
+        return null;
+      }
 
       // Check if remote version is strictly newer than current app version
       const hasUpdate = isNewerVersion(latestVersion, APP_VERSION);
+      
+      // Sanitize release page URL
+      const safeReleaseHtmlUrl = SecuritySanitizer.sanitizeUrl(release.html_url);
+
       if (!hasUpdate) {
         return {
           hasUpdate: false,
           currentVersion: APP_VERSION,
           latestVersion: latestVersion,
-          downloadUrl: typeof release.html_url === 'string' ? release.html_url : ''
+          downloadUrl: safeReleaseHtmlUrl
         };
       }
 
@@ -113,23 +121,32 @@ export class AppUpdateService {
         return null;
       }
 
-      // Locate .apk asset in release assets
-      let apkDownloadUrl = typeof release.html_url === 'string' ? release.html_url : '';
+      // Locate .apk asset in release assets and sanitize its URL
+      let apkDownloadUrl = safeReleaseHtmlUrl;
       if (Array.isArray(release.assets)) {
         const apkAsset = release.assets.find((asset: any) =>
           asset && typeof asset.name === 'string' && asset.name.toLowerCase().endsWith('.apk')
         );
         if (apkAsset && typeof apkAsset.browser_download_url === 'string') {
-          apkDownloadUrl = apkAsset.browser_download_url;
+          const sanitizedApk = SecuritySanitizer.sanitizeUrl(apkAsset.browser_download_url);
+          if (sanitizedApk && sanitizedApk.toLowerCase().endsWith('.apk')) {
+            apkDownloadUrl = sanitizedApk;
+          }
         }
       }
+
+      const rawName = typeof release.name === 'string' ? release.name : '';
+      const safeName = rawName.trim().length > 0 ? SecuritySanitizer.sanitizeText(rawName) : `Lumen v${latestVersion}`;
+
+      const rawBody = typeof release.body === 'string' ? release.body : '';
+      const safeBody = rawBody.trim().length > 0 ? SecuritySanitizer.sanitizeText(rawBody) : 'Melhorias de estabilidade, desempenho e correções visuais.';
 
       return {
         hasUpdate: true,
         currentVersion: APP_VERSION,
         latestVersion: latestVersion,
-        releaseName: typeof release.name === 'string' ? release.name : `Lumen v${latestVersion}`,
-        releaseNotes: typeof release.body === 'string' ? release.body : 'Melhorias de estabilidade, desempenho e correções visuais.',
+        releaseName: safeName,
+        releaseNotes: safeBody,
         downloadUrl: apkDownloadUrl,
         publishedAt: typeof release.published_at === 'string' ? release.published_at : undefined,
         isMandatory: false
@@ -149,14 +166,15 @@ export class AppUpdateService {
    */
   public static async openDownloadUrl(url: string): Promise<boolean> {
     try {
-      if (!url || typeof url !== 'string' || url.trim().length === 0) return false;
-      const supported = await Linking.canOpenURL(url);
+      const sanitized = SecuritySanitizer.sanitizeUrl(url);
+      if (!sanitized) return false;
+      const supported = await Linking.canOpenURL(sanitized);
       if (supported) {
-        await Linking.openURL(url);
+        await Linking.openURL(sanitized);
         return true;
       } else {
         // Fallback direto caso canOpenURL retorne false indevidamente em certas versões do Android
-        await Linking.openURL(url);
+        await Linking.openURL(sanitized);
         return true;
       }
     } catch {
@@ -180,13 +198,14 @@ export class AppUpdateService {
     const fileUri = `${FileSystem.cacheDirectory}lumen-update.apk`;
 
     try {
-      if (!downloadUrl || typeof downloadUrl !== 'string' || downloadUrl.trim().length === 0) {
+      const sanitizedUrl = SecuritySanitizer.sanitizeUrl(downloadUrl);
+      if (!sanitizedUrl) {
         return { success: false, error: 'URL de download inválida ou não fornecida.' };
       }
 
       // Se a URL não apontar para um arquivo .apk (ex: apenas a página html_url da release), faz fallback para o navegador
-      if (!downloadUrl.toLowerCase().endsWith('.apk')) {
-        await this.openDownloadUrl(downloadUrl);
+      if (!sanitizedUrl.toLowerCase().endsWith('.apk')) {
+        await this.openDownloadUrl(sanitizedUrl);
         return {
           success: false,
           error: 'Pacote APK direto não disponível nesta release. Redirecionando para a página de download no navegador...'
@@ -196,7 +215,7 @@ export class AppUpdateService {
       const MIN_FREE_SPACE = 60 * 1024 * 1024; // 60 MB
       try {
         const freeSpace = await FileSystem.getFreeDiskStorageAsync();
-        if (freeSpace < MIN_FREE_SPACE) {
+        if (typeof freeSpace === 'number' && freeSpace < MIN_FREE_SPACE) {
           return { success: false, error: 'Espaço em disco insuficiente. Libere pelo menos 60 MB para baixar a atualização.' };
         }
       } catch (e) {
@@ -206,7 +225,7 @@ export class AppUpdateService {
       // Prevenção de lixo e corrupção: Exclui qualquer APK parcial ou corrompido de downloads anteriores
       try {
         const fileInfo = await FileSystem.getInfoAsync(fileUri);
-        if (fileInfo.exists) {
+        if (fileInfo && fileInfo.exists) {
           await FileSystem.deleteAsync(fileUri, { idempotent: true });
         }
       } catch {
@@ -216,7 +235,7 @@ export class AppUpdateService {
       }
 
       this.activeDownload = FileSystem.createDownloadResumable(
-        downloadUrl,
+        sanitizedUrl,
         fileUri,
         {},
         (downloadProgress) => {
@@ -228,7 +247,18 @@ export class AppUpdateService {
       const result = await this.activeDownload.downloadAsync();
       
       if (result && result.uri) {
-        return { success: true, fileUri: result.uri };
+        try {
+          const downloadedInfo = await FileSystem.getInfoAsync(result.uri);
+          if (downloadedInfo && downloadedInfo.exists && (downloadedInfo.size === undefined || downloadedInfo.size > 0)) {
+            return { success: true, fileUri: result.uri };
+          } else {
+            // Arquivo corrompido ou vazio (0 bytes)
+            await FileSystem.deleteAsync(result.uri, { idempotent: true });
+            return { success: false, error: 'Arquivo APK baixado está corrompido ou vazio.' };
+          }
+        } catch {
+          return { success: true, fileUri: result.uri };
+        }
       }
 
       // Se o download não retornou URI válida, limpa o arquivo corrompido
@@ -254,6 +284,8 @@ export class AppUpdateService {
         await this.activeDownload.cancelAsync();
         this.activeDownload = null;
       }
+      const fileUri = `${FileSystem.cacheDirectory}lumen-update.apk`;
+      await FileSystem.deleteAsync(fileUri, { idempotent: true });
     } catch (error) {
       console.warn('Erro ao cancelar o download', error);
     }

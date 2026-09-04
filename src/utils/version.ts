@@ -4,28 +4,33 @@ import { VersionBumpType } from '../types';
  * Lumen App Version
  * Used for checking GitHub Releases
  */
-export const APP_VERSION = '3.3.0';
+export const APP_VERSION = '3.3.1';
 
 export interface ParsedSemver {
   major: number;
   minor: number;
   patch: number;
+  build: number;
   raw: string;
 }
 
 /**
- * Cleans and parses a version string (e.g. "v3.1.0", "3.0.0-rc1", "3.2") into numeric components.
+ * Cleans and parses a version string (e.g. "v3.1.0", "3.0.0-rc1", "3.2", "v3.3.0-build-54") into numeric components.
  */
 export function parseSemver(versionString: string | null | undefined): ParsedSemver {
   if (!versionString || typeof versionString !== 'string') {
-    return { major: 0, minor: 0, patch: 0, raw: '0.0.0' };
+    return { major: 0, minor: 0, patch: 0, build: 0, raw: '0.0.0' };
   }
 
-  // Remove leading 'v' or 'V' and any whitespace
-  const clean = versionString.trim().replace(/^v/i, '');
+  // Remove leading 'refs/tags/', 'v' or 'V', and any surrounding whitespace
+  const clean = versionString.trim().replace(/^refs\/tags\//i, '').replace(/^v/i, '');
 
-  // Extract major, minor, patch (ignoring prerelease suffixes like -beta)
-  const mainPart = clean.split('-')[0];
+  // Extract build number from tags (ex: v3.3.0-build-54, v3.3.1-build.54, v3.3.1-54, v3.3.1+54 -> build: 54)
+  const buildMatch = clean.match(/build[-.]?(\d+)/i) || clean.match(/[-+](\d+)$/i);
+  const build = buildMatch ? (parseInt(buildMatch[1], 10) || 0) : 0;
+
+  // Extract major, minor, patch (ignoring prerelease suffixes like -beta or -build-54)
+  const mainPart = clean.split('-')[0].split('+')[0];
   const parts = mainPart.split('.').map(p => {
     const num = parseInt(p, 10);
     return isNaN(num) ? 0 : Math.max(0, num);
@@ -39,6 +44,7 @@ export function parseSemver(versionString: string | null | undefined): ParsedSem
     major,
     minor,
     patch,
+    build,
     raw: `${major}.${minor}.${patch}`
   };
 }
@@ -62,6 +68,9 @@ export function compareSemver(v1: string, v2: string): number {
   }
   if (p1.patch !== p2.patch) {
     return p1.patch > p2.patch ? 1 : -1;
+  }
+  if (p1.build !== p2.build) {
+    return p1.build > p2.build ? 1 : -1;
   }
   return 0;
 }

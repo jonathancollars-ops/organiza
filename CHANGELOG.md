@@ -13,6 +13,13 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 
 ---
 
+## [3.3.1] - 2026-09-03
+### 🩹 Correções & Melhorias de Estabilidade (Fixes)
+- **Exclusão de Matérias em Cascata:** Agora ao excluir uma disciplina ela é removida imediatamente das telas de Faltas e Notas, e seus eventos e registros de presença vinculados são limpos atomicamente do banco local.
+- **Filtro de Disciplinas Ativas:** As telas de Faltas e Notas agora filtram estritamente matérias ativas, ocultando disciplinas arquivadas.
+- **Contraste e Visibilidade Visual (A11y):** Correção de caixas de texto e chips de categorias com texto invisível, garantindo contraste WCAG AA (`getContrastTextColor`) em todos os temas (Light, Dark e AMOLED).
+- **Detecção Inteligente de Releases do GitHub:** O comparador de versões foi aprimorado para suportar tags com sufixo de build (`-build-XX`), garantindo que o atualizador in-app detecte imediatamente novas versões publicadas.
+
 ## [3.3.0] - 2026-08-28
 ### 🚀 Atualizador In-App & Instalador Direto de APK (Features)
 - **Download Direto pelo Aplicativo:** Agora o Lumen baixa as novas versões de APK diretamente dentro do app via `expo-file-system`, sem necessidade de abrir navegadores externos ou páginas do GitHub.

@@ -126,4 +126,20 @@ export class SecuritySanitizer {
 
     return false;
   }
+
+  /**
+   * Sanitizes and validates a URL from external APIs (like GitHub).
+   * Ensures the URL uses http/https protocol and blocks unsafe schemes (javascript:, file:, data:, etc.)
+   */
+  static sanitizeUrl(url: string | null | undefined): string {
+    if (!url || typeof url !== 'string') {
+      return '';
+    }
+    const trimmed = url.trim();
+    // Allow only http:// and https:// URLs without control characters or HTML/quotes
+    if (!/^https?:\/\/[^\s"'<>]+$/i.test(trimmed)) {
+      return '';
+    }
+    return trimmed;
+  }
 }

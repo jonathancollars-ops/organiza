@@ -386,6 +386,82 @@ async function runSecurityTests() {
     mockNotifications.requestPermissionsAsync = origReq;
   });
 
+  // =================================================================
+  // SUITE 7: URL Sanitization, Tag Resilience & Destructive Alert Confirmation
+  // =================================================================
+  console.log('\n--- SUITE 7: URL Sanitization, Tag Resilience & Destructive Alert Confirmation ---');
+  const { parseSemver, compareSemver, isNewerVersion } = require('../src/utils/version');
+
+  await test('SecuritySanitizer.sanitizeUrl accepts valid https/http URLs and blocks dangerous schemes', async () => {
+    assert(SecuritySanitizer.sanitizeUrl('https://github.com/release.apk') === 'https://github.com/release.apk', 'Valid HTTPS URL preserved');
+    assert(SecuritySanitizer.sanitizeUrl('http://example.com/file') === 'http://example.com/file', 'Valid HTTP URL preserved');
+    assert(SecuritySanitizer.sanitizeUrl('javascript:alert(1)') === '', 'Blocks javascript: scheme');
+    assert(SecuritySanitizer.sanitizeUrl('data:text/html,<script>alert(1)</script>') === '', 'Blocks data: URI');
+    assert(SecuritySanitizer.sanitizeUrl('file:///etc/passwd') === '', 'Blocks file: URI');
+    assert(SecuritySanitizer.sanitizeUrl('https://example.com/"<script>') === '', 'Blocks URL with embedded script tag');
+    assert(SecuritySanitizer.sanitizeUrl(null) === '', 'Null returns empty string');
+    assert(SecuritySanitizer.sanitizeUrl('') === '', 'Empty string returns empty string');
+  });
+
+  await test('Version parsing & comparison handles pure tags and build tags with full resilience', async () => {
+    // Pure tags
+    const p1 = parseSemver('v3.3.1');
+    assert(p1.major === 3 && p1.minor === 3 && p1.patch === 1 && p1.build === 0, 'Pure tag v3.3.1 parsed correctly');
+
+    // Build tags
+    const p2 = parseSemver('v3.3.1-build-54');
+    assert(p2.major === 3 && p2.minor === 3 && p2.patch === 1 && p2.build === 54, 'Build tag v3.3.1-build-54 parsed with build: 54');
+
+    const p3 = parseSemver('v3.3.1-build.54');
+    assert(p3.build === 54, 'Dot notation v3.3.1-build.54 extracts build: 54');
+
+    const p4 = parseSemver('v3.3.1-54');
+    assert(p4.build === 54, 'Hyphen notation v3.3.1-54 extracts build: 54');
+
+    const p5 = parseSemver('refs/tags/v3.3.1');
+    assert(p5.major === 3 && p5.minor === 3 && p5.patch === 1, 'refs/tags/ prefix stripped');
+
+    // Comparison rules
+    assert(compareSemver('3.3.1-build-54', '3.3.1') > 0, 'v3.3.1-build-54 is newer than 3.3.1 (no build)');
+    assert(compareSemver('3.3.1', '3.3.1-build-54') < 0, '3.3.1 is older than v3.3.1-build-54');
+    assert(compareSemver('3.3.2', '3.3.1-build-54') > 0, 'Patch 3.3.2 is newer than 3.3.1-build-54');
+    assert(compareSemver('3.3.1', 'v3.3.1') === 0, 'Equal versions return 0');
+  });
+
+  await test('AppUpdateService.checkForUpdates sanitizes GitHub release data and falls back when no APK asset exists', async () => {
+    const origFetch = globalThis.fetch;
+
+    // Mock release without .apk asset (only html_url) and with malicious name/notes
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v3.4.0-build-12',
+        name: 'Release 3.4.0 <script>alert("xss")</script>',
+        body: 'Notas de atualização <b>com tags</b> e <iframe src="evil.com"></iframe>',
+        html_url: 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.0',
+        assets: [
+          { name: 'source.zip', browser_download_url: 'https://github.com/release/source.zip' }
+        ]
+      })
+    }) as any;
+
+    const info = await AppUpdateService.checkForUpdates(true);
+    assert(info !== null, 'Update info retrieved');
+    assert(info!.hasUpdate === true, 'Update detected');
+    assert(info!.latestVersion === '3.4.0-build-12', 'Version with build extracted');
+    assert(!info!.releaseName!.includes('<script>'), 'Release name sanitized');
+    assert(!info!.releaseNotes!.includes('<iframe>'), 'Release notes stripped of dangerous tags');
+    assert(info!.downloadUrl === 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.0', 'Fallback to release html_url because no .apk asset exists');
+
+    globalThis.fetch = origFetch;
+  });
+
+  await test('AppUpdateService.downloadUpdateApk rejects malformed or malicious URLs cleanly', async () => {
+    const res1 = await AppUpdateService.downloadUpdateApk('javascript:alert(1)', () => {});
+    assert(res1.success === false, 'Rejects javascript: scheme URL');
+    assert(res1.error!.includes('URL de download inválida'), 'Informs about invalid URL');
+  });
+
   console.log('\n================================================================');
   console.log(`🎉 ALL SECURITY HARDENING TESTS PASSED: ${passCount}/${testCount} (100%)`);
   console.log('================================================================\n');

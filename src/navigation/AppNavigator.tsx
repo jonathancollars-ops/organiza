@@ -41,13 +41,34 @@ export function AppNavigator() {
   // App Update State
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
   const [updateModalVisible, setUpdateModalVisible] = useState(false);
+
+  const handleCloseUpdateModal = async () => {
+    setUpdateModalVisible(false);
+    try {
+      await AppUpdateService.recordPromptDismissed();
+    } catch {
+      // Ignora falhas de persistência
+    }
+  };
   
   useEffect(() => {
     const check = async () => {
-      const info = await AppUpdateService.checkForUpdates(false);
-      if (info && info.hasUpdate) {
-        setUpdateInfo(info);
-        setUpdateModalVisible(true);
+      try {
+        // Cooldown de 24 horas: se o usuário já visualizou ou cancelou o modal hoje, não reabre automaticamente
+        const shouldShow = await AppUpdateService.shouldShowAutomaticPrompt();
+        if (!shouldShow) {
+          return;
+        }
+
+        const info = await AppUpdateService.checkForUpdates(false);
+        if (info && info.hasUpdate) {
+          setUpdateInfo(info);
+          setUpdateModalVisible(true);
+          // Marca visualização para iniciar o cooldown mesmo se o app for encerrado
+          await AppUpdateService.recordPromptDismissed();
+        }
+      } catch {
+        // Falhas na verificação em segundo plano são tratadas silenciosamente
       }
     };
     check();
@@ -222,7 +243,7 @@ export function AppNavigator() {
         visible={updateModalVisible} 
         updateInfo={updateInfo} 
         theme={theme} 
-        onClose={() => setUpdateModalVisible(false)} 
+        onClose={handleCloseUpdateModal} 
       />
     </>
   );

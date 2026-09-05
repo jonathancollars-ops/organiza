@@ -312,8 +312,38 @@ async function runSecurityTests() {
     const result = await AppUpdateService.installApk('file:///mock_sandbox_app/cache/lumen-update.apk');
     assert(result.success === false, 'Installation fails gracefully when exception is thrown');
     assert(result.error!.includes('Permissão necessária'), 'Returns localized permission error message');
+    assert((globalThis as any).__mockIntentOptions.action === 'android.settings.MANAGE_UNKNOWN_APP_SOURCES', 'Opens MANAGE_UNKNOWN_APP_SOURCES settings on SecurityException');
 
     (globalThis as any).__mockIntentThrow = false;
+  });
+
+  await test('AppUpdateService.installApk passes FLAG_ACTIVITY_NEW_TASK and FLAG_GRANT_READ_URI_PERMISSION', async () => {
+    (globalThis as any).__mockIntentThrow = false;
+
+    const result = await AppUpdateService.installApk('file:///mock_sandbox_app/cache/lumen-update.apk');
+    assert(result.success === true, 'installApk succeeds');
+    const intentOptions = (globalThis as any).__mockIntentOptions;
+    assert(intentOptions.action === 'android.intent.action.VIEW', 'Intent action is VIEW');
+    assert(intentOptions.options.flags === (1 | 268435456), 'Intent flags include FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK (268435457)');
+    assert(intentOptions.options.type === 'application/vnd.android.package-archive', 'MIME type is application/vnd.android.package-archive');
+  });
+
+  await test('AppUpdateService 24-hour prompt cooldown blocks automatic popups within 24 hours', async () => {
+    await AppUpdateService.recordPromptDismissed();
+    const shouldShowImmediately = await AppUpdateService.shouldShowAutomaticPrompt();
+    assert(shouldShowImmediately === false, 'Automatic prompt is blocked immediately after dismissal');
+
+    // Simulate 12 hours later
+    const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
+    await AppUpdateService.saveUpdateState({ lastPromptDismissedAt: twelveHoursAgo });
+    const shouldShowAt12h = await AppUpdateService.shouldShowAutomaticPrompt();
+    assert(shouldShowAt12h === false, 'Automatic prompt is blocked at 12 hours');
+
+    // Simulate 25 hours later
+    const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
+    await AppUpdateService.saveUpdateState({ lastPromptDismissedAt: twentyFiveHoursAgo });
+    const shouldShowAt25h = await AppUpdateService.shouldShowAutomaticPrompt();
+    assert(shouldShowAt25h === true, 'Automatic prompt is allowed after 24 hours have passed');
   });
 
   await test('AppUpdateService.downloadUpdateApk falls back to browser when URL is not a direct .apk', async () => {

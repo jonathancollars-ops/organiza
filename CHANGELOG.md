@@ -14,6 +14,10 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 ---
 
 ## [3.3.1] - 2026-09-03
+### 🕒 Relógio Interativo & Recorrência Avançada (Novos Recursos)
+- **Relógio Interativo Radial & Digital (`ClockTimePickerModal`):** Substituição completa dos sliders imprecisos de hora por um mostrador touch de relógio com alternador de horas (12/24h) e minutos, presets rápidos (`08:00`, `10:00`, `14:00`, etc.) e resposta háptica.
+- **Recorrência em Intervalos Maiores:** Agora é possível agendar eventos que se repetem a cada quantidade customizada de tempo (ex: a cada 6 meses todo dia 10, bimestral todo dia 15, trimestral), com projeção e marcação precisa na Agenda e no Calendário.
+
 ### 🏖️ Planejador Estratégico de Faltas (Novo Recurso)
 - **Simulador Preditivo "Posso Faltar?":** Novo botão no cabeçalho da aba de Faltas que projeta o impacto futuro de ausências antes de você faltar.
 - **Simulação por Data com Mapeamento Completo:** Escolha uma data (ex: próxima Sexta-feira) e veja o impacto em todas as matérias daquele dia, com taxas projetadas de presença (%) e veredito inteligente (🟢 Seguro, 🟡 Atenção, 🔴 Perigo).
@@ -21,6 +25,8 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 - **Simulador Interativo por Matéria:** Ajuste faltas adicionais (`+1`, `+2`, `+3`) com barra de progresso colorida e feedback tátil em tempo real.
 
 ### 🩹 Correções & Melhorias de Estabilidade (Fixes)
+- **Instalação Real de Atualizações no Android:** Inclusão da flag obrigatória `FLAG_ACTIVITY_NEW_TASK` (`268435456`) no `IntentLauncher`, permitindo que o instalador nativo do sistema execute e substitua o aplicativo sem fechar sozinho.
+- **Controle de Alertas de Atualização:** Adicionado cooldown inteligente de 24h para que o modal de nova versão não interrompa o usuário a cada abertura do aplicativo se já foi visualizado hoje.
 - **Exclusão de Matérias em Cascata:** Agora ao excluir uma disciplina ela é removida imediatamente das telas de Faltas e Notas, e seus eventos e registros de presença vinculados são limpos atomicamente do banco local.
 - **Filtro de Disciplinas Ativas:** As telas de Faltas e Notas agora filtram estritamente matérias ativas, ocultando disciplinas arquivadas.
 - **Contraste e Visibilidade Visual (A11y):** Correção de caixas de texto e chips de categorias com texto invisível, garantindo contraste WCAG AA (`getContrastTextColor`) em todos os temas (Light, Dark e AMOLED).

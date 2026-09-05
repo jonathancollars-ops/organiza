@@ -1,6 +1,6 @@
 export type EventCategory = 'Saúde/Academia' | 'Faculdade/Aulas' | 'Provas/Trabalhos' | 'Lazer' | 'Outros';
 
-export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly';
+export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom_interval';
 
 export interface GradeItem {
   id: string;
@@ -51,6 +51,9 @@ export interface AppEvent {
   endTime: string; // "HH:mm"
   recurrence: RecurrenceType;
   recurrenceDays?: number[]; // 0 = Sunday, 1 = Monday, etc. Used for weekly.
+  recurrenceInterval?: number; // ex: 1, 2, 3, 6 (a cada N meses ou semanas)
+  recurrenceUnit?: 'days' | 'weeks' | 'months' | 'years'; // padrão: 'months'
+  recurrenceMonthDay?: number; // dia do mês fixo (ex: dia 10, dia 15)
   alerts: number[]; // Array of minutes before the event to notify (e.g. [60, 1440])
   isCompleted: boolean; // For the habit tracking
   isImportant?: boolean; // Highlighted below the calendar
@@ -401,4 +404,5 @@ export interface AppUpdateInfo {
 export interface AppUpdateState {
   lastCheckedAt?: number;
   ignoredVersion?: string;
+  lastPromptDismissedAt?: number;
 }

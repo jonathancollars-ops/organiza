@@ -46,7 +46,7 @@ async function runInstallerTests() {
     const intentData = (globalThis as any).__mockIntentOptions;
     assert(intentData.action === 'android.intent.action.VIEW', 'Intent action is ACTION_VIEW');
     assert(intentData.options.type === 'application/vnd.android.package-archive', 'MIME type is correct for APKs');
-    assert(intentData.options.flags === 1, 'Flag 1 (GRANT_READ_URI_PERMISSION) is applied');
+    assert(intentData.options.flags === (1 | 268435456), 'Flags include GRANT_READ_URI_PERMISSION and FLAG_ACTIVITY_NEW_TASK (1 | 268435456)');
   }
 
   console.log('\n--- 3. Adverse Scenarios & Resilience ---');

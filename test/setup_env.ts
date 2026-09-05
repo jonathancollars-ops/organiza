@@ -34,6 +34,9 @@ export const mockReactNative = {
   Alert: { alert: () => {} },
   StatusBar: { setBarStyle: () => {} },
   ActivityIndicator: 'ActivityIndicator',
+  Modal: 'Modal',
+  Dimensions: { get: () => ({ width: 375, height: 812 }) },
+  TextInput: 'TextInput',
   Linking: {
     openURL: async () => true,
     canOpenURL: async () => true,

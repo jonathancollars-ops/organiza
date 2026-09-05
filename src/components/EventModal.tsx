@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Switch, Platform, KeyboardAvoidingView, Alert } from 'react-native';
-import Slider from '@react-native-community/slider';
 import { Calendar } from 'react-native-calendars';
+import { ClockTimePickerModal } from './ClockTimePickerModal';
 import { AppEvent, EventCategory, RecurrenceType, ThemeType } from '../types';
 import { getThemeColors, CategoryColors, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
@@ -40,10 +40,16 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
   const [customAlertVal, setCustomAlertVal] = useState('');
   const [customAlertUnit, setCustomAlertUnit] = useState<number>(1); // 1=min, 60=hour, 1440=day
   const [recurrence, setRecurrence] = useState<RecurrenceType>('none');
+  const [recurrenceInterval, setRecurrenceInterval] = useState<number>(1);
+  const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number>(15);
   const [alerts, setAlerts] = useState<number[]>([0]); // Default "Na hora"
   const [isImportant, setIsImportant] = useState(false);
   const [isNotified, setIsNotified] = useState(true);
   const [showCalendar, setShowCalendar] = useState(false);
+
+  // ClockTimePickerModal state
+  const [clockModalVisible, setClockModalVisible] = useState(false);
+  const [clockTarget, setClockTarget] = useState<'start' | 'end'>('start');
 
   const parseTime = (timeStr: string) => {
     if (!timeStr || !timeStr.includes(':')) return 480;
@@ -66,6 +72,22 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
     return `${m} minutos`;
   };
 
+  const openClockPicker = (target: 'start' | 'end') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setClockTarget(target);
+    setClockModalVisible(true);
+  };
+
+  const handleConfirmClock = (_timeStr: string, totalMinutes: number) => {
+    if (clockTarget === 'start') {
+      setStartMinutes(totalMinutes);
+    } else {
+      let diff = totalMinutes - startMinutes;
+      if (diff <= 0) diff += 1440;
+      setDurationMinutes(diff);
+    }
+  };
+
   React.useEffect(() => {
     if (visible) {
       if (initialEvent) {
@@ -84,6 +106,17 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
         }
 
         setRecurrence(initialEvent.recurrence);
+        setRecurrenceInterval(initialEvent.recurrenceInterval || 1);
+        if (initialEvent.recurrenceMonthDay) {
+          setRecurrenceMonthDay(initialEvent.recurrenceMonthDay);
+        } else if (initialEvent.date) {
+          const parts = initialEvent.date.split('-');
+          const d = parseInt(parts[2], 10);
+          setRecurrenceMonthDay(!isNaN(d) ? d : 15);
+        } else {
+          setRecurrenceMonthDay(15);
+        }
+
         setAlerts(initialEvent.alerts || [0]);
         setIsImportant(initialEvent.isImportant || false);
         setIsNotified(initialEvent.isNotified !== false);
@@ -94,6 +127,9 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
         setStartMinutes(480);
         setDurationMinutes(60);
         setRecurrence('none');
+        setRecurrenceInterval(1);
+        const todayDay = new Date().getDate();
+        setRecurrenceMonthDay(todayDay || 15);
         setAlerts([0]);
         setIsImportant(false);
         setIsNotified(true);
@@ -136,6 +172,9 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
       startTime: startTimeStr,
       endTime: endTimeStr,
       recurrence,
+      recurrenceInterval: recurrence === 'monthly' ? recurrenceInterval : undefined,
+      recurrenceUnit: recurrence === 'monthly' ? 'months' : undefined,
+      recurrenceMonthDay: recurrence === 'monthly' ? recurrenceMonthDay : undefined,
       alerts,
       isCompleted: initialEvent ? initialEvent.isCompleted : false,
       isImportant,
@@ -263,47 +302,78 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
                 </View>
               </View>
 
-              <View style={[styles.sliderCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 6 }]}>
-                  <Text style={[styles.label, { color: colors.text, marginBottom: 0, marginTop: 0 }]}>Horário de Início</Text>
-                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 16 }}>
-                    {formatTime(startMinutes)}
-                  </Text>
-                </View>
-                <Slider
-                  style={{ width: '100%', height: 40 }}
-                  minimumValue={0}
-                  maximumValue={1425} // 23:45
-                  step={15}
-                  value={startMinutes}
-                  onValueChange={setStartMinutes}
-                  minimumTrackTintColor={colors.primary}
-                  maximumTrackTintColor={colors.border}
-                  thumbTintColor={colors.primary}
-                />
-              </View>
+              {/* Horário e Duração Interativo */}
+              <View style={[styles.timeCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Text style={[styles.label, { color: colors.text, marginTop: 0, marginBottom: 10 }]}>Horário e Duração</Text>
 
-              <View style={[styles.sliderCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 6 }]}>
-                  <Text style={[styles.label, { color: colors.text, marginBottom: 0, marginTop: 0 }]}>Duração do Evento</Text>
-                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 16 }}>
-                    {formatDuration(durationMinutes)}
-                  </Text>
+                <View style={styles.timeButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.timeBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                    onPress={() => openClockPicker('start')}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Horário de início: ${formatTime(startMinutes)}`}
+                  >
+                    <Text style={[styles.timeBtnSub, { color: colors.textSecondary }]}>Início 🕒</Text>
+                    <Text style={[styles.timeBtnText, { color: colors.primary }]}>{formatTime(startMinutes)}</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.timeArrowBox}>
+                    <Text style={[styles.timeArrowText, { color: colors.textSecondary }]}>➔</Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.timeBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                    onPress={() => openClockPicker('end')}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Horário de término: ${formatTime(startMinutes + durationMinutes)}`}
+                  >
+                    <Text style={[styles.timeBtnSub, { color: colors.textSecondary }]}>Término 🏁</Text>
+                    <Text style={[styles.timeBtnText, { color: colors.primary }]}>
+                      {formatTime(startMinutes + durationMinutes)}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <Slider
-                  style={{ width: '100%', height: 40 }}
-                  minimumValue={15}
-                  maximumValue={720} // 12 horas
-                  step={15}
-                  value={durationMinutes}
-                  onValueChange={setDurationMinutes}
-                  minimumTrackTintColor={colors.primary}
-                  maximumTrackTintColor={colors.border}
-                  thumbTintColor={colors.primary}
-                />
-                <Text style={{ color: colors.textSecondary, alignSelf: 'flex-end', fontSize: 12, fontWeight: '600' }}>
-                  Término às {formatTime(startMinutes + durationMinutes)}
-                </Text>
+
+                {/* Duration summary and quick duration chips */}
+                <View style={[styles.durationRow, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.durationLabel, { color: colors.textSecondary }]}>
+                    Duração: <Text style={{ color: colors.text, fontWeight: '700' }}>{formatDuration(durationMinutes)}</Text>
+                  </Text>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickDurationScroll}>
+                    {[30, 45, 60, 90, 120, 180].map(mins => {
+                      const isSelected = durationMinutes === mins;
+                      return (
+                        <TouchableOpacity
+                          key={mins}
+                          style={[
+                            styles.durationChip,
+                            {
+                              backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle,
+                              borderColor: isSelected ? colors.primary : colors.border
+                            }
+                          ]}
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setDurationMinutes(mins);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.durationChipText,
+                              { color: isSelected ? getContrastTextColor(colors.primary) : colors.text }
+                            ]}
+                          >
+                            {mins < 60 ? `${mins}m` : mins === 60 ? '1h' : mins === 90 ? '1h30' : mins === 120 ? '2h' : '3h'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
               </View>
 
               <Text style={[styles.label, { color: colors.text }]}>Recorrência</Text>
@@ -339,6 +409,120 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
                   );
                 })}
               </View>
+
+              {/* Seletor de Intervalo Customizado para Mensal */}
+              {recurrence === 'monthly' && (
+                <View style={[styles.monthlySettingsCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  {/* Intervalo em meses */}
+                  <Text style={[styles.intervalTitle, { color: colors.textSecondary }]}>
+                    A cada quantos meses?
+                  </Text>
+                  <View style={styles.intervalChipsRow}>
+                    {[1, 2, 3, 6, 12].map(num => {
+                      const isSelected = recurrenceInterval === num;
+                      const label = num === 1 ? '1 mês' : num === 3 ? '3 meses (trimestral)' : num === 6 ? '6 meses (semestral)' : num === 12 ? '12 meses (anual)' : `${num} meses`;
+                      return (
+                        <TouchableOpacity
+                          key={num}
+                          style={[
+                            styles.intervalChip,
+                            {
+                              backgroundColor: isSelected ? colors.primary : colors.surface,
+                              borderColor: isSelected ? colors.primary : colors.border
+                            }
+                          ]}
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setRecurrenceInterval(num);
+                          }}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={`A cada ${label}`}
+                        >
+                          <Text
+                            style={[
+                              styles.intervalChipText,
+                              { color: isSelected ? getContrastTextColor(colors.primary) : colors.text }
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Dia do mês fixo */}
+                  <Text style={[styles.intervalTitle, { color: colors.textSecondary, marginTop: 12 }]}>
+                    Qual dia do mês?
+                  </Text>
+                  <View style={styles.dayPickerRow}>
+                    <TouchableOpacity
+                      style={[styles.dayStepBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setRecurrenceMonthDay(prev => Math.max(1, prev - 1));
+                      }}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel="Diminuir dia do mês"
+                    >
+                      <Text style={[styles.dayStepBtnText, { color: colors.text }]}>-</Text>
+                    </TouchableOpacity>
+
+                    <View style={[styles.dayDisplayBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Text style={[styles.dayDisplayLabel, { color: colors.textSecondary }]}>Todo dia</Text>
+                      <Text style={[styles.dayDisplayNumber, { color: colors.primary }]}>{recurrenceMonthDay}</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.dayStepBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setRecurrenceMonthDay(prev => Math.min(31, prev + 1));
+                      }}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel="Aumentar dia do mês"
+                    >
+                      <Text style={[styles.dayStepBtnText, { color: colors.text }]}>+</Text>
+                    </TouchableOpacity>
+
+                    {/* Quick Day Shortcuts */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickDaysScroll}>
+                      {[1, 5, 10, 15, 20, 25, 30].map(d => {
+                        const isSelected = recurrenceMonthDay === d;
+                        return (
+                          <TouchableOpacity
+                            key={d}
+                            style={[
+                              styles.quickDayChip,
+                              {
+                                backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle,
+                                borderColor: isSelected ? colors.primary : colors.border
+                              }
+                            ]}
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              setRecurrenceMonthDay(d);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.quickDayChipText,
+                                { color: isSelected ? getContrastTextColor(colors.primary) : colors.text }
+                              ]}
+                            >
+                              dia {d}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
 
               <View style={[styles.switchRow, { borderColor: colors.border }]}>
                 <Text style={[styles.label, { color: colors.text, marginBottom: 0, flex: 1 }]}>Destaque (Evento Importante ⭐)</Text>
@@ -485,6 +669,16 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
           </TouchableOpacity>
         </KeyboardAvoidingView>
       </TouchableOpacity>
+
+      {/* Clock Time Picker Modal */}
+      <ClockTimePickerModal
+        visible={clockModalVisible}
+        onClose={() => setClockModalVisible(false)}
+        onConfirm={handleConfirmClock}
+        initialTime={clockTarget === 'start' ? formatTime(startMinutes) : formatTime(startMinutes + durationMinutes)}
+        title={clockTarget === 'start' ? 'Horário de Início' : 'Horário de Término'}
+        theme={theme}
+      />
     </Modal>
   );
 };
@@ -519,6 +713,143 @@ const getStyles = (colors: ReturnType<typeof getThemeColors>) =>
     badge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8, marginBottom: 5 },
     row: { flexDirection: 'row', justifyContent: 'space-between' },
     sliderCard: { padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 14, backgroundColor: colors.background, borderColor: colors.border },
+    timeCard: {
+      padding: 14,
+      borderRadius: 16,
+      borderWidth: 1,
+      marginBottom: 14,
+    },
+    timeButtonsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    timeBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      alignItems: 'center',
+    },
+    timeBtnSub: {
+      fontSize: 11,
+      fontWeight: '600',
+      marginBottom: 4,
+    },
+    timeBtnText: {
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    timeArrowBox: {
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    timeArrowText: {
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    durationRow: {
+      borderTopWidth: 1,
+      paddingTop: 10,
+      flexDirection: 'column',
+      gap: 8,
+    },
+    durationLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    quickDurationScroll: {
+      flexDirection: 'row',
+    },
+    durationChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginRight: 6,
+    },
+    durationChipText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    monthlySettingsCard: {
+      padding: 14,
+      borderRadius: 16,
+      borderWidth: 1,
+      marginTop: 10,
+      marginBottom: 14,
+    },
+    intervalTitle: {
+      fontSize: 12,
+      fontWeight: '700',
+      marginBottom: 8,
+    },
+    intervalChipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    intervalChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+    },
+    intervalChipText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    dayPickerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    dayStepBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      borderWidth: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    dayStepBtnText: {
+      fontSize: 18,
+      fontWeight: '700',
+      lineHeight: 20,
+    },
+    dayDisplayBox: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 10,
+      borderWidth: 1,
+      alignItems: 'center',
+      minWidth: 70,
+    },
+    dayDisplayLabel: {
+      fontSize: 9,
+      fontWeight: '600',
+    },
+    dayDisplayNumber: {
+      fontSize: 15,
+      fontWeight: '800',
+    },
+    quickDaysScroll: {
+      marginLeft: 4,
+    },
+    quickDayChip: {
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginRight: 6,
+    },
+    quickDayChipText: {
+      fontSize: 11,
+      fontWeight: '700',
+    },
     switchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
     actionBtn: { flex: 1, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' }
   });

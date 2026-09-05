@@ -105,23 +105,35 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
         if (isCancelled) return false;
       }
 
-      if (targetDate < e.date) return false;
+      const startDateClean = e.date.split('T')[0];
+      const targetDateClean = targetDate.split('T')[0];
+
+      if (targetDateClean < startDateClean) return false;
       if (e.recurrence === 'daily') return true;
       if (e.recurrence === 'weekly') {
         if (e.recurrenceDays && e.recurrenceDays.length > 0) {
-          const currentDay = getDay(parseISO(targetDate));
+          const currentDay = getDay(parseISO(targetDateClean));
           return e.recurrenceDays.includes(currentDay);
         }
-        const startDay = getDay(parseISO(e.date));
-        const currentDay = getDay(parseISO(targetDate));
+        const startDay = getDay(parseISO(startDateClean));
+        const currentDay = getDay(parseISO(targetDateClean));
         return startDay === currentDay;
       }
-      if (e.recurrence === 'monthly') {
-        const startDayOfMonth = parseISO(e.date).getDate();
-        const currentDayOfMonth = parseISO(targetDate).getDate();
-        return startDayOfMonth === currentDayOfMonth;
+      if (e.recurrence === 'monthly' || e.recurrence === 'custom_interval') {
+        const [startYear, startMonth, startDay] = startDateClean.split('-').map(Number);
+        const [targetYear, targetMonth, targetDay] = targetDateClean.split('-').map(Number);
+
+        const expectedDay = e.recurrenceMonthDay || startDay;
+        if (targetDay !== expectedDay) return false;
+
+        const interval = (e.recurrenceInterval && e.recurrenceInterval > 0) ? e.recurrenceInterval : 1;
+        if (interval > 1) {
+          const monthDiff = (targetYear - startYear) * 12 + (targetMonth - startMonth);
+          if (monthDiff < 0 || monthDiff % interval !== 0) return false;
+        }
+        return true;
       }
-      return e.date === targetDate;
+      return startDateClean === targetDateClean;
     }).sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
   }, [events, targetDate, subjects, attendances, settings.examWeekMode]);
 
@@ -203,23 +215,48 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
       const subject = e.subjectId ? subjects.find(s => s.id === e.subjectId) : null;
       const dotColor = subject?.color || getCategoryColor(e.category, theme) || colors.primary;
 
+      const startDateClean = e.date.split('T')[0];
+
       if (e.recurrence === 'none') {
-        if (!marks[e.date]) marks[e.date] = { dots: [] };
-        if (marks[e.date].dots && marks[e.date].dots.length < 3) {
-          marks[e.date].dots.push({ color: dotColor, key: `${e.id}_${marks[e.date].dots.length}` });
+        if (!marks[startDateClean]) marks[startDateClean] = { dots: [] };
+        if (marks[startDateClean].dots && marks[startDateClean].dots.length < 3) {
+          marks[startDateClean].dots.push({ color: dotColor, key: `${e.id}_${marks[startDateClean].dots.length}` });
+        }
+      } else if (e.recurrence === 'monthly' || e.recurrence === 'custom_interval') {
+        const [startYear, startMonth, startDay] = startDateClean.split('-').map(Number);
+        if (!startYear || !startMonth || !startDay) return;
+
+        const expectedDay = e.recurrenceMonthDay || startDay;
+        const interval = (e.recurrenceInterval && e.recurrenceInterval > 0) ? e.recurrenceInterval : 1;
+        const maxOccurrences = 12;
+
+        for (let i = 0; i < maxOccurrences; i++) {
+          const totalMonths = (startMonth - 1) + (i * interval);
+          const occurrenceYear = startYear + Math.floor(totalMonths / 12);
+          const occurrenceMonth = (totalMonths % 12) + 1;
+          const daysInMonth = new Date(occurrenceYear, occurrenceMonth, 0).getDate();
+          const actualDay = Math.min(expectedDay, daysInMonth);
+          const dateStr = `${occurrenceYear}-${String(occurrenceMonth).padStart(2, '0')}-${String(actualDay).padStart(2, '0')}`;
+
+          if (dateStr >= startDateClean) {
+            if (!marks[dateStr]) marks[dateStr] = { dots: [] };
+            if (marks[dateStr].dots && marks[dateStr].dots.length < 3) {
+              marks[dateStr].dots.push({ color: dotColor, key: `${e.id}_${dateStr}_${marks[dateStr].dots.length}` });
+            }
+          }
         }
       } else {
-        let currentDate = parseISO(e.date);
+        let currentDate = parseISO(startDateClean);
         if (isNaN(currentDate.getTime())) return;
 
-        const maxSteps = e.recurrence === 'daily' ? 180 : e.recurrence === 'weekly' ? 30 : 6;
+        const maxSteps = e.recurrence === 'daily' ? 180 : 30;
         for (let i = 0; i < maxSteps; i++) {
           const dateStr = format(currentDate, 'yyyy-MM-dd');
           if (!marks[dateStr]) marks[dateStr] = { dots: [] };
           if (marks[dateStr].dots && marks[dateStr].dots.length < 3) {
             marks[dateStr].dots.push({ color: dotColor, key: `${e.id}_${dateStr}_${marks[dateStr].dots.length}` });
           }
-          currentDate = addDays(currentDate, e.recurrence === 'daily' ? 1 : e.recurrence === 'weekly' ? 7 : 30);
+          currentDate = addDays(currentDate, e.recurrence === 'daily' ? 1 : 7);
         }
       }
     });

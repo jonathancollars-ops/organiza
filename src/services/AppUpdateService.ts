@@ -192,6 +192,27 @@ export class AppUpdateService {
     }
   }
 
+  /**
+   * Records when the update prompt modal was shown or dismissed by the user.
+   */
+  public static async recordPromptDismissed(): Promise<void> {
+    await this.saveUpdateState({ lastPromptDismissedAt: Date.now() });
+  }
+
+  /**
+   * Checks if the 24-hour cooldown for automatic update pop-ups has passed.
+   */
+  public static async shouldShowAutomaticPrompt(): Promise<boolean> {
+    try {
+      const state = await this.getUpdateState();
+      if (!state.lastPromptDismissedAt) return true;
+      const COOLDOWN_24H_MS = 24 * 60 * 60 * 1000;
+      return (Date.now() - state.lastPromptDismissedAt) >= COOLDOWN_24H_MS;
+    } catch {
+      return true;
+    }
+  }
+
   private static activeDownload: FileSystem.DownloadResumable | null = null;
 
   public static async downloadUpdateApk(downloadUrl: string, onProgress: (progress: number, totalBytes: number, downloadedBytes: number) => void): Promise<{ success: boolean; fileUri?: string; error?: string }> {
@@ -296,20 +317,42 @@ export class AppUpdateService {
       const contentUri = await FileSystem.getContentUriAsync(fileUri);
       await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
         data: contentUri,
-        flags: 1,
+        flags: 1 | 268435456, // FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK
         type: 'application/vnd.android.package-archive',
       });
       return { success: true };
     } catch (error: any) {
       const errMsg = error.message || '';
       
-      // Tratamento de Permissões Android 8.0+
-      if (errMsg.includes('SecurityException') || errMsg.includes('REQUEST_INSTALL_PACKAGES')) {
+      // Tratamento de Permissões Android 8.0+ (REQUEST_INSTALL_PACKAGES / SecurityException)
+      if (
+        errMsg.includes('SecurityException') ||
+        errMsg.includes('REQUEST_INSTALL_PACKAGES') ||
+        errMsg.includes('INSTALL_PACKAGES') ||
+        errMsg.toLowerCase().includes('permission') ||
+        errMsg.toLowerCase().includes('not allowed')
+      ) {
         try {
-          await IntentLauncher.startActivityAsync('android.settings.MANAGE_UNKNOWN_APP_SOURCES');
-          return { success: false, error: 'Permissão necessária para instalar fontes desconhecidas. Por favor, autorize e tente novamente.' };
+          await IntentLauncher.startActivityAsync('android.settings.MANAGE_UNKNOWN_APP_SOURCES', {
+            data: 'package:com.jothacsf.Organiza',
+          });
+          return {
+            success: false,
+            error: 'Permissão necessária para instalar fontes desconhecidas. Por favor, autorize e tente novamente.'
+          };
         } catch (settingsError) {
-          return { success: false, error: 'Permissão negada. Habilite a instalação de fontes desconhecidas nas configurações do Android.' };
+          try {
+            await IntentLauncher.startActivityAsync('android.settings.MANAGE_UNKNOWN_APP_SOURCES');
+            return {
+              success: false,
+              error: 'Permissão necessária para instalar fontes desconhecidas. Por favor, autorize e tente novamente.'
+            };
+          } catch {
+            return {
+              success: false,
+              error: 'Permissão negada. Habilite a instalação de fontes desconhecidas nas configurações do Android.'
+            };
+          }
         }
       }
       

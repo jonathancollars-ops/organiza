@@ -13,6 +13,7 @@ import { Subject, ThemeType, StudyTask, StudySession, StudyStreak, GamificationD
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
 import { StorageService } from '../services/storage';
+import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -26,6 +27,7 @@ interface Props {
   breakMinutesDefault?: number;
   onOpenAchievements?: () => void;
   onOpenAnalytics?: () => void;
+  onAddNewSubject?: () => void;
 }
 
 export const StudyScreen: React.FC<Props> = ({
@@ -39,7 +41,9 @@ export const StudyScreen: React.FC<Props> = ({
   breakMinutesDefault = 5,
   onOpenAchievements,
   onOpenAnalytics,
+  onAddNewSubject,
 }) => {
+  const navigation = useNavigation<any>();
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
 
@@ -73,15 +77,66 @@ export const StudyScreen: React.FC<Props> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const stopwatchRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const taskInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     loadStreak();
     return () => {
-      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (stopwatchRef.current) clearInterval(stopwatchRef.current);
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
     };
   }, []);
+
+  // Screen blur cleanup: unconditionally clear timer intervals and reset active state
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener?.('blur', () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+      setIsActive(false);
+      setIsStopwatchRunning(false);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [navigation]);
+
+  // Tab switch handler: unconditionally clear active intervals when moving between tabs
+  const handleTabChange = (newTab: 'pomodoro' | 'cronometro' | 'tarefas') => {
+    if (newTab !== activeTab) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
+      setIsActive(false);
+      setIsStopwatchRunning(false);
+      setActiveTab(newTab);
+    }
+  };
 
   // Sync selected subjects when subjects array changes
   useEffect(() => {
@@ -201,8 +256,8 @@ export const StudyScreen: React.FC<Props> = ({
     setIsActive(false);
     if (timerRef.current) clearInterval(timerRef.current);
     
-    const subId = selectedSubjectId || (subjects.length > 0 ? subjects[0].id : null);
-    if (!isBreak && subId) {
+    const subId = selectedSubjectId || (subjects.length > 0 ? subjects[0].id : 'general');
+    if (!isBreak) {
       const sessionDurationMin = activeFocusMinutes || focusMinutesDefault;
       const newSession: StudySession = {
         id: generateId('sess'),
@@ -276,11 +331,7 @@ export const StudyScreen: React.FC<Props> = ({
       return;
     }
 
-    const subId = stopwatchSubjectId || (subjects.length > 0 ? subjects[0].id : null);
-    if (!subId) {
-      showToast('Selecione uma matéria para salvar a sessão.', 'warning');
-      return;
-    }
+    const subId = stopwatchSubjectId || (subjects.length > 0 ? subjects[0].id : 'general');
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newSession: StudySession = {
@@ -468,7 +519,7 @@ export const StudyScreen: React.FC<Props> = ({
               ]} 
               onPress={() => {
                 Haptics.selectionAsync();
-                setActiveTab(t.id as any);
+                handleTabChange(t.id as any);
               }}
               activeOpacity={0.7}
             >
@@ -520,9 +571,33 @@ export const StudyScreen: React.FC<Props> = ({
                 })}
               </ScrollView>
             ) : (
-              <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 14 }}>
-                Nenhuma matéria cadastrada. Adicione matérias para vincular seus estudos.
-              </Text>
+              <View style={[styles.noSubjectsCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                <Text style={{ fontSize: 22, marginBottom: 4 }}>📚</Text>
+                <Text style={[styles.noSubjectsTitle, { color: colors.text }]}>
+                  Nenhuma disciplina cadastrada
+                </Text>
+                <Text style={[styles.noSubjectsText, { color: colors.textSecondary }]}>
+                  Cadastre suas matérias para vincular horas de foco Pomodoro e manter seu histórico.
+                </Text>
+                {onAddNewSubject && (
+                  <TouchableOpacity
+                    style={[styles.addSubjectCtaBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onAddNewSubject();
+                    }}
+                    activeOpacity={0.8}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cadastrar Nova Matéria"
+                    accessibilityHint="Abre o modal para incluir disciplina"
+                  >
+                    <Text style={[styles.addSubjectCtaBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                      + Cadastrar Matéria
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
 
             {/* Quick Presets */}
@@ -602,21 +677,34 @@ export const StudyScreen: React.FC<Props> = ({
               </Text>
             </View>
 
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 10 }}>Distribuição por matéria:</Text>
-
-            {subjects.map(sub => {
-              const total = getSubjectTotalTime(sub.id);
-              if (total === 0) return null;
-              return (
-                <View key={sub.id} style={[styles.statRow, { borderBottomColor: colors.borderSubtle }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: sub.color || colors.primary, marginRight: 8 }} />
-                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{sub.name}</Text>
-                  </View>
-                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{formatTotalTime(total)}</Text>
-                </View>
-              );
-            })}
+            {todayTotalStudyMs === 0 ? (
+              <View style={[styles.emptyDailyStudyCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                <Text style={{ fontSize: 22, marginBottom: 6 }}>🌱</Text>
+                <Text style={[styles.emptyDailyStudyTitle, { color: colors.text }]}>
+                  Nenhum ciclo registrado hoje
+                </Text>
+                <Text style={[styles.emptyDailyStudySubtitle, { color: colors.textSecondary }]}>
+                  Inicie um bloco de foco Pomodoro ou o cronômetro livre para acumular horas de dedicação e manter seu streak ativo.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 10 }}>Distribuição por matéria:</Text>
+                {subjects.map(sub => {
+                  const total = getSubjectTotalTime(sub.id);
+                  if (total === 0) return null;
+                  return (
+                    <View key={sub.id} style={[styles.statRow, { borderBottomColor: colors.borderSubtle }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: sub.color || colors.primary, marginRight: 8 }} />
+                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{sub.name}</Text>
+                      </View>
+                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{formatTotalTime(total)}</Text>
+                    </View>
+                  );
+                })}
+              </>
+            )}
           </View>
           <View style={{ height: 100 }} />
         </ScrollView>
@@ -660,9 +748,33 @@ export const StudyScreen: React.FC<Props> = ({
                 })}
               </ScrollView>
             ) : (
-              <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 15 }}>
-                Nenhuma matéria cadastrada.
-              </Text>
+              <View style={[styles.noSubjectsCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                <Text style={{ fontSize: 22, marginBottom: 4 }}>📚</Text>
+                <Text style={[styles.noSubjectsTitle, { color: colors.text }]}>
+                  Nenhuma disciplina cadastrada
+                </Text>
+                <Text style={[styles.noSubjectsText, { color: colors.textSecondary }]}>
+                  Cadastre suas matérias para acompanhar o cronômetro livre por disciplina.
+                </Text>
+                {onAddNewSubject && (
+                  <TouchableOpacity
+                    style={[styles.addSubjectCtaBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onAddNewSubject();
+                    }}
+                    activeOpacity={0.8}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cadastrar Nova Matéria"
+                    accessibilityHint="Abre o formulário para cadastrar uma matéria"
+                  >
+                    <Text style={[styles.addSubjectCtaBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                      + Cadastrar Matéria
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
 
             <View style={styles.timerContainer}>
@@ -713,21 +825,34 @@ export const StudyScreen: React.FC<Props> = ({
               </Text>
             </View>
 
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 10 }}>Distribuição por matéria:</Text>
-
-            {subjects.map(sub => {
-              const total = getSubjectTotalTime(sub.id);
-              if (total === 0) return null;
-              return (
-                <View key={sub.id} style={[styles.statRow, { borderBottomColor: colors.borderSubtle }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: sub.color || colors.primary, marginRight: 8 }} />
-                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{sub.name}</Text>
-                  </View>
-                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{formatTotalTime(total)}</Text>
-                </View>
-              );
-            })}
+            {todayTotalStudyMs === 0 ? (
+              <View style={[styles.emptyDailyStudyCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                <Text style={{ fontSize: 22, marginBottom: 6 }}>🌱</Text>
+                <Text style={[styles.emptyDailyStudyTitle, { color: colors.text }]}>
+                  Nenhum ciclo registrado hoje
+                </Text>
+                <Text style={[styles.emptyDailyStudySubtitle, { color: colors.textSecondary }]}>
+                  Inicie um bloco de foco Pomodoro ou o cronômetro livre para acumular horas de dedicação e manter seu streak ativo.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 10 }}>Distribuição por matéria:</Text>
+                {subjects.map(sub => {
+                  const total = getSubjectTotalTime(sub.id);
+                  if (total === 0) return null;
+                  return (
+                    <View key={sub.id} style={[styles.statRow, { borderBottomColor: colors.borderSubtle }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: sub.color || colors.primary, marginRight: 8 }} />
+                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{sub.name}</Text>
+                      </View>
+                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{formatTotalTime(total)}</Text>
+                    </View>
+                  );
+                })}
+              </>
+            )}
           </View>
 
           <View style={{ height: 100 }} />
@@ -737,6 +862,7 @@ export const StudyScreen: React.FC<Props> = ({
           {/* Add Task Box */}
           <View style={[styles.addTaskContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <TextInput
+              ref={taskInputRef}
               style={[styles.taskInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
               placeholder="Adicionar nova tarefa..."
               placeholderTextColor={colors.textSecondary}
@@ -900,11 +1026,36 @@ export const StudyScreen: React.FC<Props> = ({
           {/* Task list */}
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             {filteredTasks.length === 0 ? (
-              <View style={{ alignItems: 'center', marginTop: 30 }}>
-                <Text style={{ fontSize: 36, marginBottom: 8 }}>📝</Text>
-                <Text style={{ color: colors.textSecondary, textAlign: 'center', fontWeight: '600' }}>
-                  Nenhuma tarefa pendente! 🎉
+              <View style={[styles.emptyTasksCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.emptyTasksIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
+                  <Text style={{ fontSize: 28 }}>📝</Text>
+                </View>
+                <Text style={[styles.emptyTasksTitle, { color: colors.text }]}>
+                  {selectedFilterSubject ? 'Nenhuma tarefa para esta matéria' : 'Nenhuma meta de estudo criada'}
                 </Text>
+                <Text style={[styles.emptyTasksSubtitle, { color: colors.textSecondary }]}>
+                  {selectedFilterSubject
+                    ? 'Não há tarefas cadastradas para o filtro selecionado.'
+                    : 'Crie tarefas pontuais de leitura, exercícios ou projetos para organizar sua rotina de estudos.'}
+                </Text>
+                {!selectedFilterSubject && (
+                  <TouchableOpacity
+                    style={[styles.emptyTasksBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      taskInputRef.current?.focus();
+                    }}
+                    activeOpacity={0.8}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel="Criar nova tarefa de estudo"
+                    accessibilityHint="Coloca o cursor no campo de adicionar tarefa"
+                  >
+                    <Text style={[styles.emptyTasksBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                      + Criar Nova Tarefa
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               filteredTasks.sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted)).map(task => {
@@ -1033,5 +1184,106 @@ const getStyles = (colors: any) => StyleSheet.create({
     elevation: 1
   },
   checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  emptyTasksCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginTop: 10,
+  },
+  emptyTasksIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  emptyTasksTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  emptyTasksSubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 18,
+    maxWidth: 280,
+  },
+  emptyTasksBtn: {
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTasksBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  emptyDailyStudyCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginTop: 4,
+  },
+  emptyDailyStudyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  emptyDailyStudySubtitle: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  noSubjectsCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginBottom: 14,
+  },
+  noSubjectsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  noSubjectsText: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
+    marginBottom: 12,
+  },
+  addSubjectCtaBtn: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addSubjectCtaBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });
 

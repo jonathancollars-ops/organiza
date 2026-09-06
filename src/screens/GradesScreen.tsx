@@ -15,6 +15,7 @@ interface Props {
   activeSemesterId?: string;
   onSubjectPress: (subjectId: string) => void;
   onArchiveSubject: (subjectId: string) => void;
+  onAddNewSubject?: () => void;
 }
 
 export const GradesScreen: React.FC<Props> = ({
@@ -25,7 +26,8 @@ export const GradesScreen: React.FC<Props> = ({
   semesters = [],
   activeSemesterId,
   onSubjectPress,
-  onArchiveSubject
+  onArchiveSubject,
+  onAddNewSubject
 }) => {
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
@@ -62,15 +64,17 @@ export const GradesScreen: React.FC<Props> = ({
     filteredSubjects.forEach(s => {
       if (s.isArchived) return;
       const g = calculateGrade(s);
-      if (g.hasGrades) {
-        const credits = s.workloadHours || 4;
-        totalWeightedScore += g.current * credits;
+      if (g.hasGrades && typeof g.current === 'number' && Number.isFinite(g.current)) {
+        const rawCredits = s.workloadHours;
+        const credits = (typeof rawCredits === 'number' && Number.isFinite(rawCredits) && rawCredits > 0) ? rawCredits : 4;
+        totalWeightedScore += Math.max(0, g.current) * credits;
         totalCredits += credits;
         subjectsWithGrades++;
       }
     });
 
-    const gpa = totalCredits > 0 ? totalWeightedScore / totalCredits : 0;
+    const rawGpa = totalCredits > 0 ? totalWeightedScore / totalCredits : 0;
+    const gpa = Number.isFinite(rawGpa) ? Math.max(0, Math.min(10, rawGpa)) : 0;
     return { gpa, subjectsWithGrades };
   }, [filteredSubjects]);
 
@@ -143,8 +147,8 @@ export const GradesScreen: React.FC<Props> = ({
         </View>
       )}
 
-      {/* GPA Summary Card */}
-      {overallMetrics.subjectsWithGrades > 0 && (
+      {/* GPA Summary Card or Empty Grades Banner */}
+      {overallMetrics.subjectsWithGrades > 0 ? (
         <View style={[styles.gpaCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={{ flex: 1, paddingRight: 10 }}>
             <Text style={[styles.gpaLabel, { color: colors.textSecondary }]}>Média Geral (CR)</Text>
@@ -164,6 +168,22 @@ export const GradesScreen: React.FC<Props> = ({
             </Text>
           </View>
         </View>
+      ) : (
+        filteredSubjects.length > 0 && !searchQuery && (
+          <View style={[styles.noGradesCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.noGradesIconWrap, { backgroundColor: colors.surfaceSubtle }]}>
+              <Text style={{ fontSize: 20 }}>📊</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={[styles.noGradesTitle, { color: colors.text }]}>
+                Aguardando primeiras notas
+              </Text>
+              <Text style={[styles.noGradesSubtitle, { color: colors.textSecondary }]}>
+                Toque em uma matéria para lançar notas de provas e trabalhos.
+              </Text>
+            </View>
+          </View>
+        )
       )}
 
       {/* Search Bar */}
@@ -187,15 +207,37 @@ export const GradesScreen: React.FC<Props> = ({
 
       {filteredSubjects.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
-            <Text style={styles.emptyIcon}>📚</Text>
+          <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
+              <Text style={styles.emptyIcon}>🎓</Text>
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
+              {searchQuery ? 'Nenhuma matéria encontrada' : 'Nenhuma matéria cadastrada'}
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              {searchQuery
+                ? 'Tente buscar por outro termo ou limpe o campo de busca.'
+                : 'Cadastre suas disciplinas para registrar avaliações, fórmulas de aprovação e calcular seu CR com segurança.'}
+            </Text>
+            {onAddNewSubject && !searchQuery && (
+              <TouchableOpacity
+                style={[styles.emptyCtaBtn, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onAddNewSubject();
+                }}
+                activeOpacity={0.8}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel="Cadastrar Nova Matéria"
+                accessibilityHint="Abre o formulário para adicionar disciplina e critérios de avaliação"
+              >
+                <Text style={[styles.emptyCtaBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                  + Cadastrar Disciplina
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>
-            {searchQuery ? 'Nenhuma matéria encontrada' : 'Nenhuma matéria cadastrada'}
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            {searchQuery ? 'Tente buscar por outro termo.' : 'Adicione matérias para acompanhar suas notas.'}
-          </Text>
         </View>
       ) : (
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
@@ -388,11 +430,47 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 13,
     paddingVertical: 0
   },
+  noGradesCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginBottom: 12,
+  },
+  noGradesIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noGradesTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  noGradesSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 30
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  emptyCard: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: 'dashed',
   },
   emptyIconCircle: {
     width: 64,
@@ -400,11 +478,36 @@ const getStyles = (colors: any) => StyleSheet.create({
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10
+    marginBottom: 14,
   },
-  emptyIcon: { fontSize: 30 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
-  emptySubtitle: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  emptyIcon: { fontSize: 32 },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 20,
+    maxWidth: 290,
+  },
+  emptyCtaBtn: {
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCtaBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   list: {
     flex: 1,
   },

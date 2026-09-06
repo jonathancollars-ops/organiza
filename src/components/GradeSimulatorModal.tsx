@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Subject, ThemeType } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { calculateFinalGrade } from './GradeEngine';
+import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -41,8 +42,8 @@ export const GradeSimulatorModal: React.FC<Props> = ({
 
   const currentSubject = subjects.find(s => s.id === selectedSubjectId);
 
-  const parsed = parseFloat(targetPassGrade.replace(',', '.'));
-  const passGradeNum = isNaN(parsed) ? (currentSubject?.passGrade ?? 7.0) : parsed;
+  const defaultPass = currentSubject?.passGrade ?? 7.0;
+  const passGradeNum = SecuritySanitizer.sanitizeNumber(targetPassGrade, 0.0, 10.0, defaultPass);
 
   const gradeInfo = useMemo(() => {
     if (!currentSubject) return null;
@@ -111,7 +112,7 @@ export const GradeSimulatorModal: React.FC<Props> = ({
               <TextInput
                 style={[styles.targetInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
                 value={targetPassGrade}
-                onChangeText={setTargetPassGrade}
+                onChangeText={(t: string) => setTargetPassGrade(t.replace(/[^0-9.,]/g, ''))}
                 keyboardType="numeric"
                 selectTextOnFocus
               />

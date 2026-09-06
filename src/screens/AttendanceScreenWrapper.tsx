@@ -3,14 +3,17 @@ import { useNavigation } from '@react-navigation/native';
 import { useApp } from '../contexts/AppContext';
 import { AttendanceScreen } from './AttendanceScreen';
 import { SubjectDetailsModal } from '../components/SubjectDetailsModal';
-import { Subject } from '../types';
+import { SubjectModal } from '../components/SubjectModal';
+import { Subject, AppEvent } from '../types';
 import { generateId } from '../utils/id';
+import { StorageService } from '../services/storage';
 
 export const AttendanceScreenWrapper = () => {
   const navigation = useNavigation<any>();
   const { 
     subjects, 
     events, 
+    setEvents,
     attendances, 
     setAttendances, 
     theme, 
@@ -22,6 +25,7 @@ export const AttendanceScreenWrapper = () => {
   } = useApp();
 
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
 
   const handleOpenDetails = (subjectId: string) => {
@@ -79,6 +83,7 @@ export const AttendanceScreenWrapper = () => {
         theme={theme}
         semesters={semesters}
         onSubjectPress={handleOpenDetails}
+        onAddNewSubject={() => setSubjectModalVisible(true)}
         onUpdateAttendance={async (subjectId, eventId, status, dateStr) => {
           try {
             const existing = attendances.find(a => a && a.subjectId === subjectId && a.eventId === eventId && a.date === dateStr);
@@ -102,6 +107,29 @@ export const AttendanceScreenWrapper = () => {
         onUpdateSubject={handleUpdateSubject}
         onDeleteSubject={handleDeleteSubject}
         onAddManualAttendance={handleAddManualAttendance}
+        theme={theme}
+        semesters={semesters}
+      />
+
+      <SubjectModal
+        visible={subjectModalVisible}
+        onClose={() => setSubjectModalVisible(false)}
+        onSave={async (newSubject, newEvents) => {
+          try {
+            if (newSubject) {
+              await addOrUpdateSubject(newSubject);
+              if (newEvents && newEvents.length > 0) {
+                const updatedEvents = [...events, ...newEvents];
+                setEvents(updatedEvents);
+                await StorageService.saveEvents(updatedEvents);
+              }
+            }
+          } catch (e) {
+            console.warn('Erro ao salvar disciplina em AttendanceScreenWrapper:', e);
+          } finally {
+            setSubjectModalVisible(false);
+          }
+        }}
         theme={theme}
         semesters={semesters}
       />

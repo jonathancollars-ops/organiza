@@ -3,14 +3,17 @@ import { useNavigation } from '@react-navigation/native';
 import { useApp } from '../contexts/AppContext';
 import { GradesScreen } from './GradesScreen';
 import { SubjectDetailsModal } from '../components/SubjectDetailsModal';
-import { Subject } from '../types';
+import { SubjectModal } from '../components/SubjectModal';
+import { Subject, AppEvent } from '../types';
 import { generateId } from '../utils/id';
+import { StorageService } from '../services/storage';
 
 export const GradesScreenWrapper = () => {
   const navigation = useNavigation<any>();
   const { 
     subjects, 
     events, 
+    setEvents,
     attendances, 
     theme, 
     semesters, 
@@ -21,6 +24,7 @@ export const GradesScreenWrapper = () => {
   } = useApp();
 
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [subjectModalVisible, setSubjectModalVisible] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
 
   const handleOpenDetails = (subjectId: string) => {
@@ -78,6 +82,7 @@ export const GradesScreenWrapper = () => {
         theme={theme}
         semesters={semesters}
         onSubjectPress={handleOpenDetails}
+        onAddNewSubject={() => setSubjectModalVisible(true)}
         onArchiveSubject={async (id) => {
           try {
             await archiveSubject(id);
@@ -97,6 +102,29 @@ export const GradesScreenWrapper = () => {
         onUpdateSubject={handleUpdateSubject}
         onDeleteSubject={handleDeleteSubject}
         onAddManualAttendance={handleAddManualAttendance}
+        theme={theme}
+        semesters={semesters}
+      />
+
+      <SubjectModal
+        visible={subjectModalVisible}
+        onClose={() => setSubjectModalVisible(false)}
+        onSave={async (newSubject, newEvents) => {
+          try {
+            if (newSubject) {
+              await addOrUpdateSubject(newSubject);
+              if (newEvents && newEvents.length > 0) {
+                const updatedEvents = [...events, ...newEvents];
+                setEvents(updatedEvents);
+                await StorageService.saveEvents(updatedEvents);
+              }
+            }
+          } catch (e) {
+            console.warn('Erro ao salvar disciplina em GradesScreenWrapper:', e);
+          } finally {
+            setSubjectModalVisible(false);
+          }
+        }}
         theme={theme}
         semesters={semesters}
       />

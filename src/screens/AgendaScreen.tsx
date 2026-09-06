@@ -124,7 +124,9 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
         const [targetYear, targetMonth, targetDay] = targetDateClean.split('-').map(Number);
 
         const expectedDay = e.recurrenceMonthDay || startDay;
-        if (targetDay !== expectedDay) return false;
+        const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
+        const effectiveDay = Math.min(expectedDay, daysInTargetMonth);
+        if (targetDay !== effectiveDay && targetDay !== expectedDay) return false;
 
         const interval = (e.recurrenceInterval && e.recurrenceInterval > 0) ? e.recurrenceInterval : 1;
         if (interval > 1) {
@@ -857,12 +859,16 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
             {/* Empty Checklist Fallback */}
             {totalItemsCount === 0 && (
               <View style={[styles.emptyChecklistCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={{ fontSize: 26, marginBottom: 8 }}>🎯</Text>
+                <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
+                  <Text style={{ fontSize: 24 }}>✨</Text>
+                </View>
                 <Text style={[styles.emptyChecklistTitle, { color: colors.text }]}>
-                  Nenhuma atividade agendada
+                  {isToday ? 'Dia livre de compromissos!' : `Nenhuma atividade em ${formatDisplayDate(targetDate)}`}
                 </Text>
                 <Text style={[styles.emptyChecklistSubtitle, { color: colors.textSecondary }]}>
-                  Você não possui compromissos ou tarefas registradas para esta data.
+                  {isToday
+                    ? 'Nenhum evento, aula ou tarefa agendada para hoje. Aproveite para descansar, revisar matérias ou planejar suas metas.'
+                    : 'Nenhum compromisso agendado para esta data. Toque abaixo para planejar suas atividades com antecedência.'}
                 </Text>
                 {onAddNewEvent && (
                   <TouchableOpacity
@@ -872,9 +878,13 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                       onAddNewEvent();
                     }}
                     activeOpacity={0.8}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel="Adicionar nova atividade na agenda"
+                    accessibilityHint="Abre o formulário de cadastro de aula, compromisso ou evento"
                   >
                     <Text style={[styles.addEventBtnText, { color: getContrastTextColor(colors.primary) }]}>
-                      + Adicionar Atividade
+                      + Agendar Nova Atividade
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -1350,6 +1360,14 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
+  emptyIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
   emptyChecklistCard: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1359,24 +1377,31 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     borderStyle: 'dashed',
   },
   emptyChecklistTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
-    marginBottom: 4,
+    marginBottom: 6,
+    textAlign: 'center',
   },
   emptyChecklistSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 16,
-    marginBottom: 12,
+    lineHeight: 18,
+    marginBottom: 16,
+    maxWidth: 290,
   },
   addEventBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addEventBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
+    letterSpacing: 0.2,
   },
   timelineWrapper: {
     borderRadius: 16,

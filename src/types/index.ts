@@ -173,6 +173,7 @@ export interface BackupData {
   studySessions: StudySession[];
   semesters: Semester[];
   settings?: Partial<AppSettings>;
+  streak?: StudyStreak;
   aaccActivities?: AACCActivity[];
   groupProjects?: GroupProject[];
   gamification?: GamificationData;

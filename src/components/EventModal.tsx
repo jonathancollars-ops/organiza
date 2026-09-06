@@ -5,6 +5,7 @@ import { ClockTimePickerModal } from './ClockTimePickerModal';
 import { AppEvent, EventCategory, RecurrenceType, ThemeType } from '../types';
 import { getThemeColors, CategoryColors, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
+import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import * as Haptics from 'expo-haptics';
 
 interface EventModalProps {
@@ -147,9 +148,9 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
   };
 
   const addCustomAlert = () => {
-    const val = parseInt(customAlertVal, 10);
-    if (!isNaN(val) && val > 0) {
-      const totalMin = val * customAlertUnit;
+    const cleanNum = SecuritySanitizer.sanitizeInteger(customAlertVal, 1, 43200, 0);
+    if (cleanNum > 0) {
+      const totalMin = Math.min(cleanNum * customAlertUnit, 525600); // max 1 year
       if (!alerts.includes(totalMin)) {
         setAlerts([...alerts, totalMin]);
       }
@@ -158,24 +159,45 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
   };
 
   const handleSave = () => {
-    if (!title.trim() || !date.trim()) return;
+    const sanitizedTitle = SecuritySanitizer.sanitizeTitle(title);
+    if (!sanitizedTitle || !date.trim()) {
+      Alert.alert('Título Inválido', 'Por favor, informe um título válido para o compromisso.');
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    const startTimeStr = formatTime(startMinutes);
-    const endTimeStr = formatTime(startMinutes + durationMinutes);
-    
+
+    const safeStart = SecuritySanitizer.sanitizeInteger(startMinutes, 0, 1439, 480);
+    const safeDuration = SecuritySanitizer.sanitizeInteger(durationMinutes, 5, 1440, 60);
+
+    const startTimeStr = formatTime(safeStart);
+    const endTimeStr = formatTime(safeStart + safeDuration);
+
+    const safeAlerts = Array.isArray(alerts)
+      ? alerts
+          .map(a => SecuritySanitizer.sanitizeInteger(a, 0, 525600, 0))
+          .filter((v, i, arr) => arr.indexOf(v) === i)
+      : [0];
+
+    const safeRecurrenceInterval = recurrence === 'monthly'
+      ? SecuritySanitizer.sanitizeInteger(recurrenceInterval, 1, 12, 1)
+      : undefined;
+
+    const safeRecurrenceMonthDay = recurrence === 'monthly'
+      ? SecuritySanitizer.sanitizeInteger(recurrenceMonthDay, 1, 31, 15)
+      : undefined;
+
     const newEvent: AppEvent = {
       id: initialEvent ? initialEvent.id : generateId('evt'),
-      title: title.trim(),
+      title: sanitizedTitle,
       category,
       date,
       startTime: startTimeStr,
       endTime: endTimeStr,
       recurrence,
-      recurrenceInterval: recurrence === 'monthly' ? recurrenceInterval : undefined,
+      recurrenceInterval: safeRecurrenceInterval,
       recurrenceUnit: recurrence === 'monthly' ? 'months' : undefined,
-      recurrenceMonthDay: recurrence === 'monthly' ? recurrenceMonthDay : undefined,
-      alerts,
+      recurrenceMonthDay: safeRecurrenceMonthDay,
+      alerts: safeAlerts,
       isCompleted: initialEvent ? initialEvent.isCompleted : false,
       isImportant,
       isNotified,

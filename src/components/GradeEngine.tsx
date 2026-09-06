@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Subject, GradeGroup, GradeItem, ThemeType } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId } from '../utils/id';
+import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import * as Haptics from 'expo-haptics';
 
 const RN: any = typeof require !== 'undefined' ? require('react-native') : {};
@@ -270,13 +271,18 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
   };
 
   const handleAddItem = () => {
-    if (!newItemName.trim() || !targetGroupId) return;
+    const sanitizedName = SecuritySanitizer.sanitizeTitle(newItemName);
+    if (!sanitizedName || !targetGroupId) {
+      Alert.alert('Nome Inválido', 'Por favor insira um nome válido para a avaliação.');
+      return;
+    }
 
+    const safeMaxGrade = SecuritySanitizer.sanitizeNumber(newItemMaxGrade, 1, 100, 10);
     let parsedGrade: number | undefined = undefined;
     if (newItemGrade.trim()) {
-      const g = parseFloat(newItemGrade.replace(',', '.'));
-      if (isNaN(g) || g < 0 || g > (parseFloat(newItemMaxGrade) || 10)) {
-        Alert.alert('Nota Inválida', `Por favor insira uma nota entre 0 e ${newItemMaxGrade || 10}.`);
+      const g = SecuritySanitizer.sanitizeNumber(newItemGrade, 0, safeMaxGrade, -1);
+      if (g < 0) {
+        Alert.alert('Nota Inválida', `Por favor insira uma nota entre 0 e ${safeMaxGrade}.`);
         return;
       }
       parsedGrade = g;
@@ -284,9 +290,9 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
 
     const newItem: GradeItem = {
       id: generateId('item'),
-      name: newItemName.trim(),
-      weight: Math.max(0.1, parseFloat(newItemWeight) || 1),
-      maxGrade: Math.max(1, parseFloat(newItemMaxGrade) || 10),
+      name: sanitizedName,
+      weight: SecuritySanitizer.sanitizeNumber(newItemWeight, 0.1, 100, 1),
+      maxGrade: safeMaxGrade,
       grade: parsedGrade,
       isFinalExam: newItemIsFinalExam,
     };
@@ -321,13 +327,15 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
 
     let parsedGrade: number | undefined = undefined;
     if (editGradeValue.trim()) {
-      const g = parseFloat(editGradeValue.replace(',', '.'));
-      if (isNaN(g) || g < 0 || g > 10) {
-        Alert.alert('Nota Inválida', 'Por favor insira uma nota entre 0 e 10.');
+      const g = SecuritySanitizer.sanitizeNumber(editGradeValue, 0, 100, -1);
+      if (g < 0) {
+        Alert.alert('Nota Inválida', 'Por favor insira uma nota entre 0 e 100.');
         return;
       }
       parsedGrade = g;
     }
+
+    const safeWeight = SecuritySanitizer.sanitizeNumber(editItemWeight, 0.1, 100, 1);
 
     const updatedGroups = gradeGroups.map(g => {
       if (g.id !== editingGroupId) return g;
@@ -338,7 +346,7 @@ export const GradeEngine: React.FC<Props> = ({ subject, onUpdateSubject, theme }
             ? { 
                 ...i, 
                 grade: parsedGrade,
-                weight: Math.max(0.1, parseFloat(editItemWeight) || 1),
+                weight: safeWeight,
                 isFinalExam: editIsFinalExam
               }
             : i

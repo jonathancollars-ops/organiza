@@ -615,6 +615,95 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
               </TouchableOpacity>
             </View>
 
+            {/* Suggested Academic Prompt Chips */}
+            <View style={styles.promptChipsContainer}>
+              <Text style={[styles.promptChipsLabel, { color: colors.textSecondary }]}>
+                💡 Exemplos de texto para teste rápido:
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptChipsScroll}>
+                {importMode === 'transcript' ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setImportInputText(
+                          'Histórico Escolar Oficial:\nCR Acumulado: 8.45\n' +
+                          '1º Semestre 2024:\n' +
+                          '- Cálculo I (4 créditos): 8.5 (Aprovado)\n' +
+                          '- Física I (4 créditos): 9.0 (Aprovado)\n' +
+                          '- Algoritmos e Programação (4 créditos): 9.5 (Aprovado)'
+                        );
+                      }}
+                      activeOpacity={0.7}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inserir exemplo de histórico escolar"
+                    >
+                      <Text style={[styles.promptChipText, { color: colors.text }]}>📄 Histórico Completo</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setImportInputText(
+                          'Boletim Semestral:\n' +
+                          'CR: 7.80\n' +
+                          'Álgebra Linear (4 cr) - Média 8.2\n' +
+                          'Geometria Analítica (3 cr) - Média 7.5\n' +
+                          'Química Geral (3 cr) - Média 8.0'
+                        );
+                      }}
+                      activeOpacity={0.7}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inserir exemplo de boletim semestral"
+                    >
+                      <Text style={[styles.promptChipText, { color: colors.text }]}>📊 Boletim Rápido</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setImportInputText(
+                          '1º Semestre:\n- Cálculo I (4 créditos)\n- Física I (4 créditos)\n- Introdução à Engenharia (2 créditos)\n\n' +
+                          '2º Semestre:\n- Cálculo II (4 créditos)\n- Física II (4 créditos)\n- Álgebra Linear (4 créditos)\n\n' +
+                          '3º Semestre:\n- Cálculo III (4 créditos)\n- Mecânica Geral (4 créditos)\n- Eletromagnetismo (4 créditos)'
+                        );
+                      }}
+                      activeOpacity={0.7}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inserir exemplo de grade de engenharia"
+                    >
+                      <Text style={[styles.promptChipText, { color: colors.text }]}>⚙️ Grade Engenharia</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setImportInputText(
+                          '1º Semestre:\n- Programação I (4 créditos)\n- Circuitos Digitais (4 créditos)\n- Matemática Discreta (4 créditos)\n\n' +
+                          '2º Semestre:\n- Estrutura de Dados (4 créditos)\n- Arquitetura de Computadores (4 créditos)\n- Cálculo para Computação (4 créditos)'
+                        );
+                      }}
+                      activeOpacity={0.7}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel="Inserir exemplo de grade de computação"
+                    >
+                      <Text style={[styles.promptChipText, { color: colors.text }]}>💻 Grade Computação</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </ScrollView>
+            </View>
+
             <TextInput
               style={styles.importTextInput}
               placeholder={
@@ -1315,6 +1404,31 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     },
     modalTabBtnTextActive: {
       color: colors.text,
+      fontWeight: '700',
+    },
+    promptChipsContainer: {
+      marginBottom: 10,
+    },
+    promptChipsLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      marginBottom: 6,
+    },
+    promptChipsScroll: {
+      gap: 8,
+      paddingVertical: 2,
+    },
+    promptChip: {
+      minHeight: 44,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    promptChipText: {
+      fontSize: 12,
       fontWeight: '700',
     },
     importTextInput: {

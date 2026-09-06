@@ -74,12 +74,14 @@ export const mockNotifications = {
   },
 };
 
+(mockAsyncStorage as any).default = mockAsyncStorage;
+
 Module.prototype.require = function (id: string) {
   if (id === 'expo-secure-store') {
     return mockSecureStoreImpl;
   }
   if (id === '@react-native-async-storage/async-storage') {
-    return { default: mockAsyncStorage, ...mockAsyncStorage };
+    return mockAsyncStorage;
   }
   if (id === 'react-native') {
     return mockReactNative;
@@ -89,6 +91,18 @@ Module.prototype.require = function (id: string) {
   }
   if (id === 'expo-notifications') {
     return mockNotifications;
+  }
+  if (id === '@react-navigation/native') {
+    return {
+      useNavigation: () => ({
+        navigate: () => {},
+        goBack: () => {},
+        setOptions: () => {},
+        addListener: () => () => {},
+      }),
+      useRoute: () => ({ params: {} }),
+      useIsFocused: () => true,
+    };
   }
   if (id === 'expo-haptics') {
     return {

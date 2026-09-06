@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Subject, ThemeType, Semester } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
+import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -73,7 +74,8 @@ export const EditSubjectModal: React.FC<Props> = ({
   };
 
   const handleSave = () => {
-    if (!name.trim()) {
+    const sanitizedName = SecuritySanitizer.sanitizeTitle(name);
+    if (!sanitizedName) {
       Alert.alert('Aviso', 'O nome da matéria não pode ficar em branco.');
       return;
     }
@@ -81,15 +83,20 @@ export const EditSubjectModal: React.FC<Props> = ({
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+      const safePassGrade = SecuritySanitizer.sanitizeNumber(passGrade, 0, 10, 7.0);
+      const safeMaxAbsences = SecuritySanitizer.sanitizeInteger(maxAbsences, 1, 1000, 15);
+      const safeWorkload = SecuritySanitizer.sanitizeInteger(workloadHours, 1, 1000, 60);
+      const sanitizedNotes = notes ? SecuritySanitizer.sanitizeNotes(notes) : undefined;
+
       const updated: Subject = {
         ...safeSubject,
-        name: name.trim(),
+        name: sanitizedName,
         color,
-        passGrade,
-        maxAbsences,
-        workloadHours,
+        passGrade: safePassGrade,
+        maxAbsences: safeMaxAbsences,
+        workloadHours: safeWorkload,
         semesterId,
-        notes: notes.trim() || undefined
+        notes: sanitizedNotes || undefined
       };
 
       onSave(updated);

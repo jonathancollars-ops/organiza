@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Subject, AppEvent, ThemeType, Semester } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
+import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -94,9 +95,9 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme,
   };
 
   const addCustomAlert = () => {
-    const val = parseInt(customAlertVal, 10);
-    if (!isNaN(val) && val > 0) {
-      const totalMin = val * customAlertUnit;
+    const cleanNum = SecuritySanitizer.sanitizeInteger(customAlertVal, 1, 43200, 0);
+    if (cleanNum > 0) {
+      const totalMin = Math.min(cleanNum * customAlertUnit, 525600);
       if (!alerts.includes(totalMin)) {
         setAlerts([...alerts, totalMin]);
       }
@@ -105,10 +106,22 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme,
   };
 
   const handleSave = () => {
-    if (!name.trim() || Object.keys(selectedDays).length === 0) return;
+    const sanitizedName = SecuritySanitizer.sanitizeTitle(name);
+    if (!sanitizedName) {
+      Alert.alert('Nome Inválido', 'Por favor, informe um nome válido para a matéria.');
+      return;
+    }
+    if (Object.keys(selectedDays).length === 0) {
+      Alert.alert('Dias da Semana', 'Selecione ao menos um dia de aula para a matéria.');
+      return;
+    }
 
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      const safePassGrade = SecuritySanitizer.sanitizeNumber(passGrade, 0, 10, 7.0);
+      const safeMaxAbsences = SecuritySanitizer.sanitizeInteger(maxAbsences, 0, 1000, 15);
+      const safeWeeklyClasses = SecuritySanitizer.sanitizeInteger(weeklyClasses, 1, 100, 2);
 
       // Generate vibrant distinct HSL color
       const randomColor = `hsl(${Math.floor(Math.random() * 360)}, 75%, 60%)`;
@@ -117,11 +130,11 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme,
 
       const subject: Subject = {
         id: subjectId,
-        name: name.trim(),
+        name: sanitizedName,
         color: randomColor,
-        passGrade,
-        workloadHours: weeklyClasses,
-        maxAbsences,
+        passGrade: safePassGrade,
+        workloadHours: safeWeeklyClasses,
+        maxAbsences: safeMaxAbsences,
         semesterId: selectedSemesterId,
         gradeGroups: [{
           id: generateId('group'),
@@ -134,7 +147,15 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme,
       const events: AppEvent[] = [];
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const totalDurationMinutes = classDuration * classCount;
+      const safeDuration = SecuritySanitizer.sanitizeInteger(classDuration, 10, 360, 50);
+      const safeCount = SecuritySanitizer.sanitizeInteger(classCount, 1, 12, 2);
+      const totalDurationMinutes = safeDuration * safeCount;
+
+      const safeAlerts = Array.isArray(alerts)
+        ? alerts
+            .map(a => SecuritySanitizer.sanitizeInteger(a, 0, 525600, 0))
+            .filter((v, i, arr) => arr.indexOf(v) === i)
+        : [0];
 
       Object.entries(selectedDays).forEach(([dayStr, timeObj]) => {
         const dayId = parseInt(dayStr, 10);
@@ -145,7 +166,9 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme,
         }
         const dateStr = getLocalDateString(dateCursor);
 
-        const startMinutes = timeObj.h * 60 + timeObj.m;
+        const safeH = SecuritySanitizer.sanitizeInteger(timeObj.h, 0, 23, 8);
+        const safeM = SecuritySanitizer.sanitizeInteger(timeObj.m, 0, 59, 0);
+        const startMinutes = safeH * 60 + safeM;
         const endMinutes = startMinutes + totalDurationMinutes;
 
         const formatTime = (mins: number) => {
@@ -156,17 +179,17 @@ export const SubjectModal: React.FC<Props> = ({ visible, onClose, onSave, theme,
 
         events.push({
           id: generateId('evt_class'),
-          title: name.trim(),
+          title: sanitizedName,
           category: 'Faculdade/Aulas',
           date: dateStr,
           startTime: formatTime(startMinutes),
           endTime: formatTime(endMinutes),
           recurrence: 'weekly',
           recurrenceDays: [dayId],
-          alerts: alerts,
+          alerts: safeAlerts,
           isCompleted: false,
           isImportant: false,
-          isNotified: alerts.length > 0,
+          isNotified: safeAlerts.length > 0,
           subjectId: subject.id,
         });
       });

@@ -128,6 +128,110 @@ export class SecuritySanitizer {
   }
 
   /**
+   * Sanitizes user input titles (events, subjects, tasks) against HTML injection,
+   * unprintable ASCII control characters, unpaired UTF-16 surrogates, and excessive length.
+   */
+  static sanitizeTitle(input: string, maxLength: number = 120): string {
+    if (!input || typeof input !== 'string') {
+      return '';
+    }
+
+    // First strip unpaired UTF-16 surrogates that corrupt JSON and UTF-8 encodings
+    let clean = input.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+
+    // Strip HTML and control characters
+    clean = this.sanitizeHtml(clean);
+
+    if (clean.length > maxLength) {
+      clean = clean.slice(0, maxLength).trim();
+    }
+
+    return clean;
+  }
+
+  /**
+   * Sanitizes multi-line notes and descriptions (preserves newlines while removing
+   * dangerous HTML, scripts, and control characters).
+   */
+  static sanitizeNotes(input: string, maxLength: number = 1000): string {
+    if (!input || typeof input !== 'string') {
+      return '';
+    }
+
+    // Strip unpaired UTF-16 surrogates
+    let clean = input.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+
+    // Strip dangerous tags and their contents
+    clean = clean
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+      .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, ' ')
+      .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, ' ')
+      .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, ' ')
+      .replace(/<[^>]+>/g, '') // Strip remaining inline HTML
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // Strip control characters except \r and \n
+
+    if (clean.length > maxLength) {
+      clean = clean.slice(0, maxLength).trim();
+    }
+
+    return clean.trim();
+  }
+
+  /**
+   * Defensive numeric sanitizer for floating point values (e.g. grades, weights).
+   * Parses string with comma or period, rejects NaN and Infinity, and clamps to [min, max].
+   */
+  static sanitizeNumber(val: unknown, min: number = 0, max: number = 1000, fallback: number = 0): number {
+    if (val === null || val === undefined) return fallback;
+
+    let num: number;
+    if (typeof val === 'number') {
+      num = val;
+    } else if (typeof val === 'string') {
+      const cleanStr = val.replace(',', '.').trim();
+      num = parseFloat(cleanStr);
+    } else {
+      return fallback;
+    }
+
+    if (isNaN(num) || !isFinite(num)) {
+      return fallback;
+    }
+
+    return Math.max(min, Math.min(num, max));
+  }
+
+  /**
+   * Defensive integer sanitizer (e.g. absences, durations, intervals).
+   * Clamps between [min, max] and rounds to nearest integer.
+   */
+  static sanitizeInteger(val: unknown, min: number = 0, max: number = 1000, fallback: number = 0): number {
+    const num = this.sanitizeNumber(val, min, max, fallback);
+    return Math.round(num);
+  }
+
+  /**
+   * Redacts sensitive API keys and tokens from strings, URLs, or error messages
+   * to guarantee zero credential leakage in logs or reports.
+   */
+  static redactApiKeys(text: string): string {
+    if (!text || typeof text !== 'string') {
+      return '';
+    }
+
+    return text
+      // Google Gemini API keys (AIzaSy...)
+      .replace(/AIzaSy[A-Za-z0-9_-]{30,45}/g, '[REDACTED_API_KEY]')
+      // OpenAI API keys (sk-...)
+      .replace(/sk-(?:proj-|svc-)?[A-Za-z0-9_-]{20,}/g, '[REDACTED_API_KEY]')
+      // URL query params like ?key=... or &key=...
+      .replace(/([?&]key=)[^&\s"'>]+/gi, '$1[REDACTED_API_KEY]')
+      // Bearer auth tokens in logs
+      .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED_API_KEY]');
+  }
+
+  /**
    * Sanitizes and validates a URL from external APIs (like GitHub).
    * Ensures the URL uses http/https protocol and blocks unsafe schemes (javascript:, file:, data:, etc.)
    */

@@ -8,6 +8,41 @@ export interface ParsingContext {
   registeredSubjects: string[]; // e.g. ["Cálculo 1", "Algoritmos", "Física I"]
 }
 
+/**
+ * Detects offline or network-related connectivity failures across platforms.
+ */
+export function isNetworkOrOfflineError(error: unknown): boolean {
+  if (!error) return false;
+  const str = String((error as any)?.message || (error as any)?.name || error).toLowerCase();
+  return (
+    str.includes('network request failed') ||
+    str.includes('fetch failed') ||
+    str.includes('failed to fetch') ||
+    str.includes('network error') ||
+    str.includes('enotfound') ||
+    str.includes('eai_again') ||
+    str.includes('econnrefused') ||
+    str.includes('offline') ||
+    str.includes('aborterror') ||
+    str.includes('timeout')
+  );
+}
+
+/**
+ * Redacts any API keys from error messages and formats network errors gracefully.
+ */
+export function sanitizeAndFormatError(error: unknown, apiKey?: string): Error {
+  if (isNetworkOrOfflineError(error)) {
+    return new Error('Conecte-se à internet para usar a IA.');
+  }
+  let msg = (error as any)?.message || String(error);
+  if (apiKey && apiKey.length > 5) {
+    msg = msg.split(apiKey).join('[REDACTED_API_KEY]');
+  }
+  msg = SecuritySanitizer.redactApiKeys(msg);
+  return new Error(msg);
+}
+
 export class AIParsingService {
   /**
    * Main entry point: Parses a raw message using Google Gemini or OpenAI,
@@ -54,7 +89,8 @@ export class AIParsingService {
 
       return AIParsingService.cleanAndValidateJson(rawResponseText, context);
     } catch (error) {
-      console.warn('AIParsingService call failed, falling back to mock parser:', error);
+      const sanitizedErr = sanitizeAndFormatError(error, apiKey);
+      console.warn('AIParsingService call failed, falling back to mock parser:', sanitizedErr.message);
       return AIParsingService.parseMessageMock(sanitizedMessage, context);
     }
   }
@@ -138,7 +174,7 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
     }
 
     const selectedModel = aiConfig.model?.trim() || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent`;
 
     let systemPrompt = '';
     if (mode === 'transcript') {
@@ -174,58 +210,67 @@ Retorne UM JSON estrito contendo:
 Retorne APENAS o JSON, sem markdown extra.`;
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPrompt }]
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: `Por favor, processe o documento acadêmico em anexo e retorne o JSON estruturado.` },
-              {
-                inline_data: {
-                  mime_type: mimeType,
-                  data: base64Data
-                }
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: 'application/json'
-        }
-      }),
-      signal: AbortSignal.timeout(30000) // PDFs takes a bit longer
-    });
-
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      const errorMsg = errorJson.error?.message || response.statusText;
-      throw new Error(`Google Gemini API erro ao ler documento: ${errorMsg}`);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (apiKey) {
+      headers['x-goog-api-key'] = apiKey;
     }
 
-    const data = await response.json();
-    let outputText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!outputText) {
-      throw new Error('A IA retornou uma resposta vazia ao processar o documento.');
-    }
-    
-    outputText = outputText.trim();
-    if (outputText.startsWith('```json')) {
-      outputText = outputText.replace(/^```json/, '').replace(/```$/, '').trim();
-    }
-    
     try {
-      return JSON.parse(outputText);
-    } catch (err) {
-      throw new Error('A IA não retornou um formato JSON válido.');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemPrompt }]
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: `Por favor, processe o documento acadêmico em anexo e retorne o JSON estruturado.` },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Data
+                  }
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json'
+          }
+        }),
+        signal: AbortSignal.timeout(30000) // PDFs takes a bit longer
+      });
+
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const errorMsg = errorJson.error?.message || response.statusText;
+        throw new Error(`Google Gemini API erro ao ler documento: ${errorMsg}`);
+      }
+
+      const data = await response.json();
+      let outputText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!outputText) {
+        throw new Error('A IA retornou uma resposta vazia ao processar o documento.');
+      }
+      
+      outputText = outputText.trim();
+      if (outputText.startsWith('```json')) {
+        outputText = outputText.replace(/^```json/, '').replace(/```$/, '').trim();
+      }
+      
+      try {
+        return JSON.parse(outputText);
+      } catch (err) {
+        throw new Error('A IA não retornou um formato JSON válido.');
+      }
+    } catch (error) {
+      throw sanitizeAndFormatError(error, apiKey);
     }
   }
 
@@ -251,46 +296,55 @@ Retorne APENAS o JSON, sem markdown extra.`;
     // If no key is passed, fallback to environment variable (useful for development)
     const effectiveApiKey = apiKey.trim() || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
     const selectedModel = model.trim() || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${effectiveApiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent`;
 
     const sanitized = SecuritySanitizer.sanitizeHtml(rawMessage);
     const wrappedMessage = SecuritySanitizer.wrapWithUntrustedDelimiter(sanitized, 'untrusted_content');
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPrompt }]
-        },
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: `Analise a seguinte mensagem recebida no canal da faculdade:\n\n${wrappedMessage}` }]
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (effectiveApiKey) {
+      headers['x-goog-api-key'] = effectiveApiKey;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemPrompt }]
+          },
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `Analise a seguinte mensagem recebida no canal da faculdade:\n\n${wrappedMessage}` }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json'
           }
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: 'application/json'
-        }
-      }),
-      signal: AbortSignal.timeout(15000)
-    });
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
 
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      const errorMsg = errorJson.error?.message || response.statusText;
-      throw new Error(`Google Gemini API error (${response.status}): ${errorMsg}`);
-    }
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const errorMsg = errorJson.error?.message || response.statusText;
+        throw new Error(`Google Gemini API error (${response.status}): ${errorMsg}`);
+      }
 
-    const data = await response.json();
-    const outputText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!outputText) {
-      throw new Error('Google Gemini retornou uma resposta vazia.');
+      const data = await response.json();
+      const outputText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!outputText) {
+        throw new Error('Google Gemini retornou uma resposta vazia.');
+      }
+      return outputText;
+    } catch (error) {
+      throw sanitizeAndFormatError(error, effectiveApiKey);
     }
-    return outputText;
   }
 
   /**
@@ -336,36 +390,40 @@ Retorne APENAS o JSON, sem markdown extra.`;
     const sanitized = SecuritySanitizer.sanitizeHtml(rawMessage);
     const wrappedMessage = SecuritySanitizer.wrapWithUntrustedDelimiter(sanitized, 'untrusted_content');
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey.trim()}`
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Analise a seguinte mensagem recebida no canal da faculdade:\n\n${wrappedMessage}` }
-        ]
-      }),
-      signal: AbortSignal.timeout(15000)
-    });
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey.trim()}`
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          temperature: 0.1,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Analise a seguinte mensagem recebida no canal da faculdade:\n\n${wrappedMessage}` }
+          ]
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
 
-    if (!response.ok) {
-      const errorJson = await response.json().catch(() => ({}));
-      const errorMsg = errorJson.error?.message || response.statusText;
-      throw new Error(`OpenAI API error (${response.status}): ${errorMsg}`);
-    }
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const errorMsg = errorJson.error?.message || response.statusText;
+        throw new Error(`OpenAI API error (${response.status}): ${errorMsg}`);
+      }
 
-    const data = await response.json();
-    const outputText = data.choices?.[0]?.message?.content;
-    if (!outputText) {
-      throw new Error('OpenAI retornou uma resposta vazia.');
+      const data = await response.json();
+      const outputText = data.choices?.[0]?.message?.content;
+      if (!outputText) {
+        throw new Error('OpenAI retornou uma resposta vazia.');
+      }
+      return outputText;
+    } catch (error) {
+      throw sanitizeAndFormatError(error, apiKey);
     }
-    return outputText;
   }
 
   /**

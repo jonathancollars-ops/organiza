@@ -15,6 +15,7 @@ interface Props {
   activeSemesterId?: string;
   onSubjectPress: (subjectId: string) => void;
   onUpdateAttendance: (subjectId: string, eventId: string, status: AttendanceStatus, dateStr: string) => void;
+  onAddNewSubject?: () => void;
 }
 
 export const AttendanceScreen: React.FC<Props> = ({
@@ -25,7 +26,8 @@ export const AttendanceScreen: React.FC<Props> = ({
   semesters = [],
   activeSemesterId,
   onSubjectPress,
-  onUpdateAttendance
+  onUpdateAttendance,
+  onAddNewSubject
 }) => {
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
@@ -109,9 +111,10 @@ export const AttendanceScreen: React.FC<Props> = ({
     filteredSubjects.forEach(s => {
       if (s.isArchived) return;
       const abs = calculateAbsences(s.id);
-      const max = s.maxAbsences || 15;
+      const rawMax = s.maxAbsences;
+      const max = (typeof rawMax === 'number' && Number.isFinite(rawMax) && rawMax > 0) ? rawMax : 15;
       totalAbsences += abs;
-      if ((abs / max) >= 0.7) {
+      if (max > 0 && (abs / max) >= 0.7) {
         atRiskCount++;
       }
     });
@@ -213,20 +216,43 @@ export const AttendanceScreen: React.FC<Props> = ({
 
       {filteredSubjects.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
-            <Text style={styles.emptyIcon}>📅</Text>
+          <View style={[styles.emptyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
+              <Text style={styles.emptyIcon}>📊</Text>
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Nenhuma matéria cadastrada</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              Cadastre as disciplinas do seu semestre para monitorar presenças, limites regulamentares de faltas e receber alertas de risco.
+            </Text>
+            {onAddNewSubject && (
+              <TouchableOpacity
+                style={[styles.emptyCtaBtn, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onAddNewSubject();
+                }}
+                activeOpacity={0.8}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel="Cadastrar Nova Disciplina"
+                accessibilityHint="Abre o formulário para adicionar matéria e limites de falta"
+              >
+                <Text style={[styles.emptyCtaBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                  + Cadastrar Disciplina
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>Nenhuma matéria cadastrada</Text>
-          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            Adicione matérias pelo botão "+" para gerenciar presenças e faltas.
-          </Text>
         </View>
       ) : (
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
           {filteredSubjects.map(subject => {
-            const absences = calculateAbsences(subject.id);
-            const maxAbsences = subject.maxAbsences || 15;
-            const absencePercentage = (absences / maxAbsences) * 100;
+            const rawAbsences = calculateAbsences(subject.id);
+            const absences = Number.isFinite(rawAbsences) ? Math.max(0, rawAbsences) : 0;
+            const rawMaxAbsences = subject.maxAbsences;
+            const maxAbsences = (typeof rawMaxAbsences === 'number' && Number.isFinite(rawMaxAbsences) && rawMaxAbsences > 0) ? rawMaxAbsences : 15;
+            const rawRatio = absences / maxAbsences;
+            const absencePercentage = Number.isFinite(rawRatio) ? Math.max(0, rawRatio * 100) : 0;
             const remainingAbsences = Math.max(0, maxAbsences - absences);
             const presenceRate = calculatePresenceRate(subject.id, maxAbsences);
 
@@ -456,7 +482,18 @@ const getStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 30
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  emptyCard: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: 'dashed',
   },
   emptyIconCircle: {
     width: 64,
@@ -464,11 +501,36 @@ const getStyles = (colors: any) => StyleSheet.create({
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10
+    marginBottom: 14,
   },
-  emptyIcon: { fontSize: 30 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
-  emptySubtitle: { fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  emptyIcon: { fontSize: 32 },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 20,
+    maxWidth: 290,
+  },
+  emptyCtaBtn: {
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyCtaBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
   list: { flex: 1 },
   card: {
     padding: 12,

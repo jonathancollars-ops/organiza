@@ -5,6 +5,7 @@ import { Calendar } from 'react-native-calendars';
 import { AppEvent, ThemeType, Subject } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
+import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -237,22 +238,26 @@ export const ExamModal: React.FC<Props> = ({ visible, onClose, onSave, subjects,
       });
 
       const autoTitle = `${prefix}${nextNum} - ${subject.name || 'Avaliação'}`;
+      const safeTitle = SecuritySanitizer.sanitizeTitle(autoTitle);
+      const safeWeight = SecuritySanitizer.sanitizeNumber(weight, 0.1, 100, 1);
+      const safeMaxGrade = SecuritySanitizer.sanitizeNumber(maxGrade, 1, 100, 10);
+      const safeAlerts = alerts.map(a => SecuritySanitizer.sanitizeInteger(a, 0, 525600, 0));
 
       const newEvent: AppEvent = {
         id: generateId('evt_eval'),
-        title: autoTitle,
+        title: safeTitle,
         category: 'Provas/Trabalhos',
         date,
         startTime: formatTime(startMinutes),
         endTime: formatTime(startMinutes + durationMinutes),
         recurrence: 'none',
-        alerts: alerts,
+        alerts: safeAlerts,
         isCompleted: false,
         isImportant: true,
-        isNotified: alerts.length > 0,
+        isNotified: safeAlerts.length > 0,
         subjectId: subject.id,
-        weight: parseFloat(weight) || 1,
-        maxGrade: parseFloat(maxGrade) || 10,
+        weight: safeWeight,
+        maxGrade: safeMaxGrade,
         isExtraPoint,
       };
 

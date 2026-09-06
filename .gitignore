@@ -48,3 +48,6 @@ coverage/
 # generated native folders
 /ios
 /android
+
+# Agents & Skills
+.agents/

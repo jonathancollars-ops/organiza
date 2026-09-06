@@ -33,7 +33,14 @@ const AACC_KEY = '@organiza_aacc';
 const GROUP_PROJECTS_KEY = '@organiza_group_projects';
 const GAMIFICATION_KEY = '@organiza_gamification';
 
-let secureStoreModule: any = null;
+interface SecureStoreModule {
+  setItemAsync: (key: string, value: string, options?: { keychainAccessible?: number }) => Promise<void>;
+  getItemAsync: (key: string) => Promise<string | null>;
+  deleteItemAsync: (key: string) => Promise<void>;
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY?: number;
+}
+
+let secureStoreModule: SecureStoreModule | null = null;
 try {
   secureStoreModule = require('expo-secure-store');
 } catch {
@@ -73,6 +80,85 @@ export const DEFAULT_STREAK: StudyStreak = {
 const VALID_THEMES: ThemeType[] = ['dark', 'light', 'amoled'];
 
 /**
+ * Detects whether a storage write failure is caused by a full disk,
+ * database quota exhaustion, or storage subsystem error.
+ */
+export function isDiskQuotaError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('quota') ||
+    lower.includes('full') ||
+    lower.includes('sqlite_full') ||
+    lower.includes('disk is full') ||
+    lower.includes('insufficient storage') ||
+    lower.includes('no space left on device') ||
+    lower.includes('exceeded the quota')
+  );
+}
+
+export interface StorageErrorEvent {
+  key: string;
+  error: unknown;
+  isQuota: boolean;
+}
+
+export type StorageErrorListener = (event: StorageErrorEvent) => void;
+const storageErrorListeners = new Set<StorageErrorListener>();
+
+export function addStorageErrorListener(listener: StorageErrorListener): () => void {
+  storageErrorListeners.add(listener);
+  return () => {
+    storageErrorListeners.delete(listener);
+  };
+}
+
+export function notifyStorageError(event: StorageErrorEvent): void {
+  storageErrorListeners.forEach(listener => {
+    try {
+      listener(event);
+    } catch (e: unknown) {
+      console.warn('[StorageService] Error listener failed', e);
+    }
+  });
+}
+
+/**
+ * Safely writes a key-value pair to AsyncStorage with comprehensive error isolation.
+ * Protects against:
+ * 1. Disk quota exceeded errors (SQLite full, QuotaExceededError, out of storage)
+ * 2. Unhandled promise rejections that could crash or unmount the React component tree
+ * 3. Empty or non-string key/value errors
+ * 
+ * Returns true if written successfully, or false if an error occurred (error is trapped and logged).
+ */
+export async function safeSetItem(key: string, value: string): Promise<boolean> {
+  if (!key || typeof key !== 'string') {
+    console.error('[StorageService] safeSetItem: invalid storage key provided');
+    return false;
+  }
+  if (typeof value !== 'string') {
+    console.error(`[StorageService] safeSetItem: invalid value provided for key "${key}"`);
+    return false;
+  }
+
+  try {
+    await AsyncStorage.setItem(key, value);
+    return true;
+  } catch (error: unknown) {
+    const isQuota = isDiskQuotaError(error);
+    if (isQuota) {
+      console.error(`[StorageService] Disk quota exceeded while saving to "${key}". Write operation aborted safely without crashing UI.`, error);
+    } else {
+      console.error(`[StorageService] Storage write error for key "${key}". Operation trapped safely.`, error);
+    }
+    notifyStorageError({ key, error, isQuota });
+    return false;
+  }
+}
+
+/**
  * Safely parses a raw JSON string into a guaranteed non-null typed array.
  * Rules:
  * 1. If raw is null, undefined, not a string, or empty/whitespace -> returns fallback (or []).
@@ -110,7 +196,7 @@ export function safeParseArray<T>(raw: string | null | undefined, fallback: T[] 
  * 4. Ensures parsed value is a non-null, non-array object (typeof === 'object' && !Array.isArray).
  * 5. Merges fallback with parsed object to supply missing/undefined fields.
  */
-export function safeParseObject<T extends Record<string, any>>(raw: string | null | undefined, fallback: T): T {
+export function safeParseObject<T extends object>(raw: string | null | undefined, fallback: T): T {
   if (!raw || typeof raw !== 'string') {
     return { ...fallback };
   }
@@ -129,6 +215,171 @@ export function safeParseObject<T extends Record<string, any>>(raw: string | nul
   }
 }
 
+export interface BackupValidationResult {
+  isValid: boolean;
+  errors: string[];
+  data?: BackupData;
+}
+
+/**
+ * Validates untrusted input against the BackupData schema before allowing import into storage.
+ * Strictly checks types, required fields, and entity integrity without throwing.
+ */
+export function validateBackupSchema(input: unknown): BackupValidationResult {
+  const errors: string[] = [];
+
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return {
+      isValid: false,
+      errors: ['O arquivo de backup deve ser um objeto JSON válido (não pode ser nulo, primitivo ou array).']
+    };
+  }
+
+  const raw = input as Record<string, unknown>;
+
+  // 1. Version validation
+  if (typeof raw.version !== 'number' || !Number.isFinite(raw.version) || raw.version <= 0) {
+    errors.push('Campo "version" é obrigatório e deve ser um número positivo.');
+  }
+
+  // 2. Timestamp validation
+  if (typeof raw.timestamp !== 'string' || raw.timestamp.trim().length === 0) {
+    errors.push('Campo "timestamp" é obrigatório e deve ser uma string de data válida.');
+  }
+
+  // Helper validators for collections
+  const validateArrayOfObjects = (
+    key: string,
+    itemValidator?: (item: Record<string, unknown>, index: number) => string | null
+  ): unknown[] | undefined => {
+    if (raw[key] === undefined || raw[key] === null) {
+      return undefined;
+    }
+    if (!Array.isArray(raw[key])) {
+      errors.push(`Campo "${key}" deve ser um array.`);
+      return undefined;
+    }
+    const arr = raw[key] as unknown[];
+    if (itemValidator) {
+      arr.forEach((item, idx) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          errors.push(`Elemento [${idx}] em "${key}" não é um objeto válido.`);
+        } else {
+          const err = itemValidator(item as Record<string, unknown>, idx);
+          if (err) errors.push(err);
+        }
+      });
+    }
+    return arr;
+  };
+
+  // Validate events
+  const rawEvents = validateArrayOfObjects('events', (item, idx) => {
+    if (typeof item.id !== 'string' || item.id.trim() === '') return `events[${idx}] possui "id" inválido ou ausente.`;
+    if (typeof item.title !== 'string') return `events[${idx}] possui "title" inválido.`;
+    if (typeof item.date !== 'string' || item.date.trim() === '') return `events[${idx}] possui "date" inválido ou ausente.`;
+    return null;
+  });
+
+  // Validate subjects
+  const rawSubjects = validateArrayOfObjects('subjects', (item, idx) => {
+    if (typeof item.id !== 'string' || item.id.trim() === '') return `subjects[${idx}] possui "id" inválido ou ausente.`;
+    if (typeof item.name !== 'string') return `subjects[${idx}] possui "name" inválido.`;
+    return null;
+  });
+
+  // Validate attendances
+  const rawAttendances = validateArrayOfObjects('attendances', (item, idx) => {
+    if (typeof item.id !== 'string' || item.id.trim() === '') return `attendances[${idx}] possui "id" inválido ou ausente.`;
+    if (typeof item.date !== 'string' || item.date.trim() === '') return `attendances[${idx}] possui "date" inválido ou ausente.`;
+    return null;
+  });
+
+  // Validate tasks
+  const rawTasks = validateArrayOfObjects('tasks', (item, idx) => {
+    if (typeof item.id !== 'string' || item.id.trim() === '') return `tasks[${idx}] possui "id" inválido ou ausente.`;
+    if (typeof item.title !== 'string') return `tasks[${idx}] possui "title" inválido.`;
+    return null;
+  });
+
+  // Validate studySessions
+  const rawSessions = validateArrayOfObjects('studySessions', (item, idx) => {
+    if (typeof item.id !== 'string' || item.id.trim() === '') return `studySessions[${idx}] possui "id" inválido ou ausente.`;
+    return null;
+  });
+
+  // Validate semesters
+  const rawSemesters = validateArrayOfObjects('semesters', (item, idx) => {
+    if (typeof item.id !== 'string' || item.id.trim() === '') return `semesters[${idx}] possui "id" inválido ou ausente.`;
+    return null;
+  });
+
+  // Validate aaccActivities
+  const rawAacc = validateArrayOfObjects('aaccActivities');
+
+  // Validate groupProjects
+  const rawGroupProjects = validateArrayOfObjects('groupProjects');
+
+  // Validate settings object if present
+  let settingsObj: Partial<AppSettings> | undefined = undefined;
+  if (raw.settings !== undefined && raw.settings !== null) {
+    if (typeof raw.settings !== 'object' || Array.isArray(raw.settings)) {
+      errors.push('Campo "settings" deve ser um objeto.');
+    } else {
+      settingsObj = raw.settings as Partial<AppSettings>;
+    }
+  }
+
+  // Validate streak object if present
+  let streakObj: StudyStreak | undefined = undefined;
+  if (raw.streak !== undefined && raw.streak !== null) {
+    if (typeof raw.streak !== 'object' || Array.isArray(raw.streak)) {
+      errors.push('Campo "streak" deve ser um objeto.');
+    } else {
+      streakObj = raw.streak as StudyStreak;
+    }
+  }
+
+  // Validate gamification object if present
+  let gamificationObj: GamificationData | undefined = undefined;
+  if (raw.gamification !== undefined && raw.gamification !== null) {
+    if (typeof raw.gamification !== 'object' || Array.isArray(raw.gamification)) {
+      errors.push('Campo "gamification" deve ser um objeto.');
+    } else {
+      gamificationObj = raw.gamification as GamificationData;
+    }
+  }
+
+  if (errors.length > 0) {
+    return {
+      isValid: false,
+      errors
+    };
+  }
+
+  const sanitizedData: BackupData = {
+    version: raw.version as number,
+    timestamp: raw.timestamp as string,
+    events: (rawEvents ? rawEvents.filter(Boolean) : []) as AppEvent[],
+    subjects: (rawSubjects ? rawSubjects.filter(Boolean) : []) as Subject[],
+    attendances: (rawAttendances ? rawAttendances.filter(Boolean) : []) as AttendanceRecord[],
+    tasks: (rawTasks ? rawTasks.filter(Boolean) : []) as StudyTask[],
+    studySessions: (rawSessions ? rawSessions.filter(Boolean) : []) as StudySession[],
+    semesters: (rawSemesters ? rawSemesters.filter(Boolean) : []) as Semester[],
+    settings: settingsObj,
+    streak: streakObj,
+    aaccActivities: (rawAacc ? rawAacc.filter(Boolean) : undefined) as AACCActivity[] | undefined,
+    groupProjects: (rawGroupProjects ? rawGroupProjects.filter(Boolean) : undefined) as GroupProject[] | undefined,
+    gamification: gamificationObj,
+  };
+
+  return {
+    isValid: true,
+    errors: [],
+    data: sanitizedData
+  };
+}
+
 export const StorageService = {
   async getEvents(): Promise<AppEvent[]> {
     try {
@@ -140,13 +391,17 @@ export const StorageService = {
     }
   },
 
-  async saveEvents(events: AppEvent[]): Promise<void> {
+  async saveEvents(events: AppEvent[]): Promise<boolean> {
     try {
-      const safeEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+      const safeEvents = Array.isArray(events)
+        ? events.filter((e): e is AppEvent => Boolean(e && typeof e === 'object' && typeof e.id === 'string'))
+        : [];
       const jsonValue = JSON.stringify(safeEvents);
-      await AsyncStorage.setItem(EVENTS_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save events to storage', e);
+      return await safeSetItem(EVENTS_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize events', e);
+      notifyStorageError({ key: EVENTS_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -160,13 +415,17 @@ export const StorageService = {
     }
   },
 
-  async saveSubjects(subjects: Subject[]): Promise<void> {
+  async saveSubjects(subjects: Subject[]): Promise<boolean> {
     try {
-      const safeSubjects = Array.isArray(subjects) ? subjects.filter(Boolean) : [];
+      const safeSubjects = Array.isArray(subjects)
+        ? subjects.filter((s): s is Subject => Boolean(s && typeof s === 'object' && typeof s.id === 'string'))
+        : [];
       const jsonValue = JSON.stringify(safeSubjects);
-      await AsyncStorage.setItem(SUBJECTS_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save subjects to storage', e);
+      return await safeSetItem(SUBJECTS_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize subjects', e);
+      notifyStorageError({ key: SUBJECTS_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -179,12 +438,14 @@ export const StorageService = {
     }
   },
 
-  async saveTheme(theme: ThemeType): Promise<void> {
+  async saveTheme(theme: ThemeType): Promise<boolean> {
     try {
       const safeTheme = VALID_THEMES.includes(theme) ? theme : 'dark';
-      await AsyncStorage.setItem(THEME_KEY, safeTheme);
-    } catch (e) {
-      console.error('Failed to save theme', e);
+      return await safeSetItem(THEME_KEY, safeTheme);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to save theme', e);
+      notifyStorageError({ key: THEME_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -198,13 +459,17 @@ export const StorageService = {
     }
   },
 
-  async saveAttendances(records: AttendanceRecord[]): Promise<void> {
+  async saveAttendances(records: AttendanceRecord[]): Promise<boolean> {
     try {
-      const safeRecords = Array.isArray(records) ? records.filter(Boolean) : [];
+      const safeRecords = Array.isArray(records)
+        ? records.filter((r): r is AttendanceRecord => Boolean(r && typeof r === 'object' && typeof r.id === 'string'))
+        : [];
       const jsonValue = JSON.stringify(safeRecords);
-      await AsyncStorage.setItem(ATTENDANCES_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save attendances', e);
+      return await safeSetItem(ATTENDANCES_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize attendances', e);
+      notifyStorageError({ key: ATTENDANCES_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -218,13 +483,17 @@ export const StorageService = {
     }
   },
 
-  async saveTasks(tasks: StudyTask[]): Promise<void> {
+  async saveTasks(tasks: StudyTask[]): Promise<boolean> {
     try {
-      const safeTasks = Array.isArray(tasks) ? tasks.filter(Boolean) : [];
+      const safeTasks = Array.isArray(tasks)
+        ? tasks.filter((t): t is StudyTask => Boolean(t && typeof t === 'object' && typeof t.id === 'string'))
+        : [];
       const jsonValue = JSON.stringify(safeTasks);
-      await AsyncStorage.setItem(TASKS_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save tasks', e);
+      return await safeSetItem(TASKS_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize tasks', e);
+      notifyStorageError({ key: TASKS_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -238,13 +507,17 @@ export const StorageService = {
     }
   },
 
-  async saveStudySessions(sessions: StudySession[]): Promise<void> {
+  async saveStudySessions(sessions: StudySession[]): Promise<boolean> {
     try {
-      const safeSessions = Array.isArray(sessions) ? sessions.filter(Boolean) : [];
+      const safeSessions = Array.isArray(sessions)
+        ? sessions.filter((s): s is StudySession => Boolean(s && typeof s === 'object' && typeof s.id === 'string'))
+        : [];
       const jsonValue = JSON.stringify(safeSessions);
-      await AsyncStorage.setItem(STUDY_SESSIONS_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save study sessions', e);
+      return await safeSetItem(STUDY_SESSIONS_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize study sessions', e);
+      notifyStorageError({ key: STUDY_SESSIONS_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -283,13 +556,17 @@ export const StorageService = {
     }
   },
 
-  async saveSemesters(semesters: Semester[]): Promise<void> {
+  async saveSemesters(semesters: Semester[]): Promise<boolean> {
     try {
-      const safeSemesters = Array.isArray(semesters) ? semesters.filter(Boolean) : [];
+      const safeSemesters = Array.isArray(semesters)
+        ? semesters.filter((s): s is Semester => Boolean(s && typeof s === 'object' && typeof s.id === 'string'))
+        : [];
       const jsonValue = JSON.stringify(safeSemesters);
-      await AsyncStorage.setItem(SEMESTERS_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save semesters', e);
+      return await safeSetItem(SEMESTERS_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize semesters', e);
+      notifyStorageError({ key: SEMESTERS_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -314,7 +591,7 @@ export const StorageService = {
     }
   },
 
-  async saveSettings(settings: AppSettings): Promise<void> {
+  async saveSettings(settings: AppSettings): Promise<boolean> {
     try {
       const safe: AppSettings = {
         theme: (settings && VALID_THEMES.includes(settings.theme)) ? settings.theme : DEFAULT_SETTINGS.theme,
@@ -329,9 +606,11 @@ export const StorageService = {
         currentSemesterId: settings?.currentSemesterId || undefined,
       };
       const jsonValue = JSON.stringify(safe);
-      await AsyncStorage.setItem(SETTINGS_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save settings', e);
+      return await safeSetItem(SETTINGS_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize settings', e);
+      notifyStorageError({ key: SETTINGS_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -363,7 +642,7 @@ export const StorageService = {
     }
   },
 
-  async saveStreak(streak: StudyStreak): Promise<void> {
+  async saveStreak(streak: StudyStreak): Promise<boolean> {
     try {
       const current = Math.max(0, Number(streak?.currentStreak) || 0);
       const longest = Number.isFinite(streak?.longestStreak)
@@ -385,9 +664,11 @@ export const StorageService = {
         totalStudyDays: totalDays,
       };
       const jsonValue = JSON.stringify(safe);
-      await AsyncStorage.setItem(STREAK_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save streak', e);
+      return await safeSetItem(STREAK_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize streak', e);
+      notifyStorageError({ key: STREAK_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -401,13 +682,17 @@ export const StorageService = {
     }
   },
 
-  async saveAACCActivities(activities: AACCActivity[]): Promise<void> {
+  async saveAACCActivities(activities: AACCActivity[]): Promise<boolean> {
     try {
-      const safeActivities = Array.isArray(activities) ? activities.filter(Boolean) : [];
+      const safeActivities = Array.isArray(activities)
+        ? activities.filter((a): a is AACCActivity => Boolean(a && typeof a === 'object' && typeof a.id === 'string'))
+        : [];
       const jsonValue = JSON.stringify(safeActivities);
-      await AsyncStorage.setItem(AACC_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save AACC activities', e);
+      return await safeSetItem(AACC_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize AACC activities', e);
+      notifyStorageError({ key: AACC_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -426,7 +711,7 @@ export const StorageService = {
     }
   },
 
-  async saveGroupProjects(projects: GroupProject[]): Promise<void> {
+  async saveGroupProjects(projects: GroupProject[]): Promise<boolean> {
     try {
       const safeProjects = Array.isArray(projects) ? projects.filter(Boolean).map(p => ({
         ...p,
@@ -434,9 +719,11 @@ export const StorageService = {
         tasks: Array.isArray(p.tasks) ? p.tasks.filter(Boolean) : []
       })) : [];
       const jsonValue = JSON.stringify(safeProjects);
-      await AsyncStorage.setItem(GROUP_PROJECTS_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save group projects', e);
+      return await safeSetItem(GROUP_PROJECTS_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize group projects', e);
+      notifyStorageError({ key: GROUP_PROJECTS_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -456,7 +743,7 @@ export const StorageService = {
     }
   },
 
-  async saveGamificationData(data: GamificationData): Promise<void> {
+  async saveGamificationData(data: GamificationData): Promise<boolean> {
     try {
       const safe: GamificationData = {
         xp: Math.max(0, Number(data?.xp) || 0),
@@ -466,9 +753,11 @@ export const StorageService = {
         processedEventIds: Array.isArray(data?.processedEventIds) ? data.processedEventIds.filter(Boolean) : [],
       };
       const jsonValue = JSON.stringify(safe);
-      await AsyncStorage.setItem(GAMIFICATION_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save gamification data', e);
+      return await safeSetItem(GAMIFICATION_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to serialize gamification data', e);
+      notifyStorageError({ key: GAMIFICATION_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -510,12 +799,12 @@ export const StorageService = {
   },
 
 
-  async saveSecureSecret(key: string, value: string): Promise<void> {
-    if (!key) return;
+  async saveSecureSecret(key: string, value: string): Promise<boolean> {
+    if (!key) return false;
     try {
       if (!value || value.trim() === '') {
         await this.deleteSecureSecret(key);
-        return;
+        return true;
       }
       inMemorySecureVault[key] = value;
       if (secureStoreModule && typeof secureStoreModule.setItemAsync === 'function') {
@@ -523,8 +812,10 @@ export const StorageService = {
           keychainAccessible: secureStoreModule.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
         });
       }
-    } catch (e) {
+      return true;
+    } catch (e: unknown) {
       inMemorySecureVault[key] = value;
+      return true;
     }
   },
 
@@ -538,21 +829,22 @@ export const StorageService = {
           return val;
         }
       }
-    } catch (e) {
+    } catch (e: unknown) {
       // Fallback to in-memory vault
     }
     return inMemorySecureVault[key] ?? null;
   },
 
-  async deleteSecureSecret(key: string): Promise<void> {
-    if (!key) return;
+  async deleteSecureSecret(key: string): Promise<boolean> {
+    if (!key) return false;
     delete inMemorySecureVault[key];
     try {
       if (secureStoreModule && typeof secureStoreModule.deleteItemAsync === 'function') {
         await secureStoreModule.deleteItemAsync(key);
       }
-    } catch (e) {
-      // Ignore fallback deletion error
+      return true;
+    } catch (e: unknown) {
+      return false;
     }
   },
 
@@ -585,8 +877,8 @@ export const StorageService = {
         enableFallbackToCloud: parsed.enableFallbackToCloud !== false,
         localModelPath: parsed.localModelPath
       };
-    } catch (e) {
-      console.warn('Failed to fetch AI config from storage', e);
+    } catch (e: unknown) {
+      console.warn('[StorageService] Failed to fetch AI config from storage', e);
       return {
         provider: 'gemini',
         mode: 'local_edge',
@@ -597,7 +889,7 @@ export const StorageService = {
     }
   },
 
-  async saveAIConfig(config: AIConfig): Promise<void> {
+  async saveAIConfig(config: AIConfig): Promise<boolean> {
     try {
       if (config.apiKey && config.apiKey.trim().length > 0) {
         await this.saveSecureSecret(SECURE_AI_API_KEY, config.apiKey.trim());
@@ -606,14 +898,16 @@ export const StorageService = {
       }
 
       // Persist config without sensitive plaintext in unencrypted AsyncStorage
-      const sanitizedConfig = {
+      const sanitizedConfig: AIConfig = {
         ...config,
         apiKey: ''
       };
       const jsonValue = JSON.stringify(sanitizedConfig);
-      await AsyncStorage.setItem(AI_CONFIG_KEY, jsonValue);
-    } catch (e) {
-      console.error('Failed to save AI config to storage', e);
+      return await safeSetItem(AI_CONFIG_KEY, jsonValue);
+    } catch (e: unknown) {
+      console.error('[StorageService] Failed to save AI config to storage', e);
+      notifyStorageError({ key: AI_CONFIG_KEY, error: e, isQuota: false });
+      return false;
     }
   },
 
@@ -635,7 +929,7 @@ export const StorageService = {
       this.getStreak(),
     ]);
 
-    return {
+    const rawBackup: BackupData = {
       version: 2,
       timestamp: new Date().toISOString(),
       events,
@@ -649,35 +943,101 @@ export const StorageService = {
       aaccActivities,
       groupProjects,
       gamification,
-    } as BackupData;
+    };
+
+    // Deep sanitize backup to guarantee zero credential leakage (API keys, tokens, secrets)
+    const scrubCredentialsDeep = (obj: unknown): unknown => {
+      if (!obj || typeof obj !== 'object') return obj;
+      if (Array.isArray(obj)) return obj.map(scrubCredentialsDeep);
+      const clean: Record<string, unknown> = {};
+      const record = obj as Record<string, unknown>;
+      for (const [key, value] of Object.entries(record)) {
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey.includes('apikey') ||
+          lowerKey.includes('api_key') ||
+          lowerKey.includes('token') ||
+          lowerKey.includes('secret') ||
+          lowerKey.includes('password')
+        ) {
+          continue; // omit secret from backup
+        }
+        clean[key] = scrubCredentialsDeep(value);
+      }
+      return clean;
+    };
+
+    const scrubbed = scrubCredentialsDeep(rawBackup);
+    const validation = validateBackupSchema(scrubbed);
+    if (!validation.isValid || !validation.data) {
+      throw new Error(`Falha na validação do schema do backup gerado: ${validation.errors.join('; ')}`);
+    }
+
+    return validation.data;
   },
 
   /**
-   * Import and restore data from a valid BackupData object
+   * Import and restore data from a valid BackupData object.
+   * Performs strict runtime schema validation before executing any storage write.
    */
-  async importBackup(backup: BackupData & { streak?: StudyStreak }): Promise<boolean> {
-    if (!backup || typeof backup !== 'object') {
-      throw new Error('Formato de backup inválido.');
+  async importBackup(backup: unknown): Promise<boolean> {
+    const validation = validateBackupSchema(backup);
+    if (!validation.isValid || !validation.data) {
+      const errorMsg = `Formato de backup inválido: ${validation.errors.join('; ')}`;
+      console.error(`[StorageService] ${errorMsg}`);
+      throw new Error(errorMsg);
     }
 
+    const validData = validation.data;
+
     try {
-      if (Array.isArray(backup.events)) await this.saveEvents(backup.events);
-      if (Array.isArray(backup.subjects)) await this.saveSubjects(backup.subjects);
-      if (Array.isArray(backup.attendances)) await this.saveAttendances(backup.attendances);
-      if (Array.isArray(backup.tasks)) await this.saveTasks(backup.tasks);
-      if (Array.isArray(backup.studySessions)) await this.saveStudySessions(backup.studySessions);
-      if (Array.isArray(backup.semesters)) await this.saveSemesters(backup.semesters);
-      if (Array.isArray(backup.aaccActivities)) await this.saveAACCActivities(backup.aaccActivities);
-      if (Array.isArray(backup.groupProjects)) await this.saveGroupProjects(backup.groupProjects);
-      if (backup.gamification) await this.saveGamificationData(backup.gamification);
-      if (backup.streak) await this.saveStreak(backup.streak);
-      if (backup.settings) {
-        await this.saveSettings({ ...DEFAULT_SETTINGS, ...backup.settings });
-        if (backup.settings.theme) await this.saveTheme(backup.settings.theme);
+      const writeResults: boolean[] = [];
+
+      if (Array.isArray(validData.events)) {
+        writeResults.push(await this.saveEvents(validData.events));
       }
+      if (Array.isArray(validData.subjects)) {
+        writeResults.push(await this.saveSubjects(validData.subjects));
+      }
+      if (Array.isArray(validData.attendances)) {
+        writeResults.push(await this.saveAttendances(validData.attendances));
+      }
+      if (Array.isArray(validData.tasks)) {
+        writeResults.push(await this.saveTasks(validData.tasks));
+      }
+      if (Array.isArray(validData.studySessions)) {
+        writeResults.push(await this.saveStudySessions(validData.studySessions));
+      }
+      if (Array.isArray(validData.semesters)) {
+        writeResults.push(await this.saveSemesters(validData.semesters));
+      }
+      if (Array.isArray(validData.aaccActivities)) {
+        writeResults.push(await this.saveAACCActivities(validData.aaccActivities));
+      }
+      if (Array.isArray(validData.groupProjects)) {
+        writeResults.push(await this.saveGroupProjects(validData.groupProjects));
+      }
+      if (validData.gamification) {
+        writeResults.push(await this.saveGamificationData(validData.gamification));
+      }
+      if (validData.streak) {
+        writeResults.push(await this.saveStreak(validData.streak));
+      }
+      if (validData.settings) {
+        writeResults.push(await this.saveSettings({ ...DEFAULT_SETTINGS, ...validData.settings }));
+        if (validData.settings.theme) {
+          writeResults.push(await this.saveTheme(validData.settings.theme));
+        }
+      }
+
+      const allSuccess = writeResults.every(r => r === true);
+      if (!allSuccess) {
+        console.warn('[StorageService] Alguns blocos do backup falharam ao serem persistidos devido a restrição de armazenamento.');
+      }
+
       return true;
-    } catch (err) {
-      console.error('Erro ao restaurar backup', err);
+    } catch (err: unknown) {
+      console.error('[StorageService] Erro ao restaurar backup', err);
       throw err;
     }
   },

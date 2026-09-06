@@ -4,11 +4,15 @@ import { useApp } from '../contexts/AppContext';
 import { StudyScreen } from './StudyScreen';
 import { AchievementsModal } from '../components/AchievementsModal';
 import { AnalyticsAndAACCModal } from '../components/AnalyticsAndAACCModal';
+import { SubjectModal } from '../components/SubjectModal';
+import { StorageService } from '../services/storage';
 
 export const StudyScreenWrapper = () => {
   const navigation = useNavigation<any>();
   const { 
     subjects, 
+    events,
+    setEvents,
     tasks, 
     setTasks, 
     studySessions, 
@@ -16,11 +20,14 @@ export const StudyScreenWrapper = () => {
     streak,
     attendances,
     theme, 
-    settings 
+    settings,
+    semesters,
+    addOrUpdateSubject
   } = useApp();
 
   const [achievementsVisible, setAchievementsVisible] = useState(false);
   const [analyticsVisible, setAnalyticsVisible] = useState(false);
+  const [subjectModalVisible, setSubjectModalVisible] = useState(false);
 
   return (
     <>
@@ -35,6 +42,7 @@ export const StudyScreenWrapper = () => {
         breakMinutesDefault={settings.pomodoroBreakMin}
         onOpenAchievements={() => setAchievementsVisible(true)}
         onOpenAnalytics={() => setAnalyticsVisible(true)}
+        onAddNewSubject={() => setSubjectModalVisible(true)}
       />
 
       <AchievementsModal
@@ -53,6 +61,29 @@ export const StudyScreenWrapper = () => {
         subjects={subjects}
         studySessions={studySessions}
         attendances={attendances}
+      />
+
+      <SubjectModal
+        visible={subjectModalVisible}
+        onClose={() => setSubjectModalVisible(false)}
+        onSave={async (newSubject, newEvents) => {
+          try {
+            if (newSubject) {
+              await addOrUpdateSubject(newSubject);
+              if (newEvents && newEvents.length > 0) {
+                const updatedEvents = [...events, ...newEvents];
+                setEvents(updatedEvents);
+                await StorageService.saveEvents(updatedEvents);
+              }
+            }
+          } catch (e) {
+            console.warn('Erro ao salvar matéria no StudyScreenWrapper:', e);
+          } finally {
+            setSubjectModalVisible(false);
+          }
+        }}
+        theme={theme}
+        semesters={semesters}
       />
     </>
   );

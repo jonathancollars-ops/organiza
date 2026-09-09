@@ -429,10 +429,10 @@ export class CourseCRService {
       const isActiveSem = idx === activeSemIndex;
 
       const filteredSubjects = (sem.subjects || []).filter(sub => {
-        // Se o id da disciplina for idêntico ao subjectId, remove
+        // Se o id da disciplina for idêntico ao subjectId, remove de qualquer semestre
         if (sub.id === subjectId) return false;
 
-        // Se estiver no semestre ativo ou se for matéria pendente, verifica correspondência de nome
+        // Se houver correspondência pelo nome da matéria, remove do semestre ativo ou se estiver pendente
         if (normName && (isActiveSem || !sub.isCompleted)) {
           if (this.isSubjectMatch(sub.name, normName, sub.code)) {
             return false;
@@ -460,6 +460,18 @@ export class CourseCRService {
       lastUpdated: new Date().toISOString()
     };
   }
+
+  /**
+   * Remove explicitamente uma disciplina do fluxograma/matriz curricular independente do semestre.
+   */
+  static removeSubjectFromCurriculum(
+    courseData: CourseProgressData,
+    subjectId: string,
+    subjectName?: string
+  ): CourseProgressData {
+    return this.removeSubjectFromCurrentSemester(courseData, subjectId, subjectName);
+  }
+
 
   /**
    * Fecha e consolida o semestre letivo ativo no histórico definitivo:

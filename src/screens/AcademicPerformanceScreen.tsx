@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { Subject, CourseProgressData, ThemeType } from '../types';
 import { CourseCRService, DEFAULT_CURRICULUM_TEMPLATE } from '../services/CourseCRService';
@@ -205,19 +205,30 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
       const fileName = asset.name || fileUri;
       const mimeType = resolveDocumentMimeType(fileName, asset.mimeType);
 
-      // Validação de existência no cache local do dispositivo
-      const fileInfo = await FileSystem.getInfoAsync(fileUri);
-      if (!fileInfo.exists) {
-        throw new Error('O arquivo selecionado não foi encontrado no cache do dispositivo. Tente selecioná-lo novamente.');
-      }
-
+      // Validação e leitura resiliente de arquivos locais e cache no Android
       let base64Data = '';
       try {
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(fileUri);
+          if (!fileInfo.exists) {
+            console.warn('fileInfo.exists reported false, attempting read directly');
+          }
+        } catch (infoErr) {
+          console.warn('getInfoAsync warning (continuing with read):', infoErr);
+        }
+
         base64Data = await FileSystem.readAsStringAsync(fileUri, {
-          encoding: 'base64'
+          encoding: FileSystem.EncodingType.Base64
         });
       } catch (readErr: any) {
-        throw new Error(`Falha ao ler o conteúdo do arquivo: ${readErr?.message || 'Arquivo corrompido ou sem permissão de leitura.'}`);
+        console.warn('First base64 read attempt failed, retrying with raw string fallback:', readErr);
+        try {
+          base64Data = await FileSystem.readAsStringAsync(fileUri, {
+            encoding: 'base64' as any
+          });
+        } catch (retryErr: any) {
+          throw new Error(`Falha ao ler o conteúdo do arquivo: ${retryErr?.message || readErr?.message || 'Arquivo inacessível ou sem permissão.'}`);
+        }
       }
 
       if (!base64Data || base64Data.trim() === '') {
@@ -251,6 +262,27 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
     } finally {
       setIsProcessingDocument(false);
     }
+  };
+
+  const handleDeleteCurriculumSubject = (subjectId: string, subjectName: string) => {
+    Haptics.selectionAsync();
+    Alert.alert(
+      'Excluir Disciplina',
+      `Deseja remover "${subjectName}" do seu fluxograma de desempenho?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            const updated = CourseCRService.removeSubjectFromCurriculum(courseData, subjectId, subjectName);
+            setCourseData(updated);
+            await CourseCRService.saveCourseProgress(updated);
+          }
+        }
+      ]
+    );
   };
 
   const handleCloseSemesterPress = () => {
@@ -360,9 +392,11 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header Actions - Asymmetric Dual-Zone layout clear of notch/camera */}
       <View style={styles.header}>
-        <View style={{ flex: 1, paddingRight: 8 }}>
-          <Text style={styles.headerTitle}>🎯 Desempenho & Curso</Text>
-          <Text style={styles.headerSubtitle}>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+            🎯 Desempenho & Curso
+          </Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
             CR Acumulado • Integralização • Prova Final
           </Text>
         </View>
@@ -383,14 +417,6 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
           >
             <Text style={styles.headerBtnText}>📥 Importar</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.headerBtn, styles.headerBtnSuccess]}
-            onPress={handleCloseSemesterPress}
-            accessibilityLabel="Fechar Semestre Letivo"
-          >
-            <Text style={styles.headerBtnSuccessText}>🎓 Fechar Semestre</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -403,7 +429,11 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
             setActiveTab('cr_sim');
           }}
         >
-          <Text style={[styles.tabButtonText, activeTab === 'cr_sim' && styles.tabButtonTextActive]}>
+          <Text
+            style={[styles.tabButtonText, activeTab === 'cr_sim' && styles.tabButtonTextActive]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             📈 Meu CR & Simulador
           </Text>
         </TouchableOpacity>
@@ -415,7 +445,11 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
             setActiveTab('curriculum');
           }}
         >
-          <Text style={[styles.tabButtonText, activeTab === 'curriculum' && styles.tabButtonTextActive]}>
+          <Text
+            style={[styles.tabButtonText, activeTab === 'curriculum' && styles.tabButtonTextActive]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             🎓 Fluxograma & {(degreeProgress?.completionPercentage ?? 0).toFixed(0)}% Curso
           </Text>
         </TouchableOpacity>
@@ -650,35 +684,53 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                   </Text>
                 ) : (
                   currentSemester.subjects.map(sub => (
-                    <TouchableOpacity
+                    <View
                       key={sub.id}
                       style={[styles.subjectItem, sub.isCompleted && styles.subjectItemCompleted]}
-                      onPress={() => handleToggleSubject(sub.id)}
-                      activeOpacity={0.7}
                     >
-                      <View style={[styles.checkbox, sub.isCompleted && styles.checkboxChecked]}>
-                        {sub.isCompleted && <Text style={styles.checkmark}>✓</Text>}
-                      </View>
+                      <TouchableOpacity
+                        style={styles.subjectItemClickable}
+                        onPress={() => handleToggleSubject(sub.id)}
+                        activeOpacity={0.7}
+                        accessibilityLabel={`Alternar status de ${sub.name}`}
+                      >
+                        <View style={[styles.checkbox, sub.isCompleted && styles.checkboxChecked]}>
+                          {sub.isCompleted && <Text style={styles.checkmark}>✓</Text>}
+                        </View>
 
-                      <View style={styles.subjectItemInfo}>
-                        <Text style={[styles.subjectItemName, sub.isCompleted && styles.subjectItemNameCompleted]}>
-                          {sub.name}
-                        </Text>
-                        <Text style={styles.subjectItemMeta}>
-                          {sub.credits} créditos • {sub.hours || sub.credits * 15}h {sub.code ? `• ${sub.code}` : ''}
-                        </Text>
-                      </View>
+                        <View style={styles.subjectItemInfo}>
+                          <Text
+                            style={[styles.subjectItemName, sub.isCompleted && styles.subjectItemNameCompleted]}
+                            numberOfLines={2}
+                          >
+                            {sub.name}
+                          </Text>
+                          <Text style={styles.subjectItemMeta}>
+                            {sub.credits} créditos • {sub.hours || sub.credits * 15}h {sub.code ? `• ${sub.code}` : ''}
+                          </Text>
+                        </View>
 
-                      <View style={[styles.statusBadge, sub.isCompleted ? styles.statusBadgeDone : styles.statusBadgePending]}>
-                        <Text style={[styles.statusBadgeText, sub.isCompleted ? styles.statusBadgeTextDone : styles.statusBadgeTextPending]}>
-                          {sub.isCompleted ? 'Concluída' : 'Pendente'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
+                        <View style={[styles.statusBadge, sub.isCompleted ? styles.statusBadgeDone : styles.statusBadgePending]}>
+                          <Text style={[styles.statusBadgeText, sub.isCompleted ? styles.statusBadgeTextDone : styles.statusBadgeTextPending]}>
+                            {sub.isCompleted ? 'Concluída' : 'Pendente'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.subjectDeleteBtn}
+                        onPress={() => handleDeleteCurriculumSubject(sub.id, sub.name)}
+                        accessibilityLabel={`Excluir disciplina ${sub.name}`}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.subjectDeleteBtnText}>🗑️</Text>
+                      </TouchableOpacity>
+                    </View>
                   ))
                 )}
               </View>
             )}
+
           </View>
         )}
       </ScrollView>
@@ -1004,8 +1056,13 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       borderBottomColor: colors.borderSubtle,
       backgroundColor: colors.surface,
     },
+    headerTitleContainer: {
+      flex: 1,
+      paddingRight: 12,
+      justifyContent: 'center',
+    },
     headerTitle: {
-      fontSize: 17,
+      fontSize: 16,
       fontWeight: '800',
       color: colors.text,
     },
@@ -1016,11 +1073,12 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     },
     headerButtons: {
       flexDirection: 'row',
-      gap: 6,
+      alignItems: 'center',
+      gap: 8,
     },
     headerBtn: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
       borderRadius: 8,
       backgroundColor: colors.surfaceHighlight,
       borderWidth: 1,
@@ -1437,9 +1495,28 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     subjectItem: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: colors.borderSubtle,
+    },
+    subjectItemClickable: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    subjectDeleteBtn: {
+      padding: 6,
+      marginLeft: 8,
+      borderRadius: 6,
+      backgroundColor: colors.surfaceHighlight,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subjectDeleteBtnText: {
+      fontSize: 12,
     },
     subjectItemCompleted: {
       opacity: 0.8,

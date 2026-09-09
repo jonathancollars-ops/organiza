@@ -43,6 +43,32 @@ export function sanitizeAndFormatError(error: unknown, apiKey?: string): Error {
   return new Error(msg);
 }
 
+/**
+ * Resolves safe and compliant MIME types for PDF and image documents.
+ * Normalizes non-standard representations like 'image/jpg' to 'image/jpeg' to avoid Gemini API 400 errors.
+ */
+export function resolveDocumentMimeType(fileNameOrUri?: string, fallbackMime?: string): string {
+  const lower = (fileNameOrUri || '').toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic')) return 'image/heic';
+
+  if (fallbackMime && typeof fallbackMime === 'string' && fallbackMime.includes('/')) {
+    const lowerFallback = fallbackMime.toLowerCase().trim();
+    if (lowerFallback === 'image/jpg') return 'image/jpeg';
+    if (
+      lowerFallback.startsWith('image/') ||
+      lowerFallback === 'application/pdf'
+    ) {
+      return lowerFallback;
+    }
+  }
+
+  return 'application/pdf';
+}
+
 export class AIParsingService {
   /**
    * Main entry point: Parses a raw message using Google Gemini or OpenAI,
@@ -217,6 +243,8 @@ Retorne APENAS o JSON, sem markdown extra.`;
       headers['x-goog-api-key'] = apiKey;
     }
 
+    const safeMimeType = resolveDocumentMimeType(undefined, mimeType);
+
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -232,7 +260,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
                 { text: `Por favor, processe o documento acadêmico em anexo e retorne o JSON estruturado.` },
                 {
                   inline_data: {
-                    mime_type: mimeType,
+                    mime_type: safeMimeType,
                     data: base64Data
                   }
                 }

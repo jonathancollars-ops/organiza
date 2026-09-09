@@ -335,14 +335,14 @@ export const GradesScreen: React.FC<Props> = ({
       <GradeSimulatorModal
         visible={simulatorVisible}
         onClose={() => setSimulatorVisible(false)}
-        subjects={subjects}
+        subjects={subjects.filter(s => s && !s.isArchived)}
         theme={theme}
       />
     </View>
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ReturnType<typeof getThemeColors>) => StyleSheet.create({
   container: {
     flex: 1,
     padding: 14,

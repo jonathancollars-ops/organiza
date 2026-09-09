@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ScrollView,
 import { Calendar } from 'react-native-calendars';
 import { ClockTimePickerModal } from './ClockTimePickerModal';
 import { AppEvent, EventCategory, RecurrenceType, ThemeType } from '../types';
-import { getThemeColors, CategoryColors, getContrastTextColor } from '../theme';
+import { getThemeColors, CategoryColors, getCategoryColor, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
 import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import * as Haptics from 'expo-haptics';
@@ -241,7 +241,7 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
               </Text>
               
               <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceSubtle }]}
                 placeholder="Título do compromisso"
                 placeholderTextColor={colors.textSecondary}
                 value={title}
@@ -252,7 +252,7 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
                 {CATEGORIES.map(c => {
                   const isSelected = category === c;
-                  const catColor = CategoryColors[c] || colors.primary;
+                  const catColor = getCategoryColor(c, theme);
                   return (
                     <TouchableOpacity
                       key={c}
@@ -280,13 +280,13 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
                 <View style={{ flex: 1, marginBottom: 14 }}>
                   <Text style={[styles.label, { color: colors.text }]}>Data</Text>
                   {isDateLocked ? (
-                    <View style={[styles.input, { backgroundColor: colors.background, opacity: 0.7, paddingVertical: 14 }]}>
+                    <View style={[styles.input, { backgroundColor: colors.surfaceSubtle, opacity: 0.7, paddingVertical: 14 }]}>
                       <Text style={{ color: colors.text, fontWeight: '600' }}>{date.split('-').reverse().join('/')} (Bloqueado)</Text>
                     </View>
                   ) : (
                     <View>
                       <TouchableOpacity 
-                        style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.background }]} 
+                        style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceSubtle }]} 
                         onPress={() => {
                           Haptics.selectionAsync();
                           setShowCalendar(!showCalendar);
@@ -325,7 +325,7 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
               </View>
 
               {/* Horário e Duração Interativo */}
-              <View style={[styles.timeCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={[styles.timeCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
                 <Text style={[styles.label, { color: colors.text, marginTop: 0, marginBottom: 10 }]}>Horário e Duração</Text>
 
                 <View style={styles.timeButtonsRow}>
@@ -434,7 +434,7 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
 
               {/* Seletor de Intervalo Customizado para Mensal */}
               {recurrence === 'monthly' && (
-                <View style={[styles.monthlySettingsCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <View style={[styles.monthlySettingsCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
                   {/* Intervalo em meses */}
                   <Text style={[styles.intervalTitle, { color: colors.textSecondary }]}>
                     A cada quantos meses?
@@ -605,38 +605,74 @@ export const EventModal: React.FC<EventModalProps> = ({ visible, onClose, onSave
                   <Text style={{ color: colors.textSecondary, marginBottom: 8, fontSize: 13, fontWeight: '600' }}>Personalizado:</Text>
                   <View style={[styles.row, { marginBottom: 14, alignItems: 'center' }]}>
                     <TextInput
-                      style={[styles.input, { flex: 1, marginBottom: 0, marginRight: 8, color: colors.text, borderColor: colors.border, backgroundColor: colors.background }]}
+                      style={[
+                        styles.input,
+                        {
+                          width: 76,
+                          minHeight: 44,
+                          height: 44,
+                          marginBottom: 0,
+                          marginRight: 8,
+                          textAlign: 'center',
+                          color: colors.text,
+                          borderColor: colors.border,
+                          backgroundColor: colors.surfaceSubtle
+                        }
+                      ]}
                       placeholder="Ex: 5"
                       placeholderTextColor={colors.textSecondary}
                       keyboardType="numeric"
                       value={customAlertVal}
                       onChangeText={setCustomAlertVal}
                     />
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1, marginRight: 8 }}>
-                      <TouchableOpacity 
-                        style={[styles.badge, { backgroundColor: customAlertUnit === 1 ? colors.primary : colors.surfaceSubtle, borderWidth: 1, borderColor: customAlertUnit === 1 ? colors.primary : colors.border }]}
-                        onPress={() => setCustomAlertUnit(1)}
-                      >
-                        <Text style={{ color: customAlertUnit === 1 ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>Min</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={[styles.badge, { backgroundColor: customAlertUnit === 60 ? colors.primary : colors.surfaceSubtle, borderWidth: 1, borderColor: customAlertUnit === 60 ? colors.primary : colors.border }]}
-                        onPress={() => setCustomAlertUnit(60)}
-                      >
-                        <Text style={{ color: customAlertUnit === 60 ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>Hora</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={[styles.badge, { backgroundColor: customAlertUnit === 1440 ? colors.primary : colors.surfaceSubtle, borderWidth: 1, borderColor: customAlertUnit === 1440 ? colors.primary : colors.border }]}
-                        onPress={() => setCustomAlertUnit(1440)}
-                      >
-                        <Text style={{ color: customAlertUnit === 1440 ? getContrastTextColor(colors.primary) : colors.text, fontWeight: '700' }}>Dia</Text>
-                      </TouchableOpacity>
-                    </ScrollView>
+                    <View style={{ flexDirection: 'row', gap: 6, flex: 1, marginRight: 8 }}>
+                      {[
+                        { unit: 1, label: 'Min' },
+                        { unit: 60, label: 'Hora' },
+                        { unit: 1440, label: 'Dia' }
+                      ].map(u => {
+                        const isSelected = customAlertUnit === u.unit;
+                        return (
+                          <TouchableOpacity
+                            key={u.unit}
+                            style={[
+                              styles.customUnitChip,
+                              {
+                                backgroundColor: isSelected ? colors.primary : colors.surfaceSubtle,
+                                borderColor: isSelected ? colors.primary : colors.border
+                              }
+                            ]}
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              setCustomAlertUnit(u.unit);
+                            }}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Unidade ${u.label}`}
+                          >
+                            <Text
+                              style={[
+                                styles.customUnitChipText,
+                                { color: isSelected ? getContrastTextColor(colors.primary) : colors.text }
+                              ]}
+                            >
+                              {u.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                     <TouchableOpacity 
-                      style={[styles.badge, { backgroundColor: colors.primary, justifyContent: 'center', height: 44, borderRadius: 12, marginRight: 0 }]} 
+                      style={[
+                        styles.addCustomAlertBtn,
+                        { backgroundColor: colors.primary }
+                      ]} 
                       onPress={addCustomAlert}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Adicionar lembrete personalizado"
                     >
-                      <Text style={{ color: getContrastTextColor(colors.primary), fontWeight: '800', fontSize: 16 }}>+</Text>
+                      <Text style={[styles.addCustomAlertBtnText, { color: getContrastTextColor(colors.primary) }]}>+</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -720,6 +756,7 @@ const getStyles = (colors: ReturnType<typeof getThemeColors>) =>
     dragHandle: { width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(150,150,150,0.4)', alignSelf: 'center', marginBottom: 16 },
     title: { fontSize: 20, fontWeight: '800', marginBottom: 18, letterSpacing: -0.5, color: colors.text },
     input: {
+      minHeight: 48,
       height: 48,
       borderWidth: 1.5,
       borderRadius: 12,
@@ -727,7 +764,7 @@ const getStyles = (colors: ReturnType<typeof getThemeColors>) =>
       marginBottom: 14,
       fontSize: 15,
       color: colors.text,
-      backgroundColor: colors.background,
+      backgroundColor: colors.surfaceSubtle,
       borderColor: colors.border
     },
     label: { fontSize: 14, marginBottom: 8, fontWeight: '700', marginTop: 8, color: colors.text },
@@ -871,6 +908,30 @@ const getStyles = (colors: ReturnType<typeof getThemeColors>) =>
     quickDayChipText: {
       fontSize: 11,
       fontWeight: '700',
+    },
+    customUnitChip: {
+      flex: 1,
+      height: 44,
+      borderRadius: 12,
+      borderWidth: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    customUnitChipText: {
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    addCustomAlertBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    addCustomAlertBtnText: {
+      fontSize: 20,
+      fontWeight: '800',
+      lineHeight: 22,
     },
     switchRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
     actionBtn: { flex: 1, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' }

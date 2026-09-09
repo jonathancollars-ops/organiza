@@ -31,6 +31,8 @@ export interface SettingsModalProps {
   onUpdateSettings: (settings: AppSettings) => void;
   semesters?: Semester[];
   onUpdateSemesters?: (semesters: Semester[]) => void;
+  aiConfig?: AIConfig;
+  onUpdateAIConfig?: (config: AIConfig) => Promise<boolean>;
   onOpenGuide?: () => void;
   onRestoreSuccess?: () => void;
   onCheckUpdates?: () => void;
@@ -46,6 +48,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   semesters = [],
   onUpdateSemesters,
+  aiConfig: externalAIConfig,
+  onUpdateAIConfig,
   onOpenGuide,
   onRestoreSuccess,
   onCheckUpdates,
@@ -56,6 +60,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'semestres' | 'ia' | 'backup'>('geral');
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isKeyVisible, setIsKeyVisible] = useState(false);
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
     mode: 'cloud',
@@ -90,9 +95,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setHapticsEnabled(settings?.hapticsEnabled ?? true);
       setExamWeekMode(settings?.examWeekMode ?? false);
       setBackupJsonText('');
+      if (externalAIConfig && typeof externalAIConfig.apiKey === 'string') {
+        setAiConfig(externalAIConfig);
+      }
       loadAIData();
     }
-  }, [visible, settings]);
+  }, [visible, settings, externalAIConfig]);
 
   const loadAIData = async () => {
     try {
@@ -650,27 +658,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </Text>
 
                 <Text style={[styles.label, { color: colors.text, marginBottom: 6 }]}>Chave de API (Gemini):</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: colors.surfaceSubtle, color: colors.text, borderColor: colors.border, padding: 12, fontSize: 13 }]}
-                  value={aiConfig.apiKey}
-                  onChangeText={(val) => setAiConfig({ ...aiConfig, apiKey: val.trim() })}
-                  placeholder="Cole sua API Key do Google Gemini (ex: AIzaSy...)"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', position: 'relative' }}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      {
+                        flex: 1,
+                        backgroundColor: colors.surfaceSubtle,
+                        color: colors.text,
+                        borderColor: colors.border,
+                        padding: 12,
+                        paddingRight: 44,
+                        fontSize: 13
+                      }
+                    ]}
+                    value={aiConfig.apiKey}
+                    onChangeText={(val) => setAiConfig({ ...aiConfig, apiKey: val.trim() })}
+                    placeholder="Cole sua API Key do Google Gemini (ex: AIzaSy...)"
+                    placeholderTextColor={colors.textSecondary}
+                    secureTextEntry={!isKeyVisible}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    style={{
+                      position: 'absolute',
+                      right: 4,
+                      top: 0,
+                      bottom: 0,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      paddingHorizontal: 10
+                    }}
+                    onPress={() => setIsKeyVisible(!isKeyVisible)}
+                    activeOpacity={0.7}
+                    accessibilityLabel={isKeyVisible ? 'Ocultar chave' : 'Mostrar chave'}
+                  >
+                    <Text style={{ fontSize: 16 }}>{isKeyVisible ? '🙈' : '👁️'}</Text>
+                  </TouchableOpacity>
+                </View>
 
                 <TouchableOpacity
                   style={{ backgroundColor: colors.primary, padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 }}
                   onPress={async () => {
-                    await StorageService.saveAIConfig({
+                    const targetConfig: AIConfig = {
                       ...aiConfig,
                       provider: 'gemini',
                       model: 'gemini-1.5-flash'
-                    });
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    Alert.alert('Chave Salva!', 'A chave da API Gemini foi salva com segurança.');
+                    };
+                    let success = false;
+                    if (typeof onUpdateAIConfig === 'function') {
+                      success = await onUpdateAIConfig(targetConfig);
+                    } else {
+                      success = await StorageService.saveAIConfig(targetConfig);
+                    }
+                    if (success) {
+                      setAiConfig(targetConfig);
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      Alert.alert('Chave Salva!', 'A chave da API Gemini foi salva com segurança.');
+                    } else {
+                      Alert.alert('Erro', 'Não foi possível salvar a chave de API.');
+                    }
                   }}
                   activeOpacity={0.8}
                 >

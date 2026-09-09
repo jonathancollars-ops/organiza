@@ -30,25 +30,29 @@ export const GradeSimulatorModal: React.FC<Props> = ({
   );
   const [targetPassGrade, setTargetPassGrade] = useState<string>('7.0');
 
+  // Se selectedSubjectId não pertencer mais à lista atual de subjects, redefina imediatamente para subjects[0]?.id || ''
   React.useEffect(() => {
     if (visible) {
-      if (initialSubjectId) {
+      if (initialSubjectId && subjects.some(s => s.id === initialSubjectId)) {
         setSelectedSubjectId(initialSubjectId);
-      } else if (subjects.length > 0 && !selectedSubjectId) {
-        setSelectedSubjectId(subjects[0].id);
+      } else if (!subjects.some(s => s.id === selectedSubjectId)) {
+        setSelectedSubjectId(subjects[0]?.id || '');
       }
     }
-  }, [visible, initialSubjectId, subjects]);
+  }, [visible, initialSubjectId, subjects, selectedSubjectId]);
 
-  const currentSubject = subjects.find(s => s.id === selectedSubjectId);
+  const effectiveSubjectId = subjects.some(s => s.id === selectedSubjectId)
+    ? selectedSubjectId
+    : (subjects[0]?.id || '');
+  const currentSubject = subjects.find(s => s.id === effectiveSubjectId);
 
   const defaultPass = currentSubject?.passGrade ?? 7.0;
   const passGradeNum = SecuritySanitizer.sanitizeNumber(targetPassGrade, 0.0, 10.0, defaultPass);
 
   const gradeInfo = useMemo(() => {
-    if (!currentSubject) return null;
+    if (!currentSubject || subjects.length === 0) return null;
     return calculateFinalGrade(currentSubject.gradeGroups || [], passGradeNum);
-  }, [currentSubject, passGradeNum]);
+  }, [currentSubject, passGradeNum, subjects.length]);
 
   const handleSelectSubject = (s: Subject) => {
     Haptics.selectionAsync();
@@ -68,37 +72,51 @@ export const GradeSimulatorModal: React.FC<Props> = ({
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Subject Selector */}
-          <Text style={styles.label}>Selecione a Matéria:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 18 }}>
-            {subjects.map(s => {
-              const isSelected = s.id === selectedSubjectId;
-              const subColor = s.color || colors.primary;
-              return (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[
-                    styles.subjectChip,
-                    {
-                      backgroundColor: isSelected ? subColor : colors.surface,
-                      borderColor: isSelected ? subColor : colors.border,
-                      borderWidth: 1
-                    }
-                  ]}
-                  onPress={() => handleSelectSubject(s)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={{
-                    color: isSelected ? getContrastTextColor(subColor) : colors.text,
-                    fontWeight: isSelected ? '800' : '600',
-                    fontSize: 13
-                  }}>
-                    {s.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          {subjects.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
+                <Text style={{ fontSize: 32 }}>📚</Text>
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                Nenhuma disciplina disponível
+              </Text>
+              <Text style={[styles.emptyDescription, { color: colors.textSecondary }]}>
+                Cadastre matérias na aba de Notas ou Agenda para simular notas de corte, metas de aprovação e avaliações finais.
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* Subject Selector */}
+              <Text style={styles.label}>Selecione a Matéria:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 18 }}>
+                {subjects.map(s => {
+                  const isSelected = s.id === effectiveSubjectId;
+                  const subColor = s.color || colors.primary;
+                  return (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[
+                        styles.subjectChip,
+                        {
+                          backgroundColor: isSelected ? subColor : colors.surface,
+                          borderColor: isSelected ? subColor : colors.border,
+                          borderWidth: 1
+                        }
+                      ]}
+                      onPress={() => handleSelectSubject(s)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        color: isSelected ? getContrastTextColor(subColor) : colors.text,
+                        fontWeight: isSelected ? '800' : '600',
+                        fontSize: 13
+                      }}>
+                        {s.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
 
           {/* Target Grade Input */}
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -241,6 +259,8 @@ export const GradeSimulatorModal: React.FC<Props> = ({
               </View>
             </>
           )}
+        </>
+      )}
 
           <View style={{ height: 40 }} />
         </ScrollView>
@@ -249,7 +269,7 @@ export const GradeSimulatorModal: React.FC<Props> = ({
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ReturnType<typeof getThemeColors>) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -335,6 +355,31 @@ const getStyles = (colors: any) => StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     fontWeight: '800',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptyDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
   }
 });
 

@@ -411,9 +411,18 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
               </View>
 
               {highlightInfo.featuredSubject && (
-                <View style={[styles.subjectBadge, { backgroundColor: (highlightInfo.featuredSubject.color || colors.primary) + '22' }]}>
-                  <Text style={[styles.subjectBadgeText, { color: highlightInfo.featuredSubject.color || colors.primary }]} numberOfLines={1}>
-                    📚 {highlightInfo.featuredSubject.name}
+                <View style={[styles.subjectBadge, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border, borderWidth: 1 }]}>
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: highlightInfo.featuredSubject.color || colors.primary,
+                      marginRight: 6
+                    }}
+                  />
+                  <Text style={[styles.subjectBadgeText, { color: colors.text }]} numberOfLines={1}>
+                    {highlightInfo.featuredSubject.name}
                   </Text>
                 </View>
               )}
@@ -749,15 +758,51 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                         ⏰ {event.startTime} - {event.endTime}
                       </Text>
 
-                      <View style={[styles.miniCategoryBadge, { backgroundColor: categoryColor + '20' }]}>
-                        <Text style={[styles.miniCategoryText, { color: categoryColor }]}>
+                      <View
+                        style={[
+                          styles.miniCategoryBadge,
+                          {
+                            backgroundColor: colors.surfaceSubtle,
+                            borderColor: colors.border,
+                            borderWidth: 1
+                          }
+                        ]}
+                      >
+                        <View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: categoryColor,
+                            marginRight: 4
+                          }}
+                        />
+                        <Text style={[styles.miniCategoryText, { color: colors.textSecondary }]}>
                           {event.category}
                         </Text>
                       </View>
 
                       {subject && (
-                        <View style={[styles.miniSubjectBadge, { backgroundColor: (subject.color || colors.primary) + '20' }]}>
-                          <Text style={[styles.miniSubjectText, { color: subject.color || colors.primary }]} numberOfLines={1}>
+                        <View
+                          style={[
+                            styles.miniSubjectBadge,
+                            {
+                              backgroundColor: colors.surfaceSubtle,
+                              borderColor: colors.border,
+                              borderWidth: 1
+                            }
+                          ]}
+                        >
+                          <View
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: subject.color || colors.primary,
+                              marginRight: 4
+                            }}
+                          />
+                          <Text style={[styles.miniSubjectText, { color: colors.textSecondary }]} numberOfLines={1}>
                             {subject.name}
                           </Text>
                         </View>
@@ -830,9 +875,27 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                       </Text>
 
                       {task.priority && (
-                        <View style={[styles.miniCategoryBadge, { backgroundColor: priorityColor + '20' }]}>
-                          <Text style={[styles.miniCategoryText, { color: priorityColor }]}>
-                            {task.priority === 'high' ? '🔴 Alta' : task.priority === 'medium' ? '🟡 Média' : '🟢 Baixa'}
+                        <View
+                          style={[
+                            styles.miniCategoryBadge,
+                            {
+                              backgroundColor: colors.surfaceSubtle,
+                              borderColor: colors.border,
+                              borderWidth: 1
+                            }
+                          ]}
+                        >
+                          <View
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: priorityColor,
+                              marginRight: 4
+                            }}
+                          />
+                          <Text style={[styles.miniCategoryText, { color: colors.textSecondary }]}>
+                            {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
                           </Text>
                         </View>
                       )}
@@ -844,8 +907,26 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                       </Text>
 
                       {subject && (
-                        <View style={[styles.miniSubjectBadge, { backgroundColor: (subject.color || colors.primary) + '20' }]}>
-                          <Text style={[styles.miniSubjectText, { color: subject.color || colors.primary }]} numberOfLines={1}>
+                        <View
+                          style={[
+                            styles.miniSubjectBadge,
+                            {
+                              backgroundColor: colors.surfaceSubtle,
+                              borderColor: colors.border,
+                              borderWidth: 1
+                            }
+                          ]}
+                        >
+                          <View
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: subject.color || colors.primary,
+                              marginRight: 4
+                            }}
+                          />
+                          <Text style={[styles.miniSubjectText, { color: colors.textSecondary }]} numberOfLines={1}>
                             {subject.name}
                           </Text>
                         </View>
@@ -1161,6 +1242,8 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   subjectBadgeText: {
     fontSize: 12,
@@ -1345,6 +1428,8 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   miniCategoryText: {
     fontSize: 10,
@@ -1355,6 +1440,8 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 6,
     maxWidth: 120,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   miniSubjectText: {
     fontSize: 10,
@@ -1431,21 +1518,25 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     left: 55,
     right: 10,
     borderRadius: 10,
-    padding: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     zIndex: 5,
+    overflow: 'hidden',
   },
   timelineEventTitle: {
     fontSize: 13,
     fontWeight: '800',
+    lineHeight: 16,
   },
   timelineEventTime: {
     fontSize: 10,
     fontWeight: '600',
-    opacity: 0.9,
+    opacity: 0.95,
     marginTop: 2,
+    lineHeight: 13,
   },
   fab: {
     position: 'absolute',

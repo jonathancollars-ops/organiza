@@ -48,6 +48,128 @@ try {
 }
 
 const inMemorySecureVault: Record<string, string> = {};
+const SECURE_VAULT_PREFIX = '@organiza_secure_vault_';
+
+/**
+ * Resets the in-memory cache for secure secrets.
+ * Exported strictly for testing cold-start simulation.
+ */
+export function _resetInMemorySecureVaultForTesting(): void {
+  Object.keys(inMemorySecureVault).forEach(k => delete inMemorySecureVault[k]);
+}
+
+/**
+ * Universal safe Base64 encoder for strings (handles UTF-8).
+ * Works across Node, React Native (Hermes/JSC), and Browser environments.
+ */
+function encodeBase64(input: string): string {
+  if (!input) return '';
+  try {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(input, 'utf-8').toString('base64');
+    }
+  } catch {
+    // Buffer unavailable or failed, fallback
+  }
+
+  try {
+    if (typeof btoa === 'function') {
+      return btoa(unescape(encodeURIComponent(input)));
+    }
+  } catch {
+    // btoa failed, fallback
+  }
+
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const utf8Bytes: number[] = [];
+  for (let i = 0; i < input.length; i++) {
+    let charcode = input.charCodeAt(i);
+    if (charcode < 0x80) {
+      utf8Bytes.push(charcode);
+    } else if (charcode < 0x800) {
+      utf8Bytes.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
+    } else if (charcode < 0xd800 || charcode >= 0xe000) {
+      utf8Bytes.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+    } else {
+      i++;
+      charcode = 0x10000 + (((charcode & 0x3ff) << 10) | (input.charCodeAt(i) & 0x3ff));
+      utf8Bytes.push(0xf0 | (charcode >> 18), 0x80 | ((charcode >> 12) & 0x3f), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+    }
+  }
+  let output = '';
+  let i = 0;
+  while (i < utf8Bytes.length) {
+    const b1 = utf8Bytes[i++];
+    const b2 = i < utf8Bytes.length ? utf8Bytes[i++] : NaN;
+    const b3 = i < utf8Bytes.length ? utf8Bytes[i++] : NaN;
+    const e1 = b1 >> 2;
+    const e2 = ((b1 & 3) << 4) | (b2 >> 4);
+    let e3 = ((b2 & 15) << 2) | (b3 >> 6);
+    let e4 = b3 & 63;
+    if (isNaN(b2)) {
+      e3 = e4 = 64;
+    } else if (isNaN(b3)) {
+      e4 = 64;
+    }
+    output += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
+  }
+  return output;
+}
+
+/**
+ * Universal safe Base64 decoder for strings (handles UTF-8).
+ */
+function decodeBase64(input: string): string {
+  if (!input) return '';
+  try {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(input, 'base64').toString('utf-8');
+    }
+  } catch {
+    // Buffer unavailable or failed, fallback
+  }
+
+  try {
+    if (typeof atob === 'function') {
+      return decodeURIComponent(escape(atob(input)));
+    }
+  } catch {
+    // atob failed, fallback
+  }
+
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const str = input.replace(/[^A-Za-z0-9+/=]/g, '');
+  const bytes: number[] = [];
+  let i = 0;
+  while (i < str.length) {
+    const enc1 = chars.indexOf(str.charAt(i++));
+    const enc2 = chars.indexOf(str.charAt(i++));
+    const enc3 = chars.indexOf(str.charAt(i++));
+    const enc4 = chars.indexOf(str.charAt(i++));
+    const chr1 = (enc1 << 2) | (enc2 >> 4);
+    const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+    const chr3 = ((enc3 & 3) << 6) | enc4;
+    bytes.push(chr1);
+    if (enc3 !== 64 && enc3 !== -1) bytes.push(chr2);
+    if (enc4 !== 64 && enc4 !== -1) bytes.push(chr3);
+  }
+  let out = '';
+  let j = 0;
+  while (j < bytes.length) {
+    const c = bytes[j++];
+    if (c < 128) {
+      out += String.fromCharCode(c);
+    } else if (c > 191 && c < 224) {
+      const c2 = bytes[j++];
+      out += String.fromCharCode(((c & 31) << 6) | (c2 & 63));
+    } else {
+      const c2 = bytes[j++];
+      const c3 = bytes[j++];
+      out += String.fromCharCode(((c & 15) << 12) | ((c2 & 63) << 6) | (c3 & 63));
+    }
+  }
+  return out;
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
@@ -806,46 +928,91 @@ export const StorageService = {
         await this.deleteSecureSecret(key);
         return true;
       }
-      inMemorySecureVault[key] = value;
+      const trimmed = value.trim();
+      inMemorySecureVault[key] = trimmed;
+
       if (secureStoreModule && typeof secureStoreModule.setItemAsync === 'function') {
-        await secureStoreModule.setItemAsync(key, value, {
-          keychainAccessible: secureStoreModule.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-        });
+        try {
+          await secureStoreModule.setItemAsync(key, trimmed, {
+            keychainAccessible: secureStoreModule.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+          });
+        } catch (nativeErr: unknown) {
+          console.warn('[StorageService] Native SecureStore setItem failed, falling back to secure vault', nativeErr);
+        }
       }
+
+      // Always maintain persistent obfuscated fallback in AsyncStorage for Expo Go / mock / reboot recovery
+      try {
+        const obfuscated = encodeBase64(trimmed);
+        await AsyncStorage.setItem(`${SECURE_VAULT_PREFIX}${key}`, obfuscated);
+      } catch (vaultErr: unknown) {
+        console.warn('[StorageService] Failed to persist secure secret fallback to AsyncStorage', vaultErr);
+      }
+
       return true;
     } catch (e: unknown) {
-      inMemorySecureVault[key] = value;
-      return true;
+      console.error('[StorageService] Error saving secure secret', e);
+      return false;
     }
   },
 
   async getSecureSecret(key: string): Promise<string | null> {
     if (!key) return null;
+
+    // 1. Try native SecureStore if available
     try {
       if (secureStoreModule && typeof secureStoreModule.getItemAsync === 'function') {
         const val = await secureStoreModule.getItemAsync(key);
-        if (val !== null && val !== undefined) {
+        if (typeof val === 'string' && val.length > 0) {
           inMemorySecureVault[key] = val;
           return val;
         }
       }
     } catch (e: unknown) {
-      // Fallback to in-memory vault
+      // Native SecureStore failed or not supported, fallback below
     }
-    return inMemorySecureVault[key] ?? null;
+
+    // 2. Check in-memory L1 cache
+    if (typeof inMemorySecureVault[key] === 'string' && inMemorySecureVault[key].length > 0) {
+      return inMemorySecureVault[key];
+    }
+
+    // 3. Fallback to obfuscated persistent vault in AsyncStorage
+    try {
+      const stored = await AsyncStorage.getItem(`${SECURE_VAULT_PREFIX}${key}`);
+      if (typeof stored === 'string' && stored.length > 0) {
+        const decoded = decodeBase64(stored);
+        if (decoded && decoded.trim().length > 0) {
+          inMemorySecureVault[key] = decoded.trim();
+          return decoded.trim();
+        }
+      }
+    } catch (vaultErr: unknown) {
+      console.warn('[StorageService] Failed to read secure secret fallback from AsyncStorage', vaultErr);
+    }
+
+    return null;
   },
 
   async deleteSecureSecret(key: string): Promise<boolean> {
     if (!key) return false;
     delete inMemorySecureVault[key];
+    let nativeSuccess = true;
     try {
       if (secureStoreModule && typeof secureStoreModule.deleteItemAsync === 'function') {
         await secureStoreModule.deleteItemAsync(key);
       }
-      return true;
     } catch (e: unknown) {
-      return false;
+      nativeSuccess = false;
     }
+
+    try {
+      await AsyncStorage.removeItem(`${SECURE_VAULT_PREFIX}${key}`);
+    } catch (vaultErr: unknown) {
+      // Ignored safely
+    }
+
+    return nativeSuccess;
   },
 
   async getAIConfig(): Promise<AIConfig> {
@@ -1048,6 +1215,15 @@ export const StorageService = {
   async clearAllData(): Promise<void> {
     await this.deleteSecureSecret(SECURE_AI_API_KEY);
     Object.keys(inMemorySecureVault).forEach(k => delete inMemorySecureVault[k]);
+    try {
+      const allKeys = await AsyncStorage.getAllKeys();
+      const vaultKeys = allKeys.filter(k => k.startsWith(SECURE_VAULT_PREFIX));
+      if (vaultKeys.length > 0) {
+        await AsyncStorage.multiRemove(vaultKeys);
+      }
+    } catch {
+      // Ignored safely
+    }
     await AsyncStorage.multiRemove([
       EVENTS_KEY,
       THEME_KEY,

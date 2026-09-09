@@ -8,6 +8,7 @@ import { useApp } from '../contexts/AppContext';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
 import { AppUpdateService } from '../services/AppUpdateService';
+import { NotificationService } from '../services/notifications';
 import { AppUpdateInfo } from '../types';
 
 // Screens
@@ -28,7 +29,7 @@ import { OnboardingModal } from '../components/OnboardingModal';
 const Tab = createBottomTabNavigator();
 
 export function AppNavigator() {
-  const { theme, settings, setSettings, gamification, isInitializing, handleThemeToggle, subjects, studySessions, attendances, streak, semesters, setSemesters, refreshData } = useApp();
+  const { theme, settings, setSettings, gamification, isInitializing, handleThemeToggle, events, subjects, studySessions, attendances, streak, semesters, setSemesters, refreshData, aiConfig, updateAIConfig } = useApp();
   const colors = getThemeColors(theme);
 
   // Global Modals State
@@ -73,6 +74,19 @@ export function AppNavigator() {
     };
     check();
   }, []);
+
+  useEffect(() => {
+    const reconcileNotifications = async () => {
+      try {
+        if (!isInitializing) {
+          await NotificationService.reconcileAndPurgeOrphanNotifications(events, subjects);
+        }
+      } catch (notifErr) {
+        console.warn('Erro ao reconciliar notificações na inicialização do AppNavigator:', notifErr);
+      }
+    };
+    reconcileNotifications();
+  }, [isInitializing]);
   
   if (isInitializing) {
     return (
@@ -205,6 +219,8 @@ export function AppNavigator() {
         onUpdateSettings={setSettings}
         semesters={semesters}
         onUpdateSemesters={setSemesters}
+        aiConfig={aiConfig}
+        onUpdateAIConfig={updateAIConfig}
         onOpenGuide={() => setOnboardingVisible(true)}
         onRestoreSuccess={() => refreshData()}
         onOpenUpdateModal={(info) => {

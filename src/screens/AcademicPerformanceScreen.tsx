@@ -20,7 +20,7 @@ import { getThemeColors, getContrastTextColor } from '../theme';
 import { Subject, CourseProgressData, ThemeType } from '../types';
 import { CourseCRService, DEFAULT_CURRICULUM_TEMPLATE } from '../services/CourseCRService';
 import { SecuritySanitizer } from '../services/SecuritySanitizer';
-import { AIParsingService } from '../services/AIParsingService';
+import { AIParsingService, resolveDocumentMimeType } from '../services/AIParsingService';
 import { StorageService } from '../services/storage';
 
 interface AcademicPerformanceScreenProps {
@@ -175,7 +175,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
   const handleDocumentUpload = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*'],
+        type: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
         copyToCacheDirectory: true
       });
 
@@ -191,8 +191,10 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
       }
 
       setIsProcessingDocument(true);
-      const fileUri = result.assets[0].uri;
-      const mimeType = result.assets[0].mimeType || 'application/pdf';
+      const asset = result.assets[0];
+      const fileUri = asset.uri;
+      const fileName = asset.name || fileUri;
+      const mimeType = resolveDocumentMimeType(fileName, asset.mimeType);
 
       const base64Data = await FileSystem.readAsStringAsync(fileUri, {
         encoding: 'base64' as any
@@ -596,6 +598,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                   Haptics.selectionAsync();
                   setImportMode('transcript');
                 }}
+                disabled={isProcessingDocument}
               >
                 <Text style={[styles.modalTabBtnText, importMode === 'transcript' && styles.modalTabBtnTextActive]}>
                   📄 Histórico / CR
@@ -608,6 +611,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                   Haptics.selectionAsync();
                   setImportMode('curriculum');
                 }}
+                disabled={isProcessingDocument}
               >
                 <Text style={[styles.modalTabBtnText, importMode === 'curriculum' && styles.modalTabBtnTextActive]}>
                   🗺️ Grade / Fluxograma

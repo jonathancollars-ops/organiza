@@ -16,9 +16,9 @@ export const DEFAULT_CURRICULUM_TEMPLATE: CourseProgressData = {
   targetCR: 8.5,
   baselineCR: 8.0,
   totalRequiredCredits: 200,
-  completedCredits: 80,
+  completedCredits: 40,
   totalRequiredHours: 3200,
-  completedHours: 1280,
+  completedHours: 600,
   semesters: [
     {
       semesterNumber: 1,
@@ -519,6 +519,21 @@ export class CourseCRService {
     const parsedSemesters: CourseSemester[] = [];
     let currentSemesterNumber = 1;
     let currentSubjects: CourseHistorySubject[] = [];
+    const existingMap = new Map<string, { isCompleted: boolean; grade?: number }>();
+    if (existingData && Array.isArray(existingData.semesters)) {
+      for (const sem of existingData.semesters) {
+        if (sem && Array.isArray(sem.subjects)) {
+          for (const sub of sem.subjects) {
+            if (sub && sub.name) {
+              existingMap.set(sub.name.toLowerCase().trim(), {
+                isCompleted: Boolean(sub.isCompleted),
+                grade: typeof sub.grade === 'number' ? sub.grade : undefined
+              });
+            }
+          }
+        }
+      }
+    }
 
     lines.forEach(line => {
       const semesterHeaderMatch = line.match(/(?:(\d+)[ºª°]?\s*(?:semestre|periodo|período|fase|modulo|módulo|etapa)|(?:semestre|periodo|período|fase|modulo|módulo|etapa)\s*(\d+))/i);
@@ -569,13 +584,25 @@ export class CourseCRService {
           }
         }
 
+        let existingStatus = existingMap.get(cleanName.toLowerCase().trim());
+        if (!existingStatus) {
+          for (const [key, val] of existingMap.entries()) {
+            if (this.isSubjectMatch(key, cleanName)) {
+              existingStatus = val;
+              break;
+            }
+          }
+        }
+        const finalCompleted = isApproved || (grade !== undefined && grade >= 5.0) || Boolean(existingStatus?.isCompleted);
+        const finalGrade = grade !== undefined ? grade : existingStatus?.grade;
+
         currentSubjects.push({
           id: generateId('flow'),
           name: cleanName,
           credits,
           hours: credits * 15,
-          isCompleted: isApproved || (grade !== undefined && grade >= 5.0),
-          grade
+          isCompleted: finalCompleted,
+          grade: finalGrade
         });
       }
     });
@@ -607,51 +634,199 @@ export class CourseCRService {
   }
 
   /**
-   * Aplica o resultado JSON da IA (histórico) na grade existente.
+   * Normaliza algarismos romanos ou arábicos no nome da matéria (ex: "I", "II", "1", "2")
    */
-  static applyAIParsedTranscript(aiResult: any, existingData?: CourseProgressData): CourseProgressData {
+  static extractRomanOrArabicNumber(str: string): string | null {
+    const match = str.match(/\b(i{1,3}|iv|v|vi{0,3}|ix|x|[1-9])\b/i);
+    if (!match) return null;
+    const val = match[1].toLowerCase();
+    const romanMap: Record<string, string> = {
+      'i': '1',
+      'ii': '2',
+      'iii': '3',
+      'iv': '4',
+      'v': '5',
+      'vi': '6',
+      'vii': '7',
+      'viii': '8',
+      'ix': '9',
+      'x': '10'
+    };
+    return romanMap[val] || val;
+  }
+
+  /**
+   * Determina com precisão se duas matérias correspondem à mesma disciplina.
+   * Evita falsos positivos onde disciplinas distintas compartilham apenas uma palavra genérica.
+   */
+  static isSubjectMatch(nameA: string, nameB: string, codeA?: string, codeB?: string): boolean {
+    if (!nameA || !nameB) return false;
+
+    // Normaliza acentuação e caixa
+    const normA = nameA.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const normB = nameB.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+    // 1. Igualdade exata
+    if (normA === normB) return true;
+
+    // 2. Correspondência por código
+    const cleanCodeA = codeA ? codeA.trim().toLowerCase() : undefined;
+    const cleanCodeB = codeB ? codeB.trim().toLowerCase() : undefined;
+    if (cleanCodeA && cleanCodeB && cleanCodeA === cleanCodeB) {
+      return true;
+    }
+    if (cleanCodeA && normB.includes(cleanCodeA)) {
+      return true;
+    }
+    if (cleanCodeB && normA.includes(cleanCodeB)) {
+      return true;
+    }
+
+    // 3. Verificação de numeração sequencial (I vs II, 1 vs 2, etc.)
+    const numA = this.extractRomanOrArabicNumber(normA);
+    const numB = this.extractRomanOrArabicNumber(normB);
+    if (numA && numB && numA !== numB) {
+      return false;
+    }
+
+    // 4. Correspondência de palavras significativas (> 3 letras)
+    const stopWords = new Set(['para', 'com', 'pelo', 'pela', 'sobre', 'entre', 'como', 'mais', 'menos']);
+    const wordsA = normA.split(/[^a-z0-9]+/).filter(w => w.length > 3 && !stopWords.has(w));
+    const wordsB = normB.split(/[^a-z0-9]+/).filter(w => w.length > 3 && !stopWords.has(w));
+
+    if (wordsA.length === 0 || wordsB.length === 0) return false;
+
+    // Palavras compartilhadas com suporte a prefixos (ex: banco/bancos, sistema/sistemas)
+    const sharedWords = wordsA.filter(wA =>
+      wordsB.some(wB => wA === wB || (wA.length >= 4 && wB.length >= 4 && (wA.startsWith(wB) || wB.startsWith(wA))))
+    );
+
+    // Se ambas têm 2 ou mais palavras significativas:
+    if (wordsA.length >= 2 && wordsB.length >= 2) {
+      const minWords = Math.min(wordsA.length, wordsB.length);
+      const required = Math.min(2, minWords);
+      return sharedWords.length >= required && (sharedWords.length / minWords) >= 0.5;
+    }
+
+    // Se uma das duas tem apenas 1 palavra significativa (ex: "Cálculo" vs "Cálculo I"):
+    if (wordsA.length === 1 || wordsB.length === 1) {
+      return sharedWords.length === 1 && numA === numB;
+    }
+
+    return false;
+  }
+
+  /**
+   * Aplica o resultado JSON da IA (histórico) na grade existente.
+   * Não descarta matérias aprovadas que não existam no template: inclui-as dinamicamente.
+   */
+  static applyAIParsedTranscript(
+    aiResult: { approvedSubjects?: Array<{ name: string; code?: string; grade?: number; credits?: number; hours?: number; semesterNumber?: number; semester?: number | string }>; baselineCR?: number },
+    existingData?: CourseProgressData
+  ): CourseProgressData {
     const base = (existingData && Array.isArray(existingData.semesters))
       ? existingData
       : DEFAULT_CURRICULUM_TEMPLATE;
 
-    const updatedSemesters = base.semesters.map(sem => ({
+    const updatedSemesters: CourseSemester[] = base.semesters.map(sem => ({
       ...sem,
       subjects: [...(sem.subjects || [])]
     }));
 
-    const approvedSubjects: any[] = Array.isArray(aiResult.approvedSubjects) ? aiResult.approvedSubjects : [];
-    const baselineCR = typeof aiResult.baselineCR === 'number' ? aiResult.baselineCR : base.baselineCR;
+    const approvedSubjects = Array.isArray(aiResult?.approvedSubjects) ? aiResult.approvedSubjects : [];
+    const baselineCR = (typeof aiResult?.baselineCR === 'number' && !isNaN(aiResult.baselineCR))
+      ? aiResult.baselineCR
+      : base.baselineCR;
+
+    const unmatchedApproved: Array<{ name: string; code?: string; grade?: number; credits?: number; hours?: number; semesterNumber?: number; semester?: number | string }> = [];
 
     approvedSubjects.forEach(approvedSub => {
-      if (!approvedSub.name) return;
+      if (!approvedSub || typeof approvedSub.name !== 'string' || approvedSub.name.trim() === '') return;
       
-      const normalizedApprovedName = approvedSub.name.toLowerCase().trim();
-      const approvedWords = normalizedApprovedName.split(' ').filter((w: string) => w.length > 3);
+      let foundMatch = false;
 
-      updatedSemesters.forEach(sem => {
-        sem.subjects.forEach(sub => {
-          const normalizedSubName = sub.name.toLowerCase().trim();
-          const subWords = normalizedSubName.split(' ').filter(w => w.length > 3);
-          
-          let matchCount = 0;
-          for (const w of approvedWords) {
-            if (normalizedSubName.includes(w)) matchCount++;
-          }
-          for (const w of subWords) {
-            if (normalizedApprovedName.includes(w)) matchCount++;
-          }
-          
-          const requiredMatches = Math.min(2, Math.max(subWords.length, approvedWords.length));
-          
-          if (matchCount >= requiredMatches || normalizedApprovedName === normalizedSubName || (sub.code && normalizedApprovedName.includes(sub.code.toLowerCase()))) {
+      for (const sem of updatedSemesters) {
+        for (const sub of sem.subjects) {
+          if (this.isSubjectMatch(sub.name, approvedSub.name, sub.code, approvedSub.code)) {
             sub.isCompleted = true;
-            if (typeof approvedSub.grade === 'number') {
+            if (typeof approvedSub.grade === 'number' && !isNaN(approvedSub.grade)) {
               sub.grade = approvedSub.grade;
             }
+            foundMatch = true;
+            break;
           }
-        });
-      });
+        }
+        if (foundMatch) break;
+      }
+
+      if (!foundMatch) {
+        unmatchedApproved.push(approvedSub);
+      }
     });
+
+    // Inclusão dinâmica de matérias aprovadas fora do template padrão (eletivas/optativas/outro curso)
+    if (unmatchedApproved.length > 0) {
+      unmatchedApproved.forEach(unmatchedSub => {
+        const credits = (typeof unmatchedSub.credits === 'number' && unmatchedSub.credits > 0)
+          ? unmatchedSub.credits
+          : 4;
+        const hours = (typeof unmatchedSub.hours === 'number' && unmatchedSub.hours > 0)
+          ? unmatchedSub.hours
+          : credits * 15;
+        const grade = (typeof unmatchedSub.grade === 'number' && !isNaN(unmatchedSub.grade))
+          ? unmatchedSub.grade
+          : undefined;
+
+        const newSub: CourseHistorySubject = {
+          id: generateId('flow'),
+          name: unmatchedSub.name.trim(),
+          code: unmatchedSub.code ? String(unmatchedSub.code).trim() : undefined,
+          credits,
+          hours,
+          isCompleted: true,
+          grade
+        };
+
+        // Identifica se um semestre foi indicado pela IA
+        let targetSemNumber: number | undefined = undefined;
+        if (typeof unmatchedSub.semesterNumber === 'number' && unmatchedSub.semesterNumber > 0) {
+          targetSemNumber = unmatchedSub.semesterNumber;
+        } else if (typeof unmatchedSub.semester === 'number' && unmatchedSub.semester > 0) {
+          targetSemNumber = unmatchedSub.semester;
+        } else if (typeof unmatchedSub.semester === 'string') {
+          const m = unmatchedSub.semester.match(/(\d+)/);
+          if (m) targetSemNumber = parseInt(m[1], 10);
+        }
+
+        if (targetSemNumber) {
+          const targetSem = updatedSemesters.find(s => s.semesterNumber === targetSemNumber);
+          if (targetSem) {
+            targetSem.subjects.push(newSub);
+            return;
+          }
+        }
+
+        // Semestre de extensão / disciplinas concluídas / eletivas
+        let electiveSem = updatedSemesters.find(s => 
+          s.title.toLowerCase().includes('concluídas') ||
+          s.title.toLowerCase().includes('concluidas') ||
+          s.title.toLowerCase().includes('eletivas') ||
+          s.title.toLowerCase().includes('optativas')
+        );
+
+        if (!electiveSem) {
+          const maxNum = updatedSemesters.reduce((max, s) => Math.max(max, s.semesterNumber || 0), 0);
+          electiveSem = {
+            semesterNumber: maxNum + 1,
+            title: 'Disciplinas Concluídas / Eletivas',
+            subjects: []
+          };
+          updatedSemesters.push(electiveSem);
+        }
+
+        electiveSem.subjects.push(newSub);
+      });
+    }
 
     const progress = this.calculateDegreeProgress({ ...base, semesters: updatedSemesters });
     return {
@@ -665,26 +840,72 @@ export class CourseCRService {
 
   /**
    * Aplica o resultado JSON da IA (fluxograma) como uma nova matriz.
+   * Preserva o progresso do aluno (isCompleted e grade) de disciplinas já cursadas na matriz anterior.
    */
   static applyAIParsedCurriculum(aiResult: any, existingData?: CourseProgressData): CourseProgressData {
     const base = (existingData && Array.isArray(existingData.semesters))
       ? existingData
       : DEFAULT_CURRICULUM_TEMPLATE;
 
-    const parsedSemesters = Array.isArray(aiResult.semesters) ? aiResult.semesters : [];
+    const parsedSemesters = Array.isArray(aiResult?.semesters) ? aiResult.semesters : [];
     if (parsedSemesters.length === 0) return base;
+
+    // Coleta o histórico de disciplinas já cursadas na matriz anterior para preservar isCompleted e nota
+    const existingMap = new Map<string, { isCompleted: boolean; grade?: number }>();
+    if (existingData && Array.isArray(existingData.semesters)) {
+      for (const sem of existingData.semesters) {
+        if (sem && Array.isArray(sem.subjects)) {
+          for (const sub of sem.subjects) {
+            if (sub && sub.name) {
+              const norm = sub.name.toLowerCase().trim();
+              existingMap.set(norm, {
+                isCompleted: Boolean(sub.isCompleted),
+                grade: typeof sub.grade === 'number' ? sub.grade : undefined
+              });
+              if (sub.code) {
+                existingMap.set(sub.code.toLowerCase().trim(), {
+                  isCompleted: Boolean(sub.isCompleted),
+                  grade: typeof sub.grade === 'number' ? sub.grade : undefined
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const findExistingStatus = (name: string, code?: string) => {
+      const norm = name.toLowerCase().trim();
+      if (existingMap.has(norm)) return existingMap.get(norm);
+      if (code && existingMap.has(code.toLowerCase().trim())) return existingMap.get(code.toLowerCase().trim());
+
+      for (const [key, val] of existingMap.entries()) {
+        if (this.isSubjectMatch(key, name, undefined, code)) {
+          return val;
+        }
+      }
+      return null;
+    };
 
     const mappedSemesters: CourseSemester[] = parsedSemesters.map((sem: any, idx: number) => {
       const num = sem.semesterNumber || idx + 1;
       const subjects = Array.isArray(sem.subjects) ? sem.subjects.map((sub: any) => {
-        const credits = typeof sub.credits === 'number' ? sub.credits : 4;
+        const name = sub?.name ? String(sub.name).trim() : 'Disciplina';
+        const code = sub?.code ? String(sub.code).trim() : undefined;
+        const credits = typeof sub?.credits === 'number' && sub.credits > 0 ? sub.credits : 4;
+        const existingStatus = findExistingStatus(name, code);
+
+        const isCompleted = Boolean(sub?.isCompleted) || Boolean(existingStatus?.isCompleted);
+        const grade = typeof sub?.grade === 'number' ? sub.grade : existingStatus?.grade;
+
         return {
           id: generateId('flow'),
-          name: sub.name || 'Disciplina',
+          name,
+          code,
           credits,
-          hours: sub.hours || credits * 15,
-          isCompleted: !!sub.isCompleted,
-          grade: sub.grade
+          hours: typeof sub?.hours === 'number' && sub.hours > 0 ? sub.hours : credits * 15,
+          isCompleted,
+          grade
         } as CourseHistorySubject;
       }) : [];
 

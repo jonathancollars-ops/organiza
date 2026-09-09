@@ -136,13 +136,13 @@ export function getContrastTextColor(hexOrHslOrRgb: string | undefined): string 
   }
 
   // Hex color handling (#RRGGBB, #RGB, #RRGGBBAA, #RGBA)
-  let hex = color.replace('#', '');
+  let hex = color.replace(/^#/, '');
   if (hex.length === 3 || hex.length === 4) {
     hex = hex.substring(0, 3).split('').map(c => c + c).join('');
   } else if (hex.length === 8) {
     hex = hex.substring(0, 6);
   }
-  if (hex.length === 6) {
+  if (hex.length === 6 && /^[0-9a-fA-F]{6}$/.test(hex)) {
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);

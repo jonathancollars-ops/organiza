@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { AppEvent } from '../types';
+import { AppEvent, Subject } from '../types';
 import { parseISO, subMinutes } from 'date-fns';
 
 Notifications.setNotificationHandler({
@@ -125,7 +125,11 @@ export const NotificationService = {
         const content = {
           title: `${categoryEmoji} ${event.title || 'Compromisso'}`,
           body: event.description ? `${timeNotice} • ${event.description}` : timeNotice,
-          data: { eventId: event.id },
+          data: {
+            eventId: event.id,
+            subjectId: event.subjectId || '',
+            category: event.category || '',
+          },
           sound: true,
           vibrate: [0, 250, 250, 250],
         };
@@ -192,6 +196,112 @@ export const NotificationService = {
       }
     } catch (e) {
       console.warn('Falha ao cancelar notificações', eventId, e);
+    }
+  },
+
+  async cancelSubjectNotifications(subjectId: string, eventIds?: string[]): Promise<void> {
+    if (!subjectId && (!eventIds || eventIds.length === 0)) return;
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      if (!Array.isArray(scheduled) || scheduled.length === 0) return;
+
+      const eventIdSet = new Set<string>(
+        Array.isArray(eventIds) ? eventIds.filter((id): id is string => typeof id === 'string' && id.length > 0) : []
+      );
+      const toCancel: string[] = [];
+
+      for (const notif of scheduled) {
+        const notifData = notif?.content?.data as { eventId?: string; subjectId?: string; category?: string } | undefined;
+        if (!notifData || typeof notifData !== 'object') continue;
+
+        const notifSubjectId = typeof notifData.subjectId === 'string' ? notifData.subjectId : '';
+        const notifEventId = typeof notifData.eventId === 'string' ? notifData.eventId : '';
+
+        const matchesSubject = Boolean(subjectId && notifSubjectId === subjectId);
+        const matchesEvent = Boolean(notifEventId && eventIdSet.has(notifEventId));
+
+        if (matchesSubject || matchesEvent) {
+          if (notif.identifier) {
+            toCancel.push(notif.identifier);
+          }
+        }
+      }
+
+      if (toCancel.length > 0) {
+        await Promise.all(toCancel.map(id => Notifications.cancelScheduledNotificationAsync(id)));
+      }
+    } catch (e) {
+      console.warn('Falha ao cancelar notificações da matéria em lote', subjectId, e);
+    }
+  },
+
+  async reconcileAndPurgeOrphanNotifications(
+    activeEvents: AppEvent[],
+    activeSubjects: Subject[]
+  ): Promise<{ purgedCount: number }> {
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      if (!Array.isArray(scheduled) || scheduled.length === 0) {
+        return { purgedCount: 0 };
+      }
+
+      const activeEventMap = new Map<string, AppEvent>();
+      if (Array.isArray(activeEvents)) {
+        for (const e of activeEvents) {
+          if (e && typeof e.id === 'string') {
+            activeEventMap.set(e.id, e);
+          }
+        }
+      }
+
+      const activeSubjectIdSet = new Set<string>();
+      if (Array.isArray(activeSubjects)) {
+        for (const s of activeSubjects) {
+          if (s && typeof s.id === 'string') {
+            activeSubjectIdSet.add(s.id);
+          }
+        }
+      }
+
+      const toCancel: string[] = [];
+
+      for (const notif of scheduled) {
+        const data = notif?.content?.data as { eventId?: string; subjectId?: string; category?: string } | undefined;
+        if (!data || typeof data !== 'object') continue;
+
+        const eventId = typeof data.eventId === 'string' && data.eventId.trim() !== '' ? data.eventId : undefined;
+        const subjectId = typeof data.subjectId === 'string' && data.subjectId.trim() !== '' ? data.subjectId : undefined;
+
+        let isOrphan = false;
+
+        // If notification is tied to an eventId, verify event exists and its subject (if any) is valid
+        if (eventId) {
+          const associatedEvent = activeEventMap.get(eventId);
+          if (!associatedEvent) {
+            isOrphan = true;
+          } else if (associatedEvent.subjectId && !activeSubjectIdSet.has(associatedEvent.subjectId)) {
+            isOrphan = true;
+          }
+        }
+
+        // If notification is tied to a subjectId directly, verify subject exists
+        if (subjectId && !activeSubjectIdSet.has(subjectId)) {
+          isOrphan = true;
+        }
+
+        if (isOrphan && notif.identifier) {
+          toCancel.push(notif.identifier);
+        }
+      }
+
+      if (toCancel.length > 0) {
+        await Promise.all(toCancel.map(id => Notifications.cancelScheduledNotificationAsync(id)));
+      }
+
+      return { purgedCount: toCancel.length };
+    } catch (e) {
+      console.warn('Falha ao reconciliar e purgar notificações órfãs:', e);
+      return { purgedCount: 0 };
     }
   }
 };

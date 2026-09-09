@@ -58,6 +58,7 @@ export interface AppContextData {
   deleteSubject: (subjectId: string) => Promise<void>;
   addOrUpdateSubject: (subject: Subject) => Promise<void>;
   addOrUpdateEvent: (event: AppEvent) => Promise<void>;
+  updateAIConfig: (config: AIConfig) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextData | undefined>(undefined);
@@ -103,7 +104,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         savedSemesters,
         savedSettings,
         savedGamification,
-        savedStreak
+        savedStreak,
+        savedAIConfig
       ] = await Promise.all([
         StorageService.getTheme().catch(() => 'dark' as ThemeType),
         StorageService.getEvents().catch(() => [] as AppEvent[]),
@@ -115,6 +117,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         StorageService.getSettings().catch(() => null),
         StorageService.getGamificationData().catch(() => null),
         StorageService.getStreak().catch(() => null),
+        StorageService.getAIConfig().catch(() => null),
       ]);
 
       // Sanitize array collections
@@ -170,6 +173,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
         : { currentStreak: 0, longestStreak: 0, lastStudyDate: '' };
 
+      // Sanitize AI config
+      const safeAIConfig: AIConfig = (savedAIConfig && typeof savedAIConfig === 'object')
+        ? {
+            provider: savedAIConfig.provider === 'openai' ? 'openai' : 'gemini',
+            mode: savedAIConfig.mode || 'gemini_cloud',
+            apiKey: typeof savedAIConfig.apiKey === 'string' ? savedAIConfig.apiKey : '',
+            model: typeof savedAIConfig.model === 'string' ? savedAIConfig.model : 'gemini-1.5-flash',
+            enableFallbackToCloud: savedAIConfig.enableFallbackToCloud !== false,
+            localModelPath: savedAIConfig.localModelPath
+          }
+        : { provider: 'gemini', mode: 'gemini_cloud', apiKey: '', model: 'gemini-1.5-flash', enableFallbackToCloud: true };
+
       setTheme(safeTheme);
       setEvents(safeEvents);
       setSubjects(safeSubjects);
@@ -180,6 +195,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setSettings(safeSettings);
       setGamification(safeGamification);
       setStreak(safeStreak);
+      setAiConfig(safeAIConfig);
     } catch (err) {
       console.error('Error loading app data in AppContext:', err);
     } finally {
@@ -239,20 +255,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteSubject = async (subjectId: string) => {
+    if (!subjectId || typeof subjectId !== 'string') return;
+
+    const targetSubject = subjects.find(s => s.id === subjectId);
+    const targetSubjectName = targetSubject?.name?.trim().toLowerCase();
+
+    // Identifica eventos vinculados diretamente à matéria ou eventos de prova órfãos cujo título referencia o nome da matéria excluída
+    const isSubjectEvent = (e: AppEvent): boolean => {
+      if (e.subjectId === subjectId) return true;
+      if (!e.subjectId || e.subjectId.trim() === '') {
+        if (targetSubjectName && targetSubjectName.length > 0) {
+          const titleLower = (e.title || '').toLowerCase();
+          const isExam = (
+            e.category === 'Provas/Trabalhos' ||
+            e.category?.toLowerCase().includes('prova') ||
+            titleLower.includes('prova') ||
+            typeof e.grade !== 'undefined' ||
+            typeof e.weight !== 'undefined'
+          );
+          if (isExam && titleLower.includes(targetSubjectName)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    const removedEvents = events.filter(isSubjectEvent);
+    const removedEventIds = removedEvents.map(e => e.id);
+    const updatedEvents = events.filter(e => !isSubjectEvent(e));
     const updatedSubjects = subjects.filter(s => s.id !== subjectId);
-    const removedEvents = events.filter(e => e.subjectId === subjectId);
-    const updatedEvents = events.filter(e => e.subjectId !== subjectId);
     const updatedAttendances = attendances.filter(a => a.subjectId !== subjectId);
+    const updatedTasks = tasks.filter(t => t.subjectId !== subjectId);
 
     setSubjects(updatedSubjects);
     setEvents(updatedEvents);
     setAttendances(updatedAttendances);
+    setTasks(updatedTasks);
 
     await Promise.all([
       StorageService.saveSubjects(updatedSubjects),
       StorageService.saveEvents(updatedEvents),
       StorageService.saveAttendances(updatedAttendances),
-      ...removedEvents.map(e => NotificationService.cancelEventNotifications(e.id)),
+      StorageService.saveTasks(updatedTasks),
+      NotificationService.cancelSubjectNotifications(subjectId, removedEventIds),
     ]);
   };
 
@@ -272,6 +318,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       : [...events, event];
     setEvents(updated);
     await StorageService.saveEvents(updated);
+  };
+
+  const updateAIConfig = async (config: AIConfig): Promise<boolean> => {
+    try {
+      const success = await StorageService.saveAIConfig(config);
+      if (success) {
+        setAiConfig(config);
+      }
+      return success;
+    } catch (err) {
+      console.error('AppContext: Error updating AI config:', err);
+      return false;
+    }
   };
 
   const value: AppContextData = {
@@ -296,7 +355,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     archiveSubject,
     deleteSubject,
     addOrUpdateSubject,
-    addOrUpdateEvent
+    addOrUpdateEvent,
+    updateAIConfig
   };
 
   return (

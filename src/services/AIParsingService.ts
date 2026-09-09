@@ -206,16 +206,31 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
     if (mode === 'transcript') {
       systemPrompt = `Você é o assistente acadêmico do aplicativo Lumen.
 Analise este histórico escolar/boletim acadêmico em anexo.
-Identifique o Coeficiente de Rendimento (CR / IRA / Média Geral) acumulado e todas as matérias em que o aluno foi aprovado ou dispensado (ou que tenham nota >= 5.0).
-Retorne UM JSON estrito contendo:
+Identifique o Coeficiente de Rendimento (CR / IRA / Média Geral) acumulado e TODAS as disciplinas cursadas ou em andamento (aprovadas, matriculadas/cursando, reprovadas e dispensadas).
+
+Retorne EXCLUSIVAMENTE um JSON estrito contendo:
 {
-  "baselineCR": 7.5,
-  "approvedSubjects": [
-    { "name": "Cálculo 1", "grade": 8.5, "isCompleted": true, "credits": 4 }
+  "baselineCR": 7.8,
+  "subjects": [
+    {
+      "name": "Cálculo 1",
+      "credits": 4,
+      "grade": 8.0,
+      "status": "approved",
+      "isCompleted": true,
+      "semesterNumber": 1
+    }
   ]
 }
-Se não encontrar o CR, deixe baselineCR como null.
-Retorne APENAS o JSON, sem markdown extra.`;
+
+REGRAS DE CLASSIFICAÇÃO:
+- "status": "approved" para matérias aprovadas, "dispensed" para dispensadas/aproveitadas/isentas, "in_progress" para matérias que o aluno está cursando/matriculado no momento, "reproved" para matérias com reprovação (por nota ou frequência).
+- "isCompleted": true apenas se status for "approved" ou "dispensed". Para "in_progress" e "reproved", defina false.
+- "semesterNumber": número do semestre/período em que a matéria foi cursada (1, 2, 3...). Se não especificado, deduza pela ordem cronológica das fases/períodos.
+- "credits": quantidade de créditos da disciplina. Se houver apenas carga horária (ex: 60h), divida por 15 (ex: 60h = 4 créditos). Padrão se não informado: 4.
+- "grade": nota final obtida (número decimal de 0.0 a 10.0), ou null se estiver em andamento sem nota.
+- Se não encontrar o CR acumulado, defina "baselineCR" como null.
+Retorne APENAS o JSON, sem markdown ou explicações adicionais.`;
     } else {
       systemPrompt = `Você é o assistente acadêmico do aplicativo Lumen.
 Analise este fluxograma ou matriz curricular em anexo.
@@ -272,7 +287,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
             responseMimeType: 'application/json'
           }
         }),
-        signal: AbortSignal.timeout(30000) // PDFs takes a bit longer
+        signal: AbortSignal.timeout(90000) // 90 segundos para PDFs volumosos
       });
 
       if (!response.ok) {
@@ -293,11 +308,19 @@ Retorne APENAS o JSON, sem markdown extra.`;
       }
       
       try {
-        return JSON.parse(outputText);
+        const parsed = JSON.parse(outputText);
+        // Garante compatibilidade caso o chamador espere approvedSubjects ou subjects
+        if (Array.isArray(parsed?.subjects) && !Array.isArray(parsed?.approvedSubjects)) {
+          parsed.approvedSubjects = parsed.subjects.filter((s: any) => s.isCompleted || s.status === 'approved' || s.status === 'dispensed');
+        }
+        return parsed;
       } catch (err) {
         throw new Error('A IA não retornou um formato JSON válido.');
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'TimeoutError' || String(error).toLowerCase().includes('timeout') || String(error).toLowerCase().includes('aborted')) {
+        throw new Error('O envio ou análise do documento excedeu o tempo limite de 90 segundos. Se o documento for muito extenso ou contiver muitas páginas, tente colar o texto diretamente ou enviar uma foto/print da página de notas.');
+      }
       throw sanitizeAndFormatError(error, apiKey);
     }
   }

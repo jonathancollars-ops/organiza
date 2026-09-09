@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { StorageService } from '../services/storage';
 import { AttendanceService } from '../services/AttendanceService';
 import { NotificationService } from '../services/notifications';
+import { CourseCRService } from '../services/CourseCRService';
 import { 
   AppEvent, 
   ThemeType, 
@@ -55,6 +56,7 @@ export interface AppContextData {
   deleteEvent: (eventId: string) => Promise<void>;
   updateAttendance: (record: AttendanceRecord) => Promise<void>;
   archiveSubject: (subjectId: string) => Promise<void>;
+  archiveSubjects: (subjectIds: string[]) => Promise<void>;
   deleteSubject: (subjectId: string) => Promise<void>;
   addOrUpdateSubject: (subject: Subject) => Promise<void>;
   addOrUpdateEvent: (event: AppEvent) => Promise<void>;
@@ -254,6 +256,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await StorageService.saveSubjects(updated);
   };
 
+  const archiveSubjects = async (subjectIds: string[]) => {
+    if (!Array.isArray(subjectIds) || subjectIds.length === 0) return;
+    const idSet = new Set(subjectIds);
+    const updated = subjects.map(s => idSet.has(s.id) ? { ...s, isArchived: true } : s);
+    setSubjects(updated);
+    await StorageService.saveSubjects(updated);
+  };
+
   const deleteSubject = async (subjectId: string) => {
     if (!subjectId || typeof subjectId !== 'string') return;
 
@@ -292,6 +302,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setEvents(updatedEvents);
     setAttendances(updatedAttendances);
     setTasks(updatedTasks);
+
+    // Remoção em cascata na aba Desempenho (CourseCRService)
+    try {
+      const courseData = await CourseCRService.loadCourseProgress();
+      if (courseData) {
+        const updatedCourseData = CourseCRService.removeSubjectFromCurrentSemester(
+          courseData,
+          subjectId,
+          targetSubject?.name
+        );
+        await CourseCRService.saveCourseProgress(updatedCourseData);
+      }
+    } catch (e) {
+      console.warn('Erro ao remover matéria em cascata no Desempenho:', e);
+    }
 
     await Promise.all([
       StorageService.saveSubjects(updatedSubjects),
@@ -353,6 +378,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     deleteEvent,
     updateAttendance,
     archiveSubject,
+    archiveSubjects,
     deleteSubject,
     addOrUpdateSubject,
     addOrUpdateEvent,

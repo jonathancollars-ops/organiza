@@ -6,7 +6,7 @@ import {
   CourseHistorySubject,
   CRSimulationScenario
 } from '../types';
-import { generateId } from '../utils';
+import { generateId, getCurrentSemesterId } from '../utils';
 import { calculateFinalGrade } from '../components/GradeEngine';
 
 const COURSE_PROGRESS_STORAGE_KEY = '@lumen_course_progress';
@@ -401,6 +401,154 @@ export class CourseCRService {
   }
 
   /**
+   * Remove uma matéria correspondente (por id ou nome normalizado) que esteja no semestre atual/ativo em courseData.
+   * Evita a permanência de matérias fantasmas na aba de Desempenho ao excluir disciplinas no aplicativo.
+   */
+  static removeSubjectFromCurrentSemester(
+    courseData: CourseProgressData,
+    subjectId: string,
+    subjectName?: string
+  ): CourseProgressData {
+    const safeData = (courseData && Array.isArray(courseData.semesters))
+      ? courseData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
+    const currentSemId = getCurrentSemesterId();
+    const normName = subjectName?.trim().toLowerCase();
+
+    // Localiza o semestre ativo (por título coincidente, ou primeiro com pendentes, ou último)
+    let activeSemIndex = safeData.semesters.findIndex(s => s.title && s.title.includes(currentSemId));
+    if (activeSemIndex === -1) {
+      activeSemIndex = safeData.semesters.findIndex(s => Array.isArray(s.subjects) && s.subjects.some(sub => !sub.isCompleted));
+    }
+    if (activeSemIndex === -1 && safeData.semesters.length > 0) {
+      activeSemIndex = safeData.semesters.length - 1;
+    }
+
+    const updatedSemesters = safeData.semesters.map((sem, idx) => {
+      const isActiveSem = idx === activeSemIndex;
+
+      const filteredSubjects = (sem.subjects || []).filter(sub => {
+        // Se o id da disciplina for idêntico ao subjectId, remove
+        if (sub.id === subjectId) return false;
+
+        // Se estiver no semestre ativo ou se for matéria pendente, verifica correspondência de nome
+        if (normName && (isActiveSem || !sub.isCompleted)) {
+          if (this.isSubjectMatch(sub.name, normName, sub.code)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      return {
+        ...sem,
+        subjects: filteredSubjects
+      };
+    });
+
+    const progress = this.calculateDegreeProgress({ ...safeData, semesters: updatedSemesters });
+    const historicalCR = this.calculateHistoricalCR({ ...safeData, semesters: updatedSemesters });
+
+    return {
+      ...safeData,
+      baselineCR: historicalCR,
+      semesters: updatedSemesters,
+      completedCredits: progress.completedCredits,
+      totalRequiredCredits: progress.totalRequiredCredits,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Fecha e consolida o semestre letivo ativo no histórico definitivo:
+   * 1. Percorre as matérias ativas (activeSubjects), calcula a média final de cada uma.
+   * 2. Define isCompleted (finalGrade >= passGrade), grade, credits (workloadHours / 15 || 4).
+   * 3. Consolida esse semestre no array de semestres do courseData com o título do período (ex: "2026.1").
+   * 4. Recalcula o CR Oficial acumulado (calculateHistoricalCR) e degreeProgress.
+   */
+  static closeActiveSemester(
+    courseData: CourseProgressData,
+    activeSubjects: Subject[],
+    semesterName?: string,
+    passGrade: number = 7.0
+  ): CourseProgressData {
+    const safeData = (courseData && Array.isArray(courseData.semesters))
+      ? courseData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
+    const periodTitle = (semesterName && semesterName.trim()) ? semesterName.trim() : getCurrentSemesterId();
+
+    const closedSubjects: CourseHistorySubject[] = (activeSubjects || []).map(sub => {
+      const targetPassGrade = typeof sub.passGrade === 'number' && !isNaN(sub.passGrade)
+        ? sub.passGrade
+        : passGrade;
+
+      let finalGrade = targetPassGrade;
+      if (sub.gradeGroups && sub.gradeGroups.length > 0) {
+        const calc = calculateFinalGrade(sub.gradeGroups, targetPassGrade);
+        if (typeof calc.score === 'number' && !isNaN(calc.score)) {
+          finalGrade = Number(calc.score.toFixed(1));
+        }
+      }
+
+      const credits = (sub.workloadHours && sub.workloadHours > 0)
+        ? Math.max(1, Math.round(sub.workloadHours / 15))
+        : 4;
+      const hours = (sub.workloadHours && sub.workloadHours > 0)
+        ? sub.workloadHours
+        : credits * 15;
+
+      const isCompleted = finalGrade >= targetPassGrade;
+
+      return {
+        id: sub.id || generateId('flow'),
+        name: sub.name.trim(),
+        code: sub.code ? String(sub.code).trim() : undefined,
+        credits,
+        hours,
+        grade: finalGrade,
+        isCompleted,
+        isPassing: isCompleted
+      };
+    });
+
+    const existingIndex = safeData.semesters.findIndex(s => 
+      s.title.toLowerCase().trim() === periodTitle.toLowerCase().trim()
+    );
+
+    let updatedSemesters: CourseSemester[];
+    if (existingIndex !== -1) {
+      updatedSemesters = [...safeData.semesters];
+      updatedSemesters[existingIndex] = {
+        ...updatedSemesters[existingIndex],
+        subjects: closedSubjects
+      };
+    } else {
+      const maxNum = safeData.semesters.reduce((max, s) => Math.max(max, s.semesterNumber || 0), 0);
+      const newSem: CourseSemester = {
+        semesterNumber: maxNum + 1,
+        title: periodTitle,
+        subjects: closedSubjects
+      };
+      updatedSemesters = [...safeData.semesters, newSem];
+    }
+
+    const newHistoricalCR = this.calculateHistoricalCR({ ...safeData, semesters: updatedSemesters });
+    const progress = this.calculateDegreeProgress({ ...safeData, semesters: updatedSemesters });
+
+    return {
+      ...safeData,
+      baselineCR: newHistoricalCR,
+      semesters: updatedSemesters,
+      completedCredits: progress.completedCredits,
+      totalRequiredCredits: progress.totalRequiredCredits,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  /**
    * Calculates required final exam score based on standard academic regulations:
    * Rule: (Average * 6 + FinalExam * 4) / 10 >= 5.0  (or target passGrade)
    * Required Final = (PassGrade * 10 - Average * 6) / 4
@@ -718,10 +866,35 @@ export class CourseCRService {
 
   /**
    * Aplica o resultado JSON da IA (histórico) na grade existente.
-   * Não descarta matérias aprovadas que não existam no template: inclui-as dinamicamente.
+   * Reconhece todas as disciplinas (concluídas, cursando e reprovadas) e as mapeia em seus semestres.
+   * Não descarta matérias aprovadas/cursando fora do template padrão: inclui-as dinamicamente.
    */
   static applyAIParsedTranscript(
-    aiResult: { approvedSubjects?: Array<{ name: string; code?: string; grade?: number; credits?: number; hours?: number; semesterNumber?: number; semester?: number | string }>; baselineCR?: number },
+    aiResult: {
+      subjects?: Array<{
+        name: string;
+        code?: string;
+        grade?: number;
+        credits?: number;
+        hours?: number;
+        status?: 'approved' | 'in_progress' | 'reproved' | 'dispensed' | string;
+        isCompleted?: boolean;
+        semesterNumber?: number;
+        semester?: number | string;
+      }>;
+      approvedSubjects?: Array<{
+        name: string;
+        code?: string;
+        grade?: number;
+        credits?: number;
+        hours?: number;
+        status?: string;
+        isCompleted?: boolean;
+        semesterNumber?: number;
+        semester?: number | string;
+      }>;
+      baselineCR?: number;
+    },
     existingData?: CourseProgressData
   ): CourseProgressData {
     const base = (existingData && Array.isArray(existingData.semesters))
@@ -733,24 +906,64 @@ export class CourseCRService {
       subjects: [...(sem.subjects || [])]
     }));
 
-    const approvedSubjects = Array.isArray(aiResult?.approvedSubjects) ? aiResult.approvedSubjects : [];
+    const rawList = (Array.isArray(aiResult?.subjects) && aiResult.subjects.length > 0)
+      ? aiResult.subjects
+      : (Array.isArray(aiResult?.approvedSubjects) ? aiResult.approvedSubjects : []);
+
     const baselineCR = (typeof aiResult?.baselineCR === 'number' && !isNaN(aiResult.baselineCR))
       ? aiResult.baselineCR
       : base.baselineCR;
 
-    const unmatchedApproved: Array<{ name: string; code?: string; grade?: number; credits?: number; hours?: number; semesterNumber?: number; semester?: number | string }> = [];
+    const unmatchedSubjects: Array<{
+      name: string;
+      code?: string;
+      grade?: number;
+      credits?: number;
+      hours?: number;
+      isCompleted: boolean;
+      status?: string;
+      semesterNumber?: number;
+      semester?: number | string;
+    }> = [];
 
-    approvedSubjects.forEach(approvedSub => {
-      if (!approvedSub || typeof approvedSub.name !== 'string' || approvedSub.name.trim() === '') return;
-      
+    rawList.forEach(rawSub => {
+      if (!rawSub || typeof rawSub.name !== 'string' || rawSub.name.trim() === '') return;
+
+      const statusLower = (rawSub.status || '').toLowerCase().trim();
+      let isCompleted = false;
+      if (
+        statusLower === 'approved' ||
+        statusLower === 'dispensed' ||
+        statusLower === 'aprovado' ||
+        statusLower === 'aprovada' ||
+        statusLower === 'dispensado' ||
+        statusLower === 'dispensada' ||
+        statusLower === 'dispensa'
+      ) {
+        isCompleted = true;
+      } else if (
+        statusLower === 'in_progress' ||
+        statusLower === 'cursando' ||
+        statusLower === 'matriculado' ||
+        statusLower === 'reproved' ||
+        statusLower === 'reprovado' ||
+        statusLower === 'reprovada'
+      ) {
+        isCompleted = false;
+      } else if (typeof rawSub.isCompleted === 'boolean') {
+        isCompleted = rawSub.isCompleted;
+      } else if (typeof rawSub.grade === 'number' && !isNaN(rawSub.grade) && rawSub.grade >= 5.0) {
+        isCompleted = true;
+      }
+
       let foundMatch = false;
 
       for (const sem of updatedSemesters) {
         for (const sub of sem.subjects) {
-          if (this.isSubjectMatch(sub.name, approvedSub.name, sub.code, approvedSub.code)) {
-            sub.isCompleted = true;
-            if (typeof approvedSub.grade === 'number' && !isNaN(approvedSub.grade)) {
-              sub.grade = approvedSub.grade;
+          if (this.isSubjectMatch(sub.name, rawSub.name, sub.code, rawSub.code)) {
+            sub.isCompleted = isCompleted;
+            if (typeof rawSub.grade === 'number' && !isNaN(rawSub.grade)) {
+              sub.grade = rawSub.grade;
             }
             foundMatch = true;
             break;
@@ -760,13 +973,13 @@ export class CourseCRService {
       }
 
       if (!foundMatch) {
-        unmatchedApproved.push(approvedSub);
+        unmatchedSubjects.push({ ...rawSub, isCompleted });
       }
     });
 
-    // Inclusão dinâmica de matérias aprovadas fora do template padrão (eletivas/optativas/outro curso)
-    if (unmatchedApproved.length > 0) {
-      unmatchedApproved.forEach(unmatchedSub => {
+    // Inclusão dinâmica de matérias fora do template padrão (eletivas/optativas/outro curso/reprovadas/cursando)
+    if (unmatchedSubjects.length > 0) {
+      unmatchedSubjects.forEach(unmatchedSub => {
         const credits = (typeof unmatchedSub.credits === 'number' && unmatchedSub.credits > 0)
           ? unmatchedSub.credits
           : 4;
@@ -783,7 +996,7 @@ export class CourseCRService {
           code: unmatchedSub.code ? String(unmatchedSub.code).trim() : undefined,
           credits,
           hours,
-          isCompleted: true,
+          isCompleted: unmatchedSub.isCompleted,
           grade
         };
 
@@ -799,32 +1012,41 @@ export class CourseCRService {
         }
 
         if (targetSemNumber) {
-          const targetSem = updatedSemesters.find(s => s.semesterNumber === targetSemNumber);
-          if (targetSem) {
-            targetSem.subjects.push(newSub);
-            return;
+          let targetSem = updatedSemesters.find(s => s.semesterNumber === targetSemNumber);
+          if (!targetSem) {
+            targetSem = {
+              semesterNumber: targetSemNumber,
+              title: `${targetSemNumber}º Semestre`,
+              subjects: []
+            };
+            updatedSemesters.push(targetSem);
+            updatedSemesters.sort((a, b) => a.semesterNumber - b.semesterNumber);
           }
+          targetSem.subjects.push(newSub);
+          return;
         }
 
-        // Semestre de extensão / disciplinas concluídas / eletivas
-        let electiveSem = updatedSemesters.find(s => 
-          s.title.toLowerCase().includes('concluídas') ||
-          s.title.toLowerCase().includes('concluidas') ||
-          s.title.toLowerCase().includes('eletivas') ||
-          s.title.toLowerCase().includes('optativas')
-        );
+        // Semestre de extensão / disciplinas se não houver número de semestre
+        let targetGroupSem = updatedSemesters.find(s => {
+          const t = s.title.toLowerCase();
+          if (unmatchedSub.isCompleted) {
+            return t.includes('concluídas') || (t.includes('eletivas') && !t.includes('andamento'));
+          } else {
+            return t.includes('andamento') || t.includes('cursando');
+          }
+        });
 
-        if (!electiveSem) {
+        if (!targetGroupSem) {
           const maxNum = updatedSemesters.reduce((max, s) => Math.max(max, s.semesterNumber || 0), 0);
-          electiveSem = {
+          targetGroupSem = {
             semesterNumber: maxNum + 1,
-            title: 'Disciplinas Concluídas / Eletivas',
+            title: unmatchedSub.isCompleted ? 'Disciplinas Concluídas / Eletivas' : 'Disciplinas em Andamento / Eletivas',
             subjects: []
           };
-          updatedSemesters.push(electiveSem);
+          updatedSemesters.push(targetGroupSem);
         }
 
-        electiveSem.subjects.push(newSub);
+        targetGroupSem.subjects.push(newSub);
       });
     }
 

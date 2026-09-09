@@ -22,6 +22,8 @@ import { CourseCRService, DEFAULT_CURRICULUM_TEMPLATE } from '../services/Course
 import { SecuritySanitizer } from '../services/SecuritySanitizer';
 import { AIParsingService, resolveDocumentMimeType } from '../services/AIParsingService';
 import { StorageService } from '../services/storage';
+import { useApp } from '../contexts/AppContext';
+import { getCurrentSemesterId } from '../utils';
 
 interface AcademicPerformanceScreenProps {
   subjects: Subject[];
@@ -41,6 +43,13 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
   const colors = getThemeColors(theme);
   const styles = useMemo(() => createStyles(colors, theme), [colors, theme]);
 
+  let appContext: ReturnType<typeof useApp> | null = null;
+  try {
+    appContext = useApp();
+  } catch {
+    // Outside AppProvider in isolated tests
+  }
+
   const [activeTab, setActiveTab] = useState<PerformanceTab>('cr_sim');
   const [courseData, setCourseData] = useState<CourseProgressData>(DEFAULT_CURRICULUM_TEMPLATE);
   const [selectedSemesterIndex, setSelectedSemesterIndex] = useState<number>(0);
@@ -58,10 +67,10 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
   const [newSubjectName, setNewSubjectName] = useState('');
   const [newSubjectCredits, setNewSubjectCredits] = useState('4');
 
-  // Load data on mount
+  // Load data on mount or when active subjects change
   useEffect(() => {
     loadData();
-  }, []);
+  }, [subjects]);
 
   const loadData = async () => {
     try {
@@ -196,16 +205,31 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
       const fileName = asset.name || fileUri;
       const mimeType = resolveDocumentMimeType(fileName, asset.mimeType);
 
-      const base64Data = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: 'base64' as any
-      });
+      // Validação de existência no cache local do dispositivo
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      if (!fileInfo.exists) {
+        throw new Error('O arquivo selecionado não foi encontrado no cache do dispositivo. Tente selecioná-lo novamente.');
+      }
+
+      let base64Data = '';
+      try {
+        base64Data = await FileSystem.readAsStringAsync(fileUri, {
+          encoding: 'base64'
+        });
+      } catch (readErr: any) {
+        throw new Error(`Falha ao ler o conteúdo do arquivo: ${readErr?.message || 'Arquivo corrompido ou sem permissão de leitura.'}`);
+      }
+
+      if (!base64Data || base64Data.trim() === '') {
+        throw new Error('O arquivo selecionado está vazio ou não pôde ser codificado.');
+      }
 
       const parsedJSON = await AIParsingService.parseAcademicDocument(base64Data, mimeType, importMode, aiConfig);
 
       let updated: CourseProgressData;
       if (importMode === 'transcript') {
         updated = CourseCRService.applyAIParsedTranscript(parsedJSON, courseData);
-        Alert.alert('Histórico Processado pela IA!', 'Seu CR e matérias aprovadas foram extraídos e atualizados com sucesso.');
+        Alert.alert('Histórico Processado pela IA!', 'Seu CR e todas as disciplinas do histórico foram extraídos e consolidados com sucesso.');
       } else {
         updated = CourseCRService.applyAIParsedCurriculum(parsedJSON, courseData);
         Alert.alert('Fluxograma Estruturado!', 'A Inteligência Artificial mapeou todos os semestres e matérias da matriz.');
@@ -218,11 +242,72 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
 
     } catch (error: any) {
       console.warn('Erro ao processar documento com IA:', error);
-      Alert.alert('Falha na Leitura', error.message || 'Não foi possível extrair os dados do arquivo via IA. Verifique se o arquivo está legível.');
+      Alert.alert(
+        'Falha na Leitura do Documento',
+        `${error.message || 'Não foi possível extrair os dados do arquivo via IA.'}\n\nDica: Você também pode copiar o texto do seu documento no portal da faculdade (SIGAA, Sophia, etc.) e colar diretamente na caixa de texto para importação imediata.`,
+        [{ text: 'OK', style: 'default' }]
+      );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsProcessingDocument(false);
     }
+  };
+
+  const handleCloseSemesterPress = () => {
+    if (!safeSubjects || safeSubjects.length === 0) {
+      Alert.alert(
+        'Nenhuma Matéria Ativa',
+        'Não há matérias ativas cadastradas no período letivo atual para fechar o semestre. Cadastre matérias na aba Notas antes de consolidar.'
+      );
+      return;
+    }
+
+    const currentPeriodId = getCurrentSemesterId();
+
+    Alert.alert(
+      '🎓 Fechar Semestre',
+      `Deseja consolidar o semestre atual (${currentPeriodId}) com as notas finais calculadas de ${safeSubjects.length} matérias?\n\nAs disciplinas serão consolidadas no histórico definitivo do fluxograma e arquivadas no aplicativo.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Fechar Semestre',
+          style: 'default',
+          onPress: async () => {
+            try {
+              const passGrade = 7.0;
+              const updated = CourseCRService.closeActiveSemester(
+                courseData,
+                safeSubjects,
+                currentPeriodId,
+                passGrade
+              );
+
+              setCourseData(updated);
+              await CourseCRService.saveCourseProgress(updated);
+
+              // Arquiva as matérias no AppContext se disponível
+              const activeSubjectIds = safeSubjects.map(s => s.id);
+              if (appContext?.archiveSubjects) {
+                await appContext.archiveSubjects(activeSubjectIds);
+              } else if (appContext?.archiveSubject) {
+                for (const id of activeSubjectIds) {
+                  await appContext.archiveSubject(id);
+                }
+              }
+
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert(
+                'Semestre Consolidado!',
+                `O período ${currentPeriodId} foi fechado com sucesso! Seu novo CR Oficial Acumulado é ${updated.baselineCR?.toFixed(2) || '0.00'}.`
+              );
+            } catch (err: any) {
+              console.error('Erro ao fechar semestre:', err);
+              Alert.alert('Erro', 'Não foi possível fechar o semestre. Tente novamente.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleAddSubject = async () => {
@@ -292,11 +377,19 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.headerBtn, styles.headerBtnPrimary]}
+            style={styles.headerBtn}
             onPress={() => setIsImportModalVisible(true)}
             accessibilityLabel="Importar Histórico ou Fluxograma"
           >
-            <Text style={styles.headerBtnPrimaryText}>📥 Importar</Text>
+            <Text style={styles.headerBtnText}>📥 Importar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.headerBtn, styles.headerBtnSuccess]}
+            onPress={handleCloseSemesterPress}
+            accessibilityLabel="Fechar Semestre Letivo"
+          >
+            <Text style={styles.headerBtnSuccessText}>🎓 Fechar Semestre</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -366,6 +459,25 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
                 </View>
               </View>
             </View>
+
+            {/* Fechar Semestre Action Banner */}
+            {safeSubjects.length > 0 && (
+              <View style={styles.closeSemesterBanner}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.closeSemesterTitle}>🎓 Finalizar Período Letivo?</Text>
+                  <Text style={styles.closeSemesterDesc}>
+                    Consolide as médias de {safeSubjects.length} disciplinas ativas no CR oficial e arquive o período.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.closeSemesterBannerBtn}
+                  onPress={handleCloseSemesterPress}
+                  accessibilityLabel="Fechar Semestre Agora"
+                >
+                  <Text style={styles.closeSemesterBannerBtnText}>Fechar Semestre</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* What-If Scenarios Section */}
             <View style={styles.sectionHeaderRow}>
@@ -924,6 +1036,49 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       borderColor: colors.primary,
     },
     headerBtnPrimaryText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: getContrastTextColor(colors.primary),
+    },
+    headerBtnSuccess: {
+      backgroundColor: colors.primaryLight,
+      borderColor: colors.primary,
+    },
+    headerBtnSuccessText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: colors.primary,
+    },
+    closeSemesterBanner: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    closeSemesterTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.text,
+      marginBottom: 2,
+    },
+    closeSemesterDesc: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      lineHeight: 15,
+    },
+    closeSemesterBannerBtn: {
+      backgroundColor: colors.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    closeSemesterBannerBtnText: {
       fontSize: 12,
       fontWeight: '800',
       color: getContrastTextColor(colors.primary),

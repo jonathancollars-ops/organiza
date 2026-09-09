@@ -31,6 +31,7 @@ export interface Semester {
 export interface Subject {
   id: string;
   name: string;
+  code?: string;
   color?: string;
   passGrade?: number; // ex: 7.0
   maxAbsences?: number; // ex: 15 (Calculated from workload)

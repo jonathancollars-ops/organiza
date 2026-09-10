@@ -77,12 +77,7 @@ export const SwipeableTabContainer: React.FC<SwipeableTabContainerProps> = ({
   style,
   children,
 }) => {
-  let navigation: any = null;
-  try {
-    navigation = useNavigation();
-  } catch {
-    // Permite uso fora de contexto de navegação direta (ex: testes unitários isolados)
-  }
+  const navigation: any = null;
 
   const [internalDisabled, setInternalDisabled] = useState(false);
   const translateX = useRef(new Animated.Value(0)).current;

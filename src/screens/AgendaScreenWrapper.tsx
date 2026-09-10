@@ -15,6 +15,7 @@ import { PendingAttendanceModal } from '../components/PendingAttendanceModal';
 import { AppEvent, Subject } from '../types';
 import { getThemeColors } from '../theme';
 import { StorageService } from '../services/storage';
+import { SwipeableTabContainer } from '../components/SwipeableTabContainer';
 
 export const AgendaScreenWrapper = ({ onFabPress }: { onFabPress?: () => void }) => {
   const navigation = useNavigation<any>();
@@ -75,8 +76,20 @@ export const AgendaScreenWrapper = ({ onFabPress }: { onFabPress?: () => void })
     }
   };
 
+  const isAnyModalOpen =
+    eventTypeVisible ||
+    subjectVisible ||
+    examVisible ||
+    eventModalVisible ||
+    attendanceModalVisible ||
+    scheduleGridVisible;
+
   return (
-    <>
+    <SwipeableTabContainer
+      currentTab="Agenda"
+      onNavigateTab={(nextTab) => navigation.navigate(nextTab)}
+      disabled={isAnyModalOpen}
+    >
       <AgendaScreen
         events={events}
         subjects={subjects}
@@ -224,7 +237,7 @@ export const AgendaScreenWrapper = ({ onFabPress }: { onFabPress?: () => void })
           />
         </SafeAreaView>
       </Modal>
-    </>
+    </SwipeableTabContainer>
   );
 };
 

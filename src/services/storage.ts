@@ -735,7 +735,17 @@ export const StorageService = {
       }
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && (parsed.mode === 'pomodoro' || parsed.mode === 'stopwatch')) {
-        return parsed as ActiveTimerState;
+        const safeStartedAt = Number.isFinite(parsed.startedAt) ? Number(parsed.startedAt) : Date.now();
+        const safeTargetEnd = Number.isFinite(parsed.targetEndTime) ? Number(parsed.targetEndTime) : undefined;
+        const safeRemaining = Number.isFinite(parsed.remainingSeconds) ? Math.max(0, Number(parsed.remainingSeconds)) : 0;
+        const safeInitial = Number.isFinite(parsed.initialDuration) ? Math.max(0, Number(parsed.initialDuration)) : 0;
+        return {
+          ...parsed,
+          startedAt: safeStartedAt,
+          targetEndTime: safeTargetEnd,
+          remainingSeconds: safeRemaining,
+          initialDuration: safeInitial,
+        } as ActiveTimerState;
       }
       return null;
     } catch (e) {

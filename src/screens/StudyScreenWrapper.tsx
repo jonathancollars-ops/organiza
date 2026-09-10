@@ -6,31 +6,38 @@ import { AchievementsModal } from '../components/AchievementsModal';
 import { AnalyticsAndAACCModal } from '../components/AnalyticsAndAACCModal';
 import { SubjectModal } from '../components/SubjectModal';
 import { StorageService } from '../services/storage';
+import { SwipeableTabContainer } from '../components/SwipeableTabContainer';
 
 export const StudyScreenWrapper = () => {
   const navigation = useNavigation<any>();
   const { 
     subjects, 
-    events,
-    setEvents,
+    events, 
+    setEvents, 
     tasks, 
     setTasks, 
     studySessions, 
     setStudySessions, 
-    streak,
-    attendances,
+    streak, 
+    attendances, 
     theme, 
-    settings,
-    semesters,
-    addOrUpdateSubject
+    settings, 
+    semesters, 
+    addOrUpdateSubject 
   } = useApp();
 
   const [achievementsVisible, setAchievementsVisible] = useState(false);
   const [analyticsVisible, setAnalyticsVisible] = useState(false);
   const [subjectModalVisible, setSubjectModalVisible] = useState(false);
 
+  const isAnyModalOpen = achievementsVisible || analyticsVisible || subjectModalVisible;
+
   return (
-    <>
+    <SwipeableTabContainer
+      currentTab="Estudos"
+      onNavigateTab={(nextTab) => navigation.navigate(nextTab)}
+      disabled={isAnyModalOpen}
+    >
       <StudyScreen
         subjects={subjects}
         tasks={tasks}
@@ -85,6 +92,6 @@ export const StudyScreenWrapper = () => {
         theme={theme}
         semesters={semesters}
       />
-    </>
+    </SwipeableTabContainer>
   );
 };

@@ -199,34 +199,46 @@ async function runSwipeableTabNavigationTestSuite() {
   }
   assert(foundTokens.length === 0, 'SwipeableTabContainer.tsx has 0 hardcoded dark theme tokens');
 
-  // ── 5. Static Codebase Audit: AppNavigator.tsx Integration ──
-  console.log('\n--- 5. Static Codebase Audit: AppNavigator.tsx Integration ---');
+  // ── 5. Static Codebase Audit: Screen Wrappers & AppNavigator Integration ──
+  console.log('\n--- 5. Static Codebase Audit: Screen Wrappers & AppNavigator Integration ---');
 
   const navPath = path.resolve(__dirname, '../src/navigation/AppNavigator.tsx');
   assert(fs.existsSync(navPath), 'AppNavigator.tsx exists');
 
   const navContent = fs.readFileSync(navPath, 'utf8');
 
+  // Verify NavigationContainer hosts Tab.Navigator cleanly for Android FragmentManager stability
   assert(
-    navContent.includes('import { SwipeableTabContainer }') || navContent.includes('SwipeableTabContainer'),
-    'AppNavigator.tsx imports SwipeableTabContainer'
+    navContent.includes('<NavigationContainer') && navContent.includes('<Tab.Navigator'),
+    'AppNavigator.tsx hosts Tab.Navigator within NavigationContainer for native Android Fragment stability'
   );
-  assert(
-    navContent.includes('<SwipeableTabContainer') && navContent.includes('</SwipeableTabContainer>'),
-    'AppNavigator.tsx wraps Tab.Navigator within SwipeableTabContainer'
-  );
-  assert(
-    navContent.includes('useNavigationContainerRef'),
-    'AppNavigator.tsx uses useNavigationContainerRef for programmatic tab routing'
-  );
-  assert(
-    navContent.includes('isAnyModalOpen') && navContent.includes('disabled={isAnyModalOpen}'),
-    'AppNavigator.tsx conditionally disables swipe gestures when any modal is visible'
-  );
-  assert(
-    navContent.includes('screenListeners={{') && navContent.includes('state:'),
-    'AppNavigator.tsx synchronizes active tab state via screenListeners'
-  );
+
+  // Verify all 5 screen wrappers integrate SwipeableTabContainer
+  const wrappers = [
+    { file: 'AgendaScreenWrapper.tsx', tab: 'Agenda' },
+    { file: 'StudyScreenWrapper.tsx', tab: 'Estudos' },
+    { file: 'AcademicPerformanceScreenWrapper.tsx', tab: 'Desempenho' },
+    { file: 'AttendanceScreenWrapper.tsx', tab: 'Faltas' },
+    { file: 'GradesScreenWrapper.tsx', tab: 'Notas' },
+  ];
+
+  for (const { file, tab } of wrappers) {
+    const wrapPath = path.resolve(__dirname, `../src/screens/${file}`);
+    assert(fs.existsSync(wrapPath), `${file} exists`);
+    const wrapContent = fs.readFileSync(wrapPath, 'utf8');
+    assert(
+      wrapContent.includes('SwipeableTabContainer'),
+      `${file} imports and integrates SwipeableTabContainer`
+    );
+    assert(
+      wrapContent.includes(`currentTab="${tab}"`),
+      `${file} configures currentTab="${tab}"`
+    );
+    assert(
+      wrapContent.includes('onNavigateTab'),
+      `${file} wires onNavigateTab callback`
+    );
+  }
 
   console.log('\n================================================================');
   console.log(`SWIPEABLE TAB TESTS SUMMARY: ${passed}/${passed + failed} Passed (${failed} Failed)`);

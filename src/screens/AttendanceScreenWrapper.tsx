@@ -7,6 +7,7 @@ import { SubjectModal } from '../components/SubjectModal';
 import { Subject, AppEvent } from '../types';
 import { generateId } from '../utils/id';
 import { StorageService } from '../services/storage';
+import { SwipeableTabContainer } from '../components/SwipeableTabContainer';
 
 export const AttendanceScreenWrapper = () => {
   const navigation = useNavigation<any>();
@@ -74,8 +75,14 @@ export const AttendanceScreenWrapper = () => {
     }
   };
 
+  const isAnyModalOpen = detailsModalVisible || subjectModalVisible;
+
   return (
-    <>
+    <SwipeableTabContainer
+      currentTab="Faltas"
+      onNavigateTab={(nextTab) => navigation.navigate(nextTab)}
+      disabled={isAnyModalOpen}
+    >
       <AttendanceScreen
         subjects={subjects}
         events={events}
@@ -133,6 +140,6 @@ export const AttendanceScreenWrapper = () => {
         theme={theme}
         semesters={semesters}
       />
-    </>
+    </SwipeableTabContainer>
   );
 };

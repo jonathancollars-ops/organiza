@@ -8,7 +8,6 @@ import {
   ViewStyle,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useNavigation } from '@react-navigation/native';
 
 /**
  * Sequência canônica das 5 abas principais do Project Lumen
@@ -77,8 +76,6 @@ export const SwipeableTabContainer: React.FC<SwipeableTabContainerProps> = ({
   style,
   children,
 }) => {
-  const navigation: any = null;
-
   const [internalDisabled, setInternalDisabled] = useState(false);
   const translateX = useRef(new Animated.Value(0)).current;
   const isSwipingRef = useRef(false);
@@ -94,7 +91,6 @@ export const SwipeableTabContainer: React.FC<SwipeableTabContainerProps> = ({
     disabled: Boolean(disabled || internalDisabled),
     onNavigateTab,
     threshold,
-    navigation,
   });
 
   useEffect(() => {
@@ -103,9 +99,8 @@ export const SwipeableTabContainer: React.FC<SwipeableTabContainerProps> = ({
       disabled: Boolean(disabled || internalDisabled),
       onNavigateTab,
       threshold,
-      navigation,
     };
-  }, [currentIndex, disabled, internalDisabled, onNavigateTab, threshold, navigation]);
+  }, [currentIndex, disabled, internalDisabled, onNavigateTab, threshold]);
 
   const panResponder = useMemo(() => {
     return PanResponder.create({
@@ -162,7 +157,6 @@ export const SwipeableTabContainer: React.FC<SwipeableTabContainerProps> = ({
           currentIndex: activeIdx,
           threshold: swipeThreshold,
           onNavigateTab: navCallback,
-          navigation: navInstance,
         } = stateRef.current;
 
         const { dx, vx } = gestureState;
@@ -189,8 +183,6 @@ export const SwipeableTabContainer: React.FC<SwipeableTabContainerProps> = ({
 
           if (navCallback) {
             navCallback(targetTab);
-          } else if (navInstance?.navigate) {
-            navInstance.navigate(targetTab);
           }
         }
 

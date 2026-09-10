@@ -7,6 +7,7 @@ import { SubjectModal } from '../components/SubjectModal';
 import { Subject, AppEvent } from '../types';
 import { generateId } from '../utils/id';
 import { StorageService } from '../services/storage';
+import { SwipeableTabContainer } from '../components/SwipeableTabContainer';
 
 export const GradesScreenWrapper = () => {
   const navigation = useNavigation<any>();
@@ -73,8 +74,14 @@ export const GradesScreenWrapper = () => {
     }
   };
 
+  const isAnyModalOpen = detailsModalVisible || subjectModalVisible;
+
   return (
-    <>
+    <SwipeableTabContainer
+      currentTab="Notas"
+      onNavigateTab={(nextTab) => navigation.navigate(nextTab)}
+      disabled={isAnyModalOpen}
+    >
       <GradesScreen
         subjects={subjects}
         events={events}
@@ -128,6 +135,6 @@ export const GradesScreenWrapper = () => {
         theme={theme}
         semesters={semesters}
       />
-    </>
+    </SwipeableTabContainer>
   );
 };

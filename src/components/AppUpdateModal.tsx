@@ -7,12 +7,17 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
-  ActivityIndicator
+  ActivityIndicator,
+  Share,
+  Alert,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeType, AppUpdateInfo } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { AppUpdateService } from '../services/AppUpdateService';
+import { StorageService } from '../services/storage';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 
 export type UpdateModalStatus = 'idle' | 'downloading' | 'ready_to_install' | 'error';
@@ -39,6 +44,7 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
   const [totalBytes, setTotalBytes] = useState<number>(0);
   const [downloadedFileUri, setDownloadedFileUri] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isExportingBackup, setIsExportingBackup] = useState<boolean>(false);
 
   const animatedProgress = useRef(new Animated.Value(0)).current;
 
@@ -51,6 +57,7 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
       setTotalBytes(0);
       setDownloadedFileUri(null);
       setErrorMessage(null);
+      setIsExportingBackup(false);
       animatedProgress.setValue(0);
     }
   }, [visible, updateInfo]);
@@ -72,6 +79,61 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
     if (!bytes || isNaN(bytes) || bytes <= 0) return '0.0 MB';
     const mb = bytes / (1024 * 1024);
     return `${mb.toFixed(1)} MB`;
+  };
+
+  const handleExportBackup = async () => {
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+    setIsExportingBackup(true);
+    try {
+      const backupData = await StorageService.exportBackup();
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const fileName = `lumen-backup-${dateStr}.json`;
+
+      let fileUri: string | null = null;
+      try {
+        const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+        if (baseDir) {
+          fileUri = `${baseDir}${fileName}`;
+          await FileSystem.writeAsStringAsync(fileUri, jsonString, {
+            encoding: FileSystem.EncodingType.UTF8,
+          });
+        }
+      } catch (fileErr) {
+        console.warn('[AppUpdateModal] Falha ao gravar arquivo em disco:', fileErr);
+      }
+
+      if (Share && typeof Share.share === 'function') {
+        try {
+          await Share.share(
+            Platform.OS === 'ios' && fileUri
+              ? { url: fileUri, title: fileName }
+              : { message: jsonString, title: fileName }
+          );
+        } catch (shareErr) {
+          console.warn('[AppUpdateModal] Compartilhamento cancelado ou indisponível:', shareErr);
+        }
+      }
+
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
+
+      Alert.alert(
+        'Backup Exportado com Sucesso! 💾',
+        'Seu arquivo de backup (.json) com todas as matérias, notas, faltas e histórico foi gerado!\n\nComo o app antigo possui chave de teste e a versão nova possui a chave oficial de produção (lumen-release.keystore), desinstale a versão antiga antes de instalar a nova.\n\nNa versão nova, vá em Configurações > Backup > Restaurar Backup para recuperar 100% dos seus dados!'
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      Alert.alert('Erro ao exportar backup', message || 'Não foi possível exportar os dados.');
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } catch {}
+    } finally {
+      setIsExportingBackup(false);
+    }
   };
 
   const handleStartDownload = async () => {
@@ -193,234 +255,284 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
       <View style={styles.overlay}>
         <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
           <View style={styles.card}>
-            {/* Header Icon & Title */}
-            <View style={styles.headerContainer}>
-              <View
-                style={[
-                  styles.iconBadge,
-                  status === 'error' && { backgroundColor: colors.dangerLight },
-                  status === 'ready_to_install' && { backgroundColor: colors.successLight }
-                ]}
-              >
-                <Text style={styles.iconEmoji}>
+            <ScrollView
+              style={styles.cardScroll}
+              contentContainerStyle={styles.cardScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Header Icon & Title */}
+              <View style={styles.headerContainer}>
+                <View
+                  style={[
+                    styles.iconBadge,
+                    status === 'error' && { backgroundColor: colors.dangerLight },
+                    status === 'ready_to_install' && { backgroundColor: colors.successLight }
+                  ]}
+                >
+                  <Text style={styles.iconEmoji}>
+                    {status === 'downloading'
+                      ? '⏳'
+                      : status === 'ready_to_install'
+                      ? '📦'
+                      : status === 'error'
+                      ? '⚠️'
+                      : '🚀'}
+                  </Text>
+                </View>
+
+                <Text style={styles.title}>
                   {status === 'downloading'
-                    ? '⏳'
+                    ? 'Baixando Atualização...'
                     : status === 'ready_to_install'
-                    ? '📦'
+                    ? 'Atualização Pronta!'
                     : status === 'error'
-                    ? '⚠️'
-                    : '🚀'}
+                    ? 'Falha no Download'
+                    : 'Nova Versão Disponível!'}
+                </Text>
+
+                <Text style={styles.subtitle}>
+                  {status === 'downloading'
+                    ? 'Transferindo pacote de instalação do Lumen.'
+                    : status === 'ready_to_install'
+                    ? 'O pacote foi baixado com sucesso no dispositivo.'
+                    : status === 'error'
+                    ? 'Não foi possível concluir o download do instalador.'
+                    : 'Uma nova versão do Lumen está pronta para você.'}
                 </Text>
               </View>
 
-              <Text style={styles.title}>
-                {status === 'downloading'
-                  ? 'Baixando Atualização...'
-                  : status === 'ready_to_install'
-                  ? 'Atualização Pronta!'
-                  : status === 'error'
-                  ? 'Falha no Download'
-                  : 'Nova Versão Disponível!'}
-              </Text>
-
-              <Text style={styles.subtitle}>
-                {status === 'downloading'
-                  ? 'Transferindo pacote de instalação do Lumen.'
-                  : status === 'ready_to_install'
-                  ? 'O pacote foi baixado com sucesso no dispositivo.'
-                  : status === 'error'
-                  ? 'Não foi possível concluir o download do instalador.'
-                  : 'Uma nova versão do Lumen está pronta para você.'}
-              </Text>
-            </View>
-
-            {/* Version Pills */}
-            <View style={styles.versionRow}>
-              <View style={styles.versionPill}>
-                <Text style={styles.versionLabel}>Atual</Text>
-                <Text style={styles.versionValue}>v{updateInfo.currentVersion}</Text>
-              </View>
-              <Text style={styles.arrowIcon}>➔</Text>
-              <View style={[styles.versionPill, styles.newVersionPill]}>
-                <Text style={styles.newVersionLabel}>Nova</Text>
-                <Text style={styles.newVersionValue}>v{updateInfo.latestVersion}</Text>
-              </View>
-            </View>
-
-            {/* Dynamic Content Body based on Status */}
-            {status === 'idle' && (
-              <>
-                <Text style={styles.notesHeader}>O que há de novo:</Text>
-                <View style={styles.notesContainer}>
-                  <ScrollView
-                    style={styles.notesScroll}
-                    showsVerticalScrollIndicator
-                    contentContainerStyle={{ padding: 12 }}
-                  >
-                    <Text style={styles.notesText}>{updateInfo.releaseNotes}</Text>
-                  </ScrollView>
+              {/* Version Pills */}
+              <View style={styles.versionRow}>
+                <View style={styles.versionPill}>
+                  <Text style={styles.versionLabel}>Atual</Text>
+                  <Text style={styles.versionValue}>v{updateInfo.currentVersion}</Text>
                 </View>
-              </>
-            )}
+                <Text style={styles.arrowIcon}>➔</Text>
+                <View style={[styles.versionPill, styles.newVersionPill]}>
+                  <Text style={styles.newVersionLabel}>Nova</Text>
+                  <Text style={styles.newVersionValue}>v{updateInfo.latestVersion}</Text>
+                </View>
+              </View>
 
-            {status === 'downloading' && (
-              <View style={styles.progressSection}>
-                <View style={styles.progressHeaderRow}>
-                  <Text style={styles.progressStatusLabel}>Progresso do Download</Text>
-                  <View style={[styles.percentBadge, { backgroundColor: colors.primaryLight }]}>
-                    <Text style={[styles.percentBadgeText, { color: colors.primary }]}>
-                      {progressPercent}%
+              {/* Aviso de Transição de Chave Oficial (Demandas 5 e 7) */}
+              {(status === 'idle' || status === 'ready_to_install') && (
+                <View style={[styles.keystoreNoticeCard, { backgroundColor: colors.surfaceSubtle, borderColor: theme === 'light' ? '#f59e0b' : '#d97706' }]}>
+                  <View style={styles.keystoreNoticeHeader}>
+                    <Text style={styles.keystoreNoticeHeaderIcon}>🛡️</Text>
+                    <Text style={[styles.keystoreNoticeHeaderTitle, { color: colors.text }]}>
+                      Aviso de Transição de Chave Oficial
                     </Text>
                   </View>
-                </View>
 
-                {/* Animated Progress Bar */}
-                <View style={styles.progressBarTrack}>
-                  <Animated.View
-                    style={[
-                      styles.progressBarFill,
-                      {
-                        width: progressWidth,
-                        backgroundColor: colors.primary
-                      }
-                    ]}
-                  />
-                </View>
+                  <Text style={[styles.keystoreNoticeText, { color: colors.textSecondary }]}>
+                    O Lumen agora possui assinatura de produção oficial definitiva de 30 anos (<Text style={{ fontWeight: '700', color: colors.text }}>lumen-release.keystore</Text>), eliminando os avisos do Play Protect.
+                  </Text>
 
-                {/* Megabytes Counter & Speed / Hint */}
-                <View style={styles.progressDetailsRow}>
-                  <Text style={styles.progressMbText}>
-                    {formatBytesToMB(downloadedBytes)} / {totalBytes > 0 ? formatBytesToMB(totalBytes) : 'Calculando...'}
-                  </Text>
-                  <Text style={styles.progressHintText}>Mantenha o app aberto</Text>
-                </View>
-              </View>
-            )}
+                  <View style={[styles.keystoreWarningBox, { backgroundColor: colors.warningLight || 'rgba(245, 158, 11, 0.15)' }]}>
+                    <Text style={[styles.keystoreWarningText, { color: theme === 'light' ? colors.warningDark : colors.warning }]}>
+                      ⚠️ <Text style={{ fontWeight: '800' }}>Conflito de Pacote Android:</Text> Como o Android impede que um app assinado com chave de teste (<Text style={{ fontStyle: 'italic' }}>debug.keystore</Text>) seja sobrescrito pela chave oficial, o usuário deve desinstalar a versão anterior uma única vez.
+                    </Text>
+                  </View>
 
-            {status === 'ready_to_install' && (
-              <View style={[styles.statusBox, { backgroundColor: colors.successLight, borderColor: colors.success }]}>
-                <Text style={styles.statusBoxIcon}>✅</Text>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.statusBoxTitle, { color: theme === 'light' ? colors.successDark : colors.success }]}>
-                    Pronto para Instalação
+                  <Text style={[styles.keystoreNoticeSubtext, { color: colors.textSecondary }]}>
+                    Exporte seu backup agora. Na versão nova com chave oficial, basta tocar em <Text style={{ fontWeight: '700', color: colors.primary }}>"Restaurar Backup"</Text> na tela de Configurações para recuperar 100% dos dados (matérias, notas, faltas e histórico).
                   </Text>
-                  <Text style={styles.statusBoxDesc}>
-                    Toque no botão abaixo para abrir o instalador do Android e concluir o processo.
-                  </Text>
-                </View>
-              </View>
-            )}
 
-            {status === 'error' && (
-              <View style={[styles.statusBox, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}>
-                <Text style={styles.statusBoxIcon}>⚠️</Text>
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={[styles.statusBoxTitle, { color: colors.danger }]}>
-                    Problema de Conexão
-                  </Text>
-                  <Text style={styles.statusBoxDesc}>
-                    {errorMessage || 'Ocorreu um erro ao transferir o arquivo. Verifique sua conexão e tente novamente.'}
-                  </Text>
+                  <TouchableOpacity
+                    style={[styles.backupExportButton, { backgroundColor: colors.primary }]}
+                    onPress={handleExportBackup}
+                    disabled={isExportingBackup}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Exportar Backup dos Meus Dados"
+                  >
+                    {isExportingBackup ? (
+                      <ActivityIndicator size="small" color={contrastPrimaryText} />
+                    ) : (
+                      <Text style={[styles.backupExportButtonText, { color: contrastPrimaryText }]}>
+                        💾 Exportar Backup dos Meus Dados
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
-              </View>
-            )}
+              )}
 
-            {/* Actions Section */}
-            <View style={styles.actionsContainer}>
+              {/* Dynamic Content Body based on Status */}
               {status === 'idle' && (
                 <>
-                  <TouchableOpacity
-                    style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                    onPress={handleStartDownload}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.primaryButtonText, { color: contrastPrimaryText }]}>
-                      📥 Baixar e Atualizar
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.secondaryButton}
-                    onPress={handleRemindLater}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>
-                      Lembrar Mais Tarde
-                    </Text>
-                  </TouchableOpacity>
+                  <Text style={styles.notesHeader}>O que há de novo:</Text>
+                  <View style={styles.notesContainer}>
+                    <ScrollView
+                      style={styles.notesScroll}
+                      showsVerticalScrollIndicator
+                      contentContainerStyle={{ padding: 12 }}
+                    >
+                      <Text style={styles.notesText}>{updateInfo.releaseNotes}</Text>
+                    </ScrollView>
+                  </View>
                 </>
               )}
 
               {status === 'downloading' && (
-                <TouchableOpacity
-                  style={[styles.cancelButton, { borderColor: colors.border, backgroundColor: colors.surfaceSubtle }]}
-                  onPress={handleCancelDownload}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.cancelButtonText, { color: colors.danger }]}>
-                    ✕ Cancelar Download
-                  </Text>
-                </TouchableOpacity>
+                <View style={styles.progressSection}>
+                  <View style={styles.progressHeaderRow}>
+                    <Text style={styles.progressStatusLabel}>Progresso do Download</Text>
+                    <View style={[styles.percentBadge, { backgroundColor: colors.primaryLight }]}>
+                      <Text style={[styles.percentBadgeText, { color: colors.primary }]}>
+                        {progressPercent}%
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Animated Progress Bar */}
+                  <View style={styles.progressBarTrack}>
+                    <Animated.View
+                      style={[
+                        styles.progressBarFill,
+                        {
+                          width: progressWidth,
+                          backgroundColor: colors.primary
+                        }
+                      ]}
+                    />
+                  </View>
+
+                  {/* Megabytes Counter & Speed / Hint */}
+                  <View style={styles.progressDetailsRow}>
+                    <Text style={styles.progressMbText}>
+                      {formatBytesToMB(downloadedBytes)} / {totalBytes > 0 ? formatBytesToMB(totalBytes) : 'Calculando...'}
+                    </Text>
+                    <Text style={styles.progressHintText}>Mantenha o app aberto</Text>
+                  </View>
+                </View>
               )}
 
               {status === 'ready_to_install' && (
-                <>
-                  <TouchableOpacity
-                    style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                    onPress={handleInstall}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.primaryButtonText, { color: contrastPrimaryText }]}>
-                      📲 Instalar Atualização
+                <View style={[styles.statusBox, { backgroundColor: colors.successLight, borderColor: colors.success }]}>
+                  <Text style={styles.statusBoxIcon}>✅</Text>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.statusBoxTitle, { color: theme === 'light' ? colors.successDark : colors.success }]}>
+                      Pronto para Instalação
                     </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.secondaryButton}
-                    onPress={handleClose}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>
-                      Fechar
+                    <Text style={styles.statusBoxDesc}>
+                      Toque no botão abaixo para abrir o instalador do Android e concluir o processo.
                     </Text>
-                  </TouchableOpacity>
-                </>
+                  </View>
+                </View>
               )}
 
               {status === 'error' && (
-                <>
-                  <TouchableOpacity
-                    style={[styles.primaryButton, { backgroundColor: colors.primary }]}
-                    onPress={handleStartDownload}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.primaryButtonText, { color: contrastPrimaryText }]}>
-                      🔄 Tentar Novamente
+                <View style={[styles.statusBox, { backgroundColor: colors.dangerLight, borderColor: colors.danger }]}>
+                  <Text style={styles.statusBoxIcon}>⚠️</Text>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.statusBoxTitle, { color: colors.danger }]}>
+                      Problema de Conexão
                     </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.browserButton, { borderColor: colors.border, backgroundColor: colors.surfaceSubtle }]}
-                    onPress={handleOpenBrowser}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.browserButtonText, { color: colors.text }]}>
-                      🌐 Baixar pelo Navegador
+                    <Text style={styles.statusBoxDesc}>
+                      {errorMessage || 'Ocorreu um erro ao transferir o arquivo. Verifique sua conexão e tente novamente.'}
                     </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.secondaryButton}
-                    onPress={handleClose}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>
-                      Cancelar
-                    </Text>
-                  </TouchableOpacity>
-                </>
+                  </View>
+                </View>
               )}
-            </View>
+
+              {/* Actions Section */}
+              <View style={styles.actionsContainer}>
+                {status === 'idle' && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                      onPress={handleStartDownload}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.primaryButtonText, { color: contrastPrimaryText }]}>
+                        📥 Baixar e Atualizar
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.secondaryButton}
+                      onPress={handleRemindLater}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>
+                        Lembrar Mais Tarde
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                {status === 'downloading' && (
+                  <TouchableOpacity
+                    style={[styles.cancelButton, { borderColor: colors.border, backgroundColor: colors.surfaceSubtle }]}
+                    onPress={handleCancelDownload}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.cancelButtonText, { color: colors.danger }]}>
+                      ✕ Cancelar Download
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {status === 'ready_to_install' && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                      onPress={handleInstall}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.primaryButtonText, { color: contrastPrimaryText }]}>
+                        📲 Instalar Atualização
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.secondaryButton}
+                      onPress={handleClose}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>
+                        Fechar
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                {status === 'error' && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { backgroundColor: colors.primary }]}
+                      onPress={handleStartDownload}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.primaryButtonText, { color: contrastPrimaryText }]}>
+                        🔄 Tentar Novamente
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.browserButton, { borderColor: colors.border, backgroundColor: colors.surfaceSubtle }]}
+                      onPress={handleOpenBrowser}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.browserButtonText, { color: colors.text }]}>
+                        🌐 Baixar pelo Navegador
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.secondaryButton}
+                      onPress={handleClose}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>
+                        Cancelar
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </ScrollView>
           </View>
         </SafeAreaView>
       </View>
@@ -440,6 +552,7 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     safeArea: {
       width: '100%',
       maxWidth: 420,
+      maxHeight: '92%',
       justifyContent: 'center'
     },
     card: {
@@ -447,12 +560,19 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       borderRadius: 24,
       borderColor: colors.border,
       borderWidth: 1,
-      padding: 20,
+      maxHeight: '100%',
+      overflow: 'hidden',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.35,
       shadowRadius: 16,
       elevation: 10
+    },
+    cardScroll: {
+      flexGrow: 0
+    },
+    cardScrollContent: {
+      padding: 20
     },
     headerContainer: {
       alignItems: 'center',
@@ -678,5 +798,62 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     secondaryButtonText: {
       fontSize: 13,
       fontWeight: '600'
+    },
+    keystoreNoticeCard: {
+      borderRadius: 16,
+      borderWidth: 1.5,
+      padding: 14,
+      marginBottom: 16
+    },
+    keystoreNoticeHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8
+    },
+    keystoreNoticeHeaderIcon: {
+      fontSize: 18,
+      marginRight: 8
+    },
+    keystoreNoticeHeaderTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      flex: 1
+    },
+    keystoreNoticeText: {
+      fontSize: 12,
+      lineHeight: 18,
+      marginBottom: 10
+    },
+    keystoreWarningBox: {
+      borderRadius: 10,
+      padding: 10,
+      marginBottom: 10
+    },
+    keystoreWarningText: {
+      fontSize: 12,
+      lineHeight: 17
+    },
+    keystoreNoticeSubtext: {
+      fontSize: 12,
+      lineHeight: 18,
+      marginBottom: 12
+    },
+    backupExportButton: {
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 44,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 3
+    },
+    backupExportButtonText: {
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: -0.2
     }
   });

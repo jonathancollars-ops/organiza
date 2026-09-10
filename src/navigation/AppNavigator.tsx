@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, useNavigationContainerRef } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useApp } from '../contexts/AppContext';
@@ -10,6 +10,7 @@ import { StorageService } from '../services/storage';
 import { AppUpdateService } from '../services/AppUpdateService';
 import { NotificationService } from '../services/notifications';
 import { AppUpdateInfo } from '../types';
+import { SwipeableTabContainer } from '../components/SwipeableTabContainer';
 
 // Screens
 import { AgendaScreenWrapper } from '../screens/AgendaScreenWrapper';
@@ -177,36 +178,64 @@ export function AppNavigator() {
     },
   };
 
+  const navigationRef = useNavigationContainerRef();
+  const [activeTab, setActiveTab] = useState<string>('Agenda');
+
+  const isAnyModalOpen =
+    settingsModalVisible ||
+    analyticsModalVisible ||
+    achievementsModalVisible ||
+    groupProjectsModalVisible ||
+    onboardingVisible ||
+    updateModalVisible;
+
   return (
     <>
       <StatusBar style={theme === 'light' ? 'dark' : 'light'} backgroundColor="transparent" translucent />
-      <NavigationContainer theme={navTheme}>
-        <Tab.Navigator
-          screenOptions={({ route }) => ({
-            header: () => <CustomHeader />,
-            tabBarActiveTintColor: colors.primary,
-            tabBarInactiveTintColor: colors.textSecondary,
-            tabBarStyle: {
-              backgroundColor: colors.surface,
-              borderTopColor: colors.border,
-            },
-            tabBarIcon: ({ color, size, focused }) => {
-              let icon = '';
-              if (route.name === 'Agenda') icon = '📅';
-              else if (route.name === 'Estudos') icon = '⏱️';
-              else if (route.name === 'Desempenho') icon = '🎯';
-              else if (route.name === 'Faltas') icon = '📊';
-              else if (route.name === 'Notas') icon = '🎓';
-              return <Text style={{ fontSize: focused ? 24 : 20 }}>{icon}</Text>;
-            }
-          })}
+      <NavigationContainer ref={navigationRef} theme={navTheme}>
+        <SwipeableTabContainer
+          currentTab={activeTab}
+          onNavigateTab={(nextTab) => {
+            navigationRef.navigate(nextTab as never);
+          }}
+          disabled={isAnyModalOpen}
         >
-          <Tab.Screen name="Agenda" component={AgendaScreenWrapper} />
-          <Tab.Screen name="Estudos" component={StudyScreenWrapper} />
-          <Tab.Screen name="Desempenho" component={AcademicPerformanceScreenWrapper} />
-          <Tab.Screen name="Faltas" component={AttendanceScreenWrapper} />
-          <Tab.Screen name="Notas" component={GradesScreenWrapper} />
-        </Tab.Navigator>
+          <Tab.Navigator
+            screenListeners={{
+              state: (e) => {
+                const routes = (e.data as any)?.state?.routes;
+                const idx = (e.data as any)?.state?.index;
+                if (routes && typeof idx === 'number' && routes[idx]) {
+                  setActiveTab(routes[idx].name);
+                }
+              },
+            }}
+            screenOptions={({ route }) => ({
+              header: () => <CustomHeader />,
+              tabBarActiveTintColor: colors.primary,
+              tabBarInactiveTintColor: colors.textSecondary,
+              tabBarStyle: {
+                backgroundColor: colors.surface,
+                borderTopColor: colors.border,
+              },
+              tabBarIcon: ({ color, size, focused }) => {
+                let icon = '';
+                if (route.name === 'Agenda') icon = '📅';
+                else if (route.name === 'Estudos') icon = '⏱️';
+                else if (route.name === 'Desempenho') icon = '🎯';
+                else if (route.name === 'Faltas') icon = '📊';
+                else if (route.name === 'Notas') icon = '🎓';
+                return <Text style={{ fontSize: focused ? 24 : 20 }}>{icon}</Text>;
+              }
+            })}
+          >
+            <Tab.Screen name="Agenda" component={AgendaScreenWrapper} />
+            <Tab.Screen name="Estudos" component={StudyScreenWrapper} />
+            <Tab.Screen name="Desempenho" component={AcademicPerformanceScreenWrapper} />
+            <Tab.Screen name="Faltas" component={AttendanceScreenWrapper} />
+            <Tab.Screen name="Notas" component={GradesScreenWrapper} />
+          </Tab.Navigator>
+        </SwipeableTabContainer>
       </NavigationContainer>
 
       {/* Global Modals */}

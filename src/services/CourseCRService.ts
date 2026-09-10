@@ -472,6 +472,85 @@ export class CourseCRService {
     return this.removeSubjectFromCurrentSemester(courseData, subjectId, subjectName);
   }
 
+  /**
+   * Reconcilia a grade curricular (courseData) com a lista de matérias ativas do usuário.
+   * Remove disciplinas não consolidadas que foram excluídas (fantasmas), preservando
+   * rigorosamente qualquer disciplina com histórico consolidado (isCompleted: true)
+   * ou notas definitivas registradas.
+   */
+  static reconcileWithActiveSubjects(
+    courseData: CourseProgressData,
+    activeSubjectIds: string[]
+  ): CourseProgressData {
+    const safeData = (courseData && Array.isArray(courseData.semesters))
+      ? courseData
+      : DEFAULT_CURRICULUM_TEMPLATE;
+
+    const activeIdSet = new Set<string>(
+      Array.isArray(activeSubjectIds) ? activeSubjectIds.filter(Boolean) : []
+    );
+
+    const updatedSemesters = safeData.semesters.map(sem => {
+      if (!sem || !Array.isArray(sem.subjects)) {
+        return sem;
+      }
+
+      const filteredSubjects = sem.subjects.filter(sub => {
+        if (!sub) return false;
+
+        // 1. Disciplinas concluídas ou com nota definitiva consolidada pertencem ao histórico e NUNCA devem ser removidas
+        const isConsolidated = Boolean(sub.isCompleted) || sub.isPassing === true;
+        const hasDefinitiveGrade = typeof sub.grade === 'number' && !isNaN(sub.grade) && sub.grade > 0;
+        if (isConsolidated || hasDefinitiveGrade) {
+          return true;
+        }
+
+        // 2. Se a matéria está entre os IDs ativos registrados pelo usuário, permanece ativa
+        if (activeIdSet.has(sub.id)) {
+          return true;
+        }
+
+        // 3. Matéria não consolidada vinculada a ID de matéria (subj_) que não consta mais em activeSubjectIds é fantasma -> remove
+        if (sub.id.startsWith('subj_') && !activeIdSet.has(sub.id)) {
+          return false;
+        }
+
+        // 4. Se a matéria não consolidada e sem nota estiver em um bloco temporário ou de extensão (em andamento/cursando) sem estar nos ativos -> remove
+        const semTitle = (sem.title || '').toLowerCase();
+        if ((semTitle.includes('andamento') || semTitle.includes('cursando')) && !activeIdSet.has(sub.id)) {
+          return false;
+        }
+
+        // 5. Matérias do template fixo da grade não vinculadas a IDs removidos permanecem
+        return true;
+      });
+
+      return {
+        ...sem,
+        subjects: filteredSubjects
+      };
+    }).filter(sem => {
+      // Se um semestre de extensão em andamento ficou completamente vazio após a reconciliação, remove-o
+      const semTitle = (sem.title || '').toLowerCase();
+      if ((semTitle.includes('andamento') || semTitle.includes('cursando')) && (!sem.subjects || sem.subjects.length === 0)) {
+        return false;
+      }
+      return true;
+    });
+
+    const progress = this.calculateDegreeProgress({ ...safeData, semesters: updatedSemesters });
+    const historicalCR = this.calculateHistoricalCR({ ...safeData, semesters: updatedSemesters });
+
+    return {
+      ...safeData,
+      baselineCR: historicalCR,
+      semesters: updatedSemesters,
+      completedCredits: progress.completedCredits,
+      totalRequiredCredits: progress.totalRequiredCredits,
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
 
   /**
    * Fecha e consolida o semestre letivo ativo no histórico definitivo:

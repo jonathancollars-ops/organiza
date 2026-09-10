@@ -15,7 +15,8 @@ import {
   Semester, 
   AppSettings, 
   GamificationData, 
-  AIConfig 
+  AIConfig,
+  ActiveTimerState 
 } from '../types';
 
 export interface AppContextData {
@@ -44,6 +45,15 @@ export interface AppContextData {
   setSemesters: React.Dispatch<React.SetStateAction<Semester[]>>;
   gamification: GamificationData | null;
   setGamification: React.Dispatch<React.SetStateAction<GamificationData | null>>;
+
+  // Active Timer State (Pomodoro & Cronômetro Resilientes)
+  activeTimer: ActiveTimerState | null;
+  setActiveTimer: React.Dispatch<React.SetStateAction<ActiveTimerState | null>>;
+  saveActiveTimer: (timer: ActiveTimerState | null) => Promise<void>;
+  startTimer: (mode: 'pomodoro' | 'stopwatch', initialDurationSeconds: number, subjectId?: string, isBreak?: boolean) => Promise<void>;
+  pauseTimer: () => Promise<void>;
+  resumeTimer: () => Promise<void>;
+  resetTimer: () => Promise<void>;
   
   // App Lifecycle
   isInitializing: boolean;
@@ -90,6 +100,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [streak, setStreak] = useState<StudyStreak>({ currentStreak: 0, longestStreak: 0, lastStudyDate: '' });
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [gamification, setGamification] = useState<GamificationData | null>(null);
+  const [activeTimer, setActiveTimer] = useState<ActiveTimerState | null>(null);
   
   // App Lifecycle
   const [isInitializing, setIsInitializing] = useState(true);
@@ -107,7 +118,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         savedSettings,
         savedGamification,
         savedStreak,
-        savedAIConfig
+        savedAIConfig,
+        savedActiveTimer
       ] = await Promise.all([
         StorageService.getTheme().catch(() => 'dark' as ThemeType),
         StorageService.getEvents().catch(() => [] as AppEvent[]),
@@ -120,6 +132,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         StorageService.getGamificationData().catch(() => null),
         StorageService.getStreak().catch(() => null),
         StorageService.getAIConfig().catch(() => null),
+        StorageService.getActiveTimer().catch(() => null),
       ]);
 
       // Sanitize array collections
@@ -198,6 +211,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setGamification(safeGamification);
       setStreak(safeStreak);
       setAiConfig(safeAIConfig);
+
+      let effectiveTimer = savedActiveTimer;
+      if (effectiveTimer) {
+        if (effectiveTimer.isRunning && effectiveTimer.mode === 'pomodoro' && effectiveTimer.targetEndTime) {
+          const remaining = Math.max(0, Math.round((effectiveTimer.targetEndTime - Date.now()) / 1000));
+          effectiveTimer = { ...effectiveTimer, remainingSeconds: remaining };
+        } else if (effectiveTimer.isRunning && effectiveTimer.mode === 'stopwatch') {
+          const elapsed = Math.max(0, Math.floor((Date.now() - effectiveTimer.startedAt) / 1000));
+          effectiveTimer = { ...effectiveTimer, remainingSeconds: elapsed };
+        }
+      }
+      setActiveTimer(effectiveTimer);
     } catch (err) {
       console.error('Error loading app data in AppContext:', err);
     } finally {
@@ -220,6 +245,67 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updatedSettings = { ...settings, theme: nextTheme };
     setSettings(updatedSettings);
     await StorageService.saveSettings(updatedSettings);
+  };
+
+  // Funções de Controle do Timer Resiliente (Unix Timestamps)
+  const saveActiveTimer = async (timer: ActiveTimerState | null) => {
+    setActiveTimer(timer);
+    await StorageService.saveActiveTimer(timer);
+  };
+
+  const startTimer = async (
+    mode: 'pomodoro' | 'stopwatch',
+    initialDurationSeconds: number,
+    subjectId?: string,
+    isBreak?: boolean
+  ) => {
+    const now = Date.now();
+    const newTimer: ActiveTimerState = {
+      mode,
+      isRunning: true,
+      startedAt: now,
+      targetEndTime: mode === 'pomodoro' ? now + (initialDurationSeconds * 1000) : undefined,
+      remainingSeconds: initialDurationSeconds,
+      initialDuration: initialDurationSeconds,
+      subjectId,
+      isBreak
+    };
+    await saveActiveTimer(newTimer);
+  };
+
+  const pauseTimer = async () => {
+    if (!activeTimer) return;
+    const now = Date.now();
+    let remaining = activeTimer.remainingSeconds;
+    if (activeTimer.mode === 'pomodoro' && activeTimer.targetEndTime) {
+      remaining = Math.max(0, Math.round((activeTimer.targetEndTime - now) / 1000));
+    } else if (activeTimer.mode === 'stopwatch') {
+      remaining = Math.max(0, Math.floor((now - activeTimer.startedAt) / 1000));
+    }
+
+    const updated: ActiveTimerState = {
+      ...activeTimer,
+      isRunning: false,
+      targetEndTime: undefined,
+      remainingSeconds: remaining
+    };
+    await saveActiveTimer(updated);
+  };
+
+  const resumeTimer = async () => {
+    if (!activeTimer) return;
+    const now = Date.now();
+    const updated: ActiveTimerState = {
+      ...activeTimer,
+      isRunning: true,
+      startedAt: activeTimer.mode === 'stopwatch' ? now - (activeTimer.remainingSeconds * 1000) : now,
+      targetEndTime: activeTimer.mode === 'pomodoro' ? now + (activeTimer.remainingSeconds * 1000) : undefined
+    };
+    await saveActiveTimer(updated);
+  };
+
+  const resetTimer = async () => {
+    await saveActiveTimer(null);
   };
 
   const toggleEventCompletion = async (eventId: string) => {
@@ -303,26 +389,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAttendances(updatedAttendances);
     setTasks(updatedTasks);
 
-    // Remoção em cascata na aba Desempenho (CourseCRService)
-    try {
-      const courseData = await CourseCRService.loadCourseProgress();
-      if (courseData) {
-        const updatedCourseData = CourseCRService.removeSubjectFromCurrentSemester(
-          courseData,
-          subjectId,
-          targetSubject?.name
-        );
-        await CourseCRService.saveCourseProgress(updatedCourseData);
-      }
-    } catch (e) {
-      console.warn('Erro ao remover matéria em cascata no Desempenho:', e);
-    }
-
     await Promise.all([
-      StorageService.saveSubjects(updatedSubjects),
-      StorageService.saveEvents(updatedEvents),
-      StorageService.saveAttendances(updatedAttendances),
-      StorageService.saveTasks(updatedTasks),
+      StorageService.deleteSubject(subjectId),
       NotificationService.cancelSubjectNotifications(subjectId, removedEventIds),
     ]);
   };
@@ -370,6 +438,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     streak, setStreak,
     semesters, setSemesters,
     gamification, setGamification,
+    activeTimer, setActiveTimer,
+    saveActiveTimer,
+    startTimer,
+    pauseTimer,
+    resumeTimer,
+    resetTimer,
     isInitializing,
     refreshData: loadData,
     handleThemeToggle,

@@ -13,9 +13,11 @@ import {
   BackupData,
   AACCActivity,
   GroupProject,
-  GamificationData
+  GamificationData,
+  ActiveTimerState
 } from '../types';
 import { getCurrentSemesterId, getCurrentSemesterName } from '../utils';
+import { CourseCRService } from './CourseCRService';
 
 const EVENTS_KEY = '@organiza_events';
 const THEME_KEY = '@organiza_theme';
@@ -32,6 +34,7 @@ const SECURE_AI_API_KEY = 'lumen_secure_ai_api_key';
 const AACC_KEY = '@organiza_aacc';
 const GROUP_PROJECTS_KEY = '@organiza_group_projects';
 const GAMIFICATION_KEY = '@organiza_gamification';
+const ACTIVE_TIMER_KEY = '@organiza_active_timer';
 
 interface SecureStoreModule {
   setItemAsync: (key: string, value: string, options?: { keychainAccessible?: number }) => Promise<void>;
@@ -187,6 +190,7 @@ export const DEFAULT_GAMIFICATION: GamificationData = {
   xp: 0,
   level: 1,
   unlockedAchievements: [],
+  claimedAchievements: [],
   totalFocusMinutes: 0,
   processedEventIds: []
 };
@@ -551,6 +555,83 @@ export const StorageService = {
     }
   },
 
+  /**
+   * Exclui uma disciplina em cascata do armazenamento local:
+   * 1. Remove de @organiza_subjects
+   * 2. Remove eventos vinculados ou órfãos de provas de @organiza_events
+   * 3. Remove registros de frequência de @organiza_attendances
+   * 4. Remove tarefas de estudo de @organiza_tasks
+   * 5. Reconcilia o histórico curricular em CourseCRService, desassociando e removendo referências em courseData.semesters
+   */
+  async deleteSubject(subjectId: string): Promise<boolean> {
+    if (!subjectId || typeof subjectId !== 'string') return false;
+
+    try {
+      // 1. Remove de subjects
+      const subjects = await this.getSubjects();
+      const targetSubject = subjects.find(s => s.id === subjectId);
+      const targetName = targetSubject?.name?.trim().toLowerCase();
+      const updatedSubjects = subjects.filter(s => s.id !== subjectId);
+      await this.saveSubjects(updatedSubjects);
+
+      // 2. Remove eventos associados
+      const events = await this.getEvents();
+      const isSubjectEvent = (e: AppEvent): boolean => {
+        if (e.subjectId === subjectId) return true;
+        if (!e.subjectId || e.subjectId.trim() === '') {
+          if (targetName && targetName.length > 0) {
+            const titleLower = (e.title || '').toLowerCase();
+            const isExam = (
+              e.category === 'Provas/Trabalhos' ||
+              e.category?.toLowerCase().includes('prova') ||
+              titleLower.includes('prova') ||
+              typeof e.grade !== 'undefined' ||
+              typeof e.weight !== 'undefined'
+            );
+            if (isExam && titleLower.includes(targetName)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+      const updatedEvents = events.filter(e => !isSubjectEvent(e));
+      await this.saveEvents(updatedEvents);
+
+      // 3. Remove presenças
+      const attendances = await this.getAttendances();
+      const updatedAttendances = attendances.filter(a => a.subjectId !== subjectId);
+      await this.saveAttendances(updatedAttendances);
+
+      // 4. Remove tarefas
+      const tasks = await this.getTasks();
+      const updatedTasks = tasks.filter(t => t.subjectId !== subjectId);
+      await this.saveTasks(updatedTasks);
+
+      // 5. Reconciliação atômica no Desempenho (CourseCRService)
+      try {
+        const courseData = await CourseCRService.loadCourseProgress();
+        if (courseData) {
+          const activeIds = updatedSubjects.map(s => s.id);
+          let updatedCourse = CourseCRService.reconcileWithActiveSubjects(courseData, activeIds);
+          updatedCourse = CourseCRService.removeSubjectFromCurrentSemester(
+            updatedCourse,
+            subjectId,
+            targetSubject?.name
+          );
+          await CourseCRService.saveCourseProgress(updatedCourse);
+        }
+      } catch (crErr) {
+        console.warn('[StorageService] Falha ao reconciliar courseData ao deletar matéria:', crErr);
+      }
+
+      return true;
+    } catch (e: unknown) {
+      console.error('[StorageService] Erro ao deletar matéria em cascata:', e);
+      return false;
+    }
+  },
+
   async getTheme(): Promise<ThemeType> {
     try {
       const theme = await AsyncStorage.getItem(THEME_KEY);
@@ -639,6 +720,43 @@ export const StorageService = {
     } catch (e: unknown) {
       console.error('[StorageService] Failed to serialize study sessions', e);
       notifyStorageError({ key: STUDY_SESSIONS_KEY, error: e, isQuota: false });
+      return false;
+    }
+  },
+
+  /**
+   * Obtém o estado resiliente do timer/cronômetro ativo em background/foreground.
+   */
+  async getActiveTimer(): Promise<ActiveTimerState | null> {
+    try {
+      const raw = await AsyncStorage.getItem(ACTIVE_TIMER_KEY);
+      if (!raw || typeof raw !== 'string' || raw.trim() === '' || raw === 'null') {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && (parsed.mode === 'pomodoro' || parsed.mode === 'stopwatch')) {
+        return parsed as ActiveTimerState;
+      }
+      return null;
+    } catch (e) {
+      console.error('[StorageService] Erro ao ler activeTimer:', e);
+      return null;
+    }
+  },
+
+  /**
+   * Salva ou limpa o estado do timer resiliente (timestamps Unix para evitar drift de clock).
+   */
+  async saveActiveTimer(timer: ActiveTimerState | null): Promise<boolean> {
+    try {
+      if (!timer) {
+        await AsyncStorage.removeItem(ACTIVE_TIMER_KEY);
+        return true;
+      }
+      const jsonValue = JSON.stringify(timer);
+      return await safeSetItem(ACTIVE_TIMER_KEY, jsonValue);
+    } catch (e) {
+      console.error('[StorageService] Erro ao salvar activeTimer:', e);
       return false;
     }
   },
@@ -857,6 +975,7 @@ export const StorageService = {
         xp: Number.isFinite(parsed.xp) ? Math.max(0, Number(parsed.xp)) : 0,
         level: Number.isFinite(parsed.level) ? Math.max(1, Number(parsed.level)) : 1,
         unlockedAchievements: Array.isArray(parsed.unlockedAchievements) ? parsed.unlockedAchievements.filter(Boolean) : [],
+        claimedAchievements: Array.isArray(parsed.claimedAchievements) ? parsed.claimedAchievements.filter(Boolean) : [],
         totalFocusMinutes: Number.isFinite(parsed.totalFocusMinutes) ? Math.max(0, Number(parsed.totalFocusMinutes)) : 0,
         processedEventIds: Array.isArray(parsed.processedEventIds) ? parsed.processedEventIds.filter(Boolean) : [],
       };
@@ -871,6 +990,7 @@ export const StorageService = {
         xp: Math.max(0, Number(data?.xp) || 0),
         level: Math.max(1, Number(data?.level) || 1),
         unlockedAchievements: Array.isArray(data?.unlockedAchievements) ? data.unlockedAchievements.filter(Boolean) : [],
+        claimedAchievements: Array.isArray(data?.claimedAchievements) ? data.claimedAchievements.filter(Boolean) : [],
         totalFocusMinutes: Math.max(0, Number(data?.totalFocusMinutes) || 0),
         processedEventIds: Array.isArray(data?.processedEventIds) ? data.processedEventIds.filter(Boolean) : [],
       };
@@ -916,6 +1036,88 @@ export const StorageService = {
       await this.saveGamificationData(updated);
       return updated;
     } catch (e) {
+      return DEFAULT_GAMIFICATION;
+    }
+  },
+
+  async claimAchievementXP(id: string, xp: number): Promise<GamificationData> {
+    try {
+      if (!id || typeof id !== 'string') {
+        return await this.getGamificationData();
+      }
+      const current = await this.getGamificationData();
+      const claimed = new Set(current.claimedAchievements || []);
+      if (claimed.has(id)) {
+        return current; // Idempotente: previne resgate duplicado de XP
+      }
+      claimed.add(id);
+
+      const unlocked = new Set(current.unlockedAchievements || []);
+      unlocked.add(id);
+
+      const safeXP = Math.max(0, Number.isFinite(xp) ? xp : 0);
+      const newXP = current.xp + safeXP;
+
+      const GamificationServiceModule = require('./GamificationService');
+      const GamificationService = GamificationServiceModule.GamificationService;
+      const newLevel = Math.max(current.level, GamificationService.calculateLevelFromXP(newXP));
+
+      const updated: GamificationData = {
+        ...current,
+        xp: newXP,
+        level: newLevel,
+        unlockedAchievements: Array.from(unlocked),
+        claimedAchievements: Array.from(claimed),
+      };
+
+      await this.saveGamificationData(updated);
+      return updated;
+    } catch (e) {
+      console.error('[StorageService] Failed to claim achievement XP', e);
+      return DEFAULT_GAMIFICATION;
+    }
+  },
+
+  async claimAllAchievementsXP(achievements: { id: string; xp: number }[]): Promise<GamificationData> {
+    try {
+      const current = await this.getGamificationData();
+      if (!Array.isArray(achievements) || achievements.length === 0) {
+        return current;
+      }
+      const claimed = new Set(current.claimedAchievements || []);
+      const unlocked = new Set(current.unlockedAchievements || []);
+      let addedXP = 0;
+
+      for (const ach of achievements) {
+        if (ach && ach.id && typeof ach.id === 'string' && !claimed.has(ach.id)) {
+          claimed.add(ach.id);
+          unlocked.add(ach.id);
+          const safeXP = Math.max(0, Number.isFinite(ach.xp) ? ach.xp : 0);
+          addedXP += safeXP;
+        }
+      }
+
+      if (addedXP === 0) {
+        return current;
+      }
+
+      const newXP = current.xp + addedXP;
+      const GamificationServiceModule = require('./GamificationService');
+      const GamificationService = GamificationServiceModule.GamificationService;
+      const newLevel = Math.max(current.level, GamificationService.calculateLevelFromXP(newXP));
+
+      const updated: GamificationData = {
+        ...current,
+        xp: newXP,
+        level: newLevel,
+        unlockedAchievements: Array.from(unlocked),
+        claimedAchievements: Array.from(claimed),
+      };
+
+      await this.saveGamificationData(updated);
+      return updated;
+    } catch (e) {
+      console.error('[StorageService] Failed to claim all achievements XP', e);
       return DEFAULT_GAMIFICATION;
     }
   },
@@ -1239,6 +1441,7 @@ export const StorageService = {
       GROUP_PROJECTS_KEY,
       GAMIFICATION_KEY,
       AI_CONFIG_KEY,
+      ACTIVE_TIMER_KEY,
       '@organiza_local_ai_model_info',
     ]);
   }

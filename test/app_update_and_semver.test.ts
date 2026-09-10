@@ -90,10 +90,11 @@ async function runSemverAndAutoUpdateTests() {
     assertEqual(compareSemver('4.0.0', '3.99.99'), 1, '4.0.0 > 3.99.99 (major takes precedence)');
 
     // Build tiebreaker comparison
-    assertEqual(compareSemver('v3.3.0-build-54', 'v3.3.0-build-53'), 1, 'v3.3.0-build-54 > v3.3.0-build-53 (build tiebreaker)');
-    assertEqual(compareSemver('v3.3.0-build-53', 'v3.3.0-build-54'), -1, 'v3.3.0-build-53 < v3.3.0-build-54');
-    assertEqual(compareSemver('v3.3.0-build-54', 'v3.3.0'), 1, 'v3.3.0-build-54 > v3.3.0 (build > 0)');
-    assertEqual(compareSemver('v3.3.0-build-54', 'v3.3.0-build-54'), 0, 'Equal versions and builds yield 0');
+    assertEqual(compareSemver('v3.4.0-build-54', 'v3.4.0-build-53'), 1, 'v3.4.0-build-54 > v3.4.0-build-53 (build tiebreaker)');
+    assertEqual(compareSemver('v3.4.0-build-53', 'v3.4.0-build-54'), -1, 'v3.4.0-build-53 < v3.4.0-build-54');
+    assertEqual(compareSemver('v3.4.0-build-54', 'v3.4.0'), 0, 'v3.4.0-build-54 == v3.4.0 (local without build is official, not inferior to test build)');
+    assertEqual(compareSemver('v3.4.0', 'v3.4.0-build-54'), 1, 'v3.4.0 > v3.4.0-build-54 (official release superior to test build)');
+    assertEqual(compareSemver('v3.4.0-build-54', 'v3.4.0-build-54'), 0, 'Equal versions and builds yield 0');
 
     // isNewerVersion tests
     assert(isNewerVersion('3.1.1', '3.1.0'), '3.1.1 is newer than 3.1.0');
@@ -101,7 +102,20 @@ async function runSemverAndAutoUpdateTests() {
     assert(isNewerVersion('4.0.0', '3.1.0'), '4.0.0 is newer than 3.1.0');
     assert(!isNewerVersion('3.1.0', '3.1.0'), '3.1.0 is NOT newer than 3.1.0');
     assert(!isNewerVersion('3.0.9', '3.1.0'), '3.0.9 is NOT newer than 3.1.0');
-    assert(isNewerVersion('v3.3.0-build-54', 'v3.3.0-build-53'), 'v3.3.0-build-54 is newer than v3.3.0-build-53');
+    assert(!isNewerVersion('v3.4.0-build-54', '3.4.0'), 'v3.4.0-build-54 is NOT newer than official 3.4.0');
+    assert(isNewerVersion('v3.4.0-build-54', 'v3.4.0-build-53'), 'v3.4.0-build-54 is newer than v3.4.0-build-53');
+
+    // Default currentVersion (APP_VERSION = '3.4.0') & False-Positive Prevention
+    assertEqual(APP_VERSION, '3.4.0', 'APP_VERSION constant is exactly 3.4.0');
+    assert(!isNewerVersion('3.4.0'), 'Same version 3.4.0 does not trigger update');
+    assert(!isNewerVersion('3.3.1'), 'Older version 3.3.1 does not trigger update');
+    assert(!isNewerVersion('v3.4.0-build-55'), 'Remote build tag does NOT trigger false-positive update for official 3.4.0 users');
+    assert(!isNewerVersion('v3.4.0-build-99'), 'Remote build 99 does NOT trigger update for official 3.4.0 release');
+    assert(isNewerVersion('3.4.1'), 'Newer patch 3.4.1 triggers update for 3.4.0');
+    assert(isNewerVersion('3.5.0'), 'Newer minor 3.5.0 triggers update for 3.4.0');
+    assert(isNewerVersion('4.0.0'), 'Newer major 4.0.0 triggers update for 3.4.0');
+    assert(isNewerVersion('v3.4.1-build-1'), 'Newer patch with build tag triggers update for 3.4.0');
+    assert(isNewerVersion('v3.4.0', '3.4.0-build-54'), 'Official 3.4.0 triggers upgrade for test build 54 user');
   }
 
   // --- 3. Strict SemVer Increment Rules (bumpVersion) ---
@@ -127,12 +141,12 @@ async function runSemverAndAutoUpdateTests() {
   console.log('\n--- 4. AppUpdateService Mock Tests & Ignored Versions ---');
   {
     // Current version assertion
-    assertEqual(AppUpdateService.getCurrentVersion(), '3.3.1', 'Current version is 3.3.1');
+    assertEqual(AppUpdateService.getCurrentVersion(), '3.4.0', 'Current version is 3.4.0');
 
     // State persistence & ignore version
-    await AppUpdateService.ignoreVersion('3.3.1');
+    await AppUpdateService.ignoreVersion('3.4.0');
     const state = await AppUpdateService.getUpdateState();
-    assertEqual(state.ignoredVersion, '3.3.1', 'Ignored version persisted correctly');
+    assertEqual(state.ignoredVersion, '3.4.0', 'Ignored version persisted correctly');
 
     // Reset state
     await AppUpdateService.saveUpdateState({ ignoredVersion: undefined, lastCheckedAt: undefined });

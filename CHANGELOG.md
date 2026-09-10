@@ -13,6 +13,26 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 
 ---
 
+## [3.4.0] - 2026-09-09
+### 🏆 Gamificação Avançada & Coleta de XP (Novo Recurso)
+- **Expansão para 50 Níveis Acadêmicos:** Progressão curricular com novas patentes de honra (de Calouro a Lenda Acadêmica Suprema).
+- **Coleta Interativa de Experiência:** Botões táteis `✨ Coletar +{ach.xp} XP` em medalhas desbloqueadas e botão `🎁 Resgatar Tudo` no topo da lista.
+
+### ⏱️ Pomodoro e Cronômetro Resilientes (Segundo Plano & Abas)
+- **Arquitetura Baseada em Timers Unix:** Timers continuam rodando sem perda de contagem ao navegar entre abas ou minimizar o app (`AppState = background`).
+- **Notificações Nativas de Conclusão:** Agendamento local automático para alertar o estudante exatamente no término do Pomodoro.
+
+### 🌊 Gestos Fluidos & Navegação 120 Hz (`SwipeableTabContainer`)
+- **Swipe Lateral com Driver Nativo:** Transição horizontal suave entre as 5 abas principais (`Agenda ↔ Estudos ↔ Desempenho ↔ Faltas ↔ Notas`) executada a 120 Hz na RenderThread do Android.
+
+### 🛡️ Transição de Chave Oficial & Proteção Contra Conflito de Pacotes
+- **Card de Orientação e Exportação de Dados (`AppUpdateModal`):** Instruções claras sobre a assinatura de produção oficial (30 anos) com botão direto de `💾 Exportar Backup dos Meus Dados` para evitar conflito de pacotes no Android.
+
+### 🧹 Reconciliação da Matriz Curricular no Desempenho
+- **Purga de Matérias Excluídas:** Sincronização automática e botão de limpeza que elimina disciplinas apagadas da grade curricular ativa.
+
+---
+
 ## [3.3.1] - 2026-09-03
 ### 🕒 Relógio Interativo & Recorrência Avançada (Novos Recursos)
 - **Relógio Interativo Radial & Digital (`ClockTimePickerModal`):** Substituição completa dos sliders imprecisos de hora por um mostrador touch de relógio com alternador de horas (12/24h) e minutos, presets rápidos (`08:00`, `10:00`, `14:00`, etc.) e resposta háptica.

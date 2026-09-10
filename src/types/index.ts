@@ -95,6 +95,7 @@ export interface StudySession {
   subjectId: string;
   durationMs: number; // Time studied in milliseconds
   date: string; // YYYY-MM-DD
+  startTime?: string; // ISO date-time string
 }
 
 export interface StudyStreak {
@@ -150,6 +151,7 @@ export interface GamificationData {
   xp: number;
   level: number;
   unlockedAchievements: string[];
+  claimedAchievements?: string[]; // IDs de conquistas com XP resgatado
   totalFocusMinutes: number;
   processedEventIds?: string[]; // Para impedir XP Farming
 }
@@ -344,6 +346,19 @@ export interface CourseProgressData {
   completedHours?: number; // e.g. 1800
   semesters: CourseSemester[];
   lastUpdated?: string;
+}
+
+export type CourseData = CourseProgressData;
+
+export interface ActiveTimerState {
+  mode: 'pomodoro' | 'stopwatch';
+  isRunning: boolean;
+  startedAt: number;
+  targetEndTime?: number;
+  remainingSeconds: number;
+  initialDuration: number;
+  subjectId?: string;
+  isBreak?: boolean;
 }
 
 export interface CRSimulationScenario {

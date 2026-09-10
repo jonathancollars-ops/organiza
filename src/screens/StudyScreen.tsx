@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,17 @@ import {
   ScrollView,
   TextInput,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  AppState,
+  AppStateStatus
 } from 'react-native';
-import { Subject, ThemeType, StudyTask, StudySession, StudyStreak, GamificationData } from '../types';
+import * as Notifications from 'expo-notifications';
+import { Subject, ThemeType, StudyTask, StudySession, StudyStreak, GamificationData, ActiveTimerState } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
 import { StorageService } from '../services/storage';
+import { NotificationService } from '../services/notifications';
+import { useApp, AppContextData } from '../contexts/AppContext';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 
@@ -47,6 +52,13 @@ export const StudyScreen: React.FC<Props> = ({
   const colors = getThemeColors(theme);
   const styles = getStyles(colors);
 
+  let appContext: AppContextData | null = null;
+  try {
+    appContext = useApp();
+  } catch {
+    // Outside AppProvider in isolated tests
+  }
+
   const [activeTab, setActiveTab] = useState<'pomodoro' | 'cronometro' | 'tarefas'>('pomodoro');
   const [gamification, setGamification] = useState<GamificationData | null>(null);
   
@@ -78,90 +90,6 @@ export const StudyScreen: React.FC<Props> = ({
   const stopwatchRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const taskInputRef = useRef<TextInput>(null);
-
-  useEffect(() => {
-    loadStreak();
-    return () => {
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-        toastTimeoutRef.current = null;
-      }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (stopwatchRef.current) {
-        clearInterval(stopwatchRef.current);
-        stopwatchRef.current = null;
-      }
-    };
-  }, []);
-
-  // Screen blur cleanup: unconditionally clear timer intervals and reset active state
-  useEffect(() => {
-    const unsubscribe = navigation?.addListener?.('blur', () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (stopwatchRef.current) {
-        clearInterval(stopwatchRef.current);
-        stopwatchRef.current = null;
-      }
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-        toastTimeoutRef.current = null;
-      }
-      setIsActive(false);
-      setIsStopwatchRunning(false);
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [navigation]);
-
-  // Tab switch handler: unconditionally clear active intervals when moving between tabs
-  const handleTabChange = (newTab: 'pomodoro' | 'cronometro' | 'tarefas') => {
-    if (newTab !== activeTab) {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (stopwatchRef.current) {
-        clearInterval(stopwatchRef.current);
-        stopwatchRef.current = null;
-      }
-      setIsActive(false);
-      setIsStopwatchRunning(false);
-      setActiveTab(newTab);
-    }
-  };
-
-  // Sync selected subjects when subjects array changes
-  useEffect(() => {
-    if (subjects.length > 0) {
-      if (!selectedSubjectId || !subjects.some(s => s.id === selectedSubjectId)) {
-        setSelectedSubjectId(subjects[0].id);
-      }
-      if (!stopwatchSubjectId || !subjects.some(s => s.id === stopwatchSubjectId)) {
-        setStopwatchSubjectId(subjects[0].id);
-      }
-    }
-  }, [subjects]);
-
-  // Dynamic sync: when focusMinutesDefault or breakMinutesDefault change from Settings props,
-  // update timeLeft immediately if the timer is idle (!isActive).
-  useEffect(() => {
-    if (!isActive) {
-      if (!isBreak) {
-        setActiveFocusMinutes(focusMinutesDefault);
-        setTimeLeft(focusMinutesDefault * 60);
-      } else {
-        setTimeLeft(breakMinutesDefault * 60);
-      }
-    }
-  }, [focusMinutesDefault, breakMinutesDefault, isBreak, isActive]);
 
   const loadStreak = async () => {
     const s = await StorageService.getStreak();
@@ -211,11 +139,244 @@ export const StudyScreen: React.FC<Props> = ({
     }, 4000);
   };
 
+  const handlePomodoroComplete = async (
+    forcedIsBreak?: boolean,
+    forcedSubjectId?: string,
+    forcedInitialDurationSec?: number
+  ) => {
+    setIsActive(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    await NotificationService.cancelTimerNotification();
+    
+    const breakStatus = typeof forcedIsBreak === 'boolean' ? forcedIsBreak : isBreak;
+    const subId = forcedSubjectId || selectedSubjectId || (subjects.length > 0 ? subjects[0].id : 'general');
+    
+    if (!breakStatus) {
+      const sessionDurationMin = forcedInitialDurationSec 
+        ? Math.max(1, Math.round(forcedInitialDurationSec / 60))
+        : (activeFocusMinutes || focusMinutesDefault);
+      const newSession: StudySession = {
+        id: generateId('sess'),
+        subjectId: subId,
+        durationMs: sessionDurationMin * 60 * 1000,
+        date: getLocalDateString(),
+        startTime: new Date().toISOString(),
+      };
+      onAddSession(newSession);
+      await updateStreakOnSessionSaved();
+      const updatedGamification = await StorageService.addXP(50, sessionDurationMin);
+      setGamification(updatedGamification);
+      showToast(`🎉 Sessão de ${sessionDurationMin}min concluída! (+50 XP) Hora do descanso.`, 'success');
+      setIsBreak(true);
+      setTimeLeft(breakMinutesDefault * 60);
+
+      if (appContext?.saveActiveTimer) {
+        await appContext.saveActiveTimer(null);
+      } else {
+        await StorageService.saveActiveTimer(null);
+      }
+    } else {
+      showToast('⚡ Descanso finalizado! Hora de retomar o foco.', 'info');
+      setIsBreak(false);
+      setTimeLeft((activeFocusMinutes || focusMinutesDefault) * 60);
+
+      if (appContext?.saveActiveTimer) {
+        await appContext.saveActiveTimer(null);
+      } else {
+        await StorageService.saveActiveTimer(null);
+      }
+    }
+  };
+
+  const syncTimerFromTimestamps = useCallback(async () => {
+    try {
+      const currentTimer = appContext?.activeTimer !== undefined
+        ? appContext.activeTimer
+        : await StorageService.getActiveTimer();
+
+      if (!currentTimer) return;
+
+      const now = Date.now();
+
+      if (currentTimer.mode === 'pomodoro') {
+        if (currentTimer.isRunning && currentTimer.targetEndTime) {
+          const remaining = Math.max(0, Math.round((currentTimer.targetEndTime - now) / 1000));
+          if (remaining === 0) {
+            setIsActive(false);
+            setTimeLeft(0);
+            await handlePomodoroComplete(currentTimer.isBreak, currentTimer.subjectId, currentTimer.initialDuration);
+            if (appContext?.saveActiveTimer) {
+              await appContext.saveActiveTimer(null);
+            } else {
+              await StorageService.saveActiveTimer(null);
+            }
+          } else {
+            setTimeLeft(remaining);
+            setIsActive(true);
+            setIsBreak(Boolean(currentTimer.isBreak));
+            if (currentTimer.subjectId) {
+              setSelectedSubjectId(currentTimer.subjectId);
+            }
+            if (!timerRef.current) {
+              timerRef.current = setInterval(() => {
+                setTimeLeft((prev: number) => {
+                  if (prev <= 1) return 0;
+                  return prev - 1;
+                });
+              }, 1000);
+            }
+          }
+        } else if (!currentTimer.isRunning) {
+          setTimeLeft(currentTimer.remainingSeconds);
+          setIsActive(false);
+          setIsBreak(Boolean(currentTimer.isBreak));
+        }
+      } else if (currentTimer.mode === 'stopwatch') {
+        if (currentTimer.isRunning) {
+          const elapsed = Math.max(0, Math.floor((now - currentTimer.startedAt) / 1000));
+          setStopwatchSeconds(elapsed);
+          setIsStopwatchRunning(true);
+          if (currentTimer.subjectId) {
+            setStopwatchSubjectId(currentTimer.subjectId);
+          }
+          if (!stopwatchRef.current) {
+            stopwatchRef.current = setInterval(() => {
+              setStopwatchSeconds((prev: number) => prev + 1);
+            }, 1000);
+          }
+        } else {
+          setStopwatchSeconds(currentTimer.remainingSeconds);
+          setIsStopwatchRunning(false);
+        }
+      }
+    } catch (e) {
+      console.warn('[StudyScreen] Erro ao sincronizar timer por timestamps:', e);
+    }
+  }, [appContext, subjects, focusMinutesDefault, breakMinutesDefault, isBreak, selectedSubjectId, activeFocusMinutes]);
+
+  useEffect(() => {
+    loadStreak();
+    syncTimerFromTimestamps();
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
+    };
+  }, []);
+
+  // Screen blur cleanup: unconditionally clear timer intervals and clean handles to prevent memory leaks,
+  // while keeping timestamp-based timer state active in AppContext / StorageService.
+  useEffect(() => {
+    const unsubscribeBlur = navigation?.addListener?.('blur', () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+        toastTimeoutRef.current = null;
+      }
+    });
+
+    const unsubscribeFocus = navigation?.addListener?.('focus', () => {
+      syncTimerFromTimestamps();
+    });
+
+    return () => {
+      if (unsubscribeBlur) unsubscribeBlur();
+      if (unsubscribeFocus) unsubscribeFocus();
+    };
+  }, [navigation, syncTimerFromTimestamps]);
+
+  // Tab switch handler: unconditionally clear active intervals when moving between tabs
+  const handleTabChange = (newTab: 'pomodoro' | 'cronometro' | 'tarefas') => {
+    if (newTab !== activeTab) {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
+      setActiveTab(newTab);
+      syncTimerFromTimestamps();
+    }
+  };
+
+  // AppState background/foreground synchronization & notifications
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background') {
+        const currentTimer = appContext?.activeTimer !== undefined
+          ? appContext.activeTimer
+          : await StorageService.getActiveTimer();
+        if (currentTimer?.isRunning && currentTimer.mode === 'pomodoro' && currentTimer.targetEndTime) {
+          const subName = subjects.find(s => s.id === currentTimer.subjectId)?.name || 'Estudos';
+          await NotificationService.scheduleTimerNotification(
+            currentTimer.targetEndTime,
+            '⏱️ Ciclo de Estudo Concluído!',
+            `Seu ciclo de Pomodoro de ${subName} foi finalizado. Parabéns pelo foco!`
+          );
+        }
+      } else if (nextAppState === 'active') {
+        await NotificationService.cancelTimerNotification();
+        await syncTimerFromTimestamps();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [appContext, subjects, syncTimerFromTimestamps]);
+
+  // Sync selected subjects when subjects array changes
+  useEffect(() => {
+    if (subjects.length > 0) {
+      if (!selectedSubjectId || !subjects.some(s => s.id === selectedSubjectId)) {
+        setSelectedSubjectId(subjects[0].id);
+      }
+      if (!stopwatchSubjectId || !subjects.some(s => s.id === stopwatchSubjectId)) {
+        setStopwatchSubjectId(subjects[0].id);
+      }
+    }
+  }, [subjects]);
+
+  // Dynamic sync: when focusMinutesDefault or breakMinutesDefault change from Settings props,
+  // update timeLeft immediately if the timer is idle (!isActive).
+  useEffect(() => {
+    if (!isActive) {
+      if (!isBreak) {
+        setActiveFocusMinutes(focusMinutesDefault);
+        setTimeLeft(focusMinutesDefault * 60);
+      } else {
+        setTimeLeft(breakMinutesDefault * 60);
+      }
+    }
+  }, [focusMinutesDefault, breakMinutesDefault, isBreak, isActive]);
+
   // Pomodoro timer tick without clock drift
   useEffect(() => {
     if (isActive) {
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => {
+        setTimeLeft((prev: number) => {
           if (prev <= 1) {
             return 0;
           }
@@ -223,11 +384,17 @@ export const StudyScreen: React.FC<Props> = ({
         });
       }, 1000);
     } else {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     }
     
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     };
   }, [isActive]);
 
@@ -241,45 +408,25 @@ export const StudyScreen: React.FC<Props> = ({
   // Stopwatch timer tick
   useEffect(() => {
     if (isStopwatchRunning) {
+      if (stopwatchRef.current) clearInterval(stopwatchRef.current);
       stopwatchRef.current = setInterval(() => {
-        setStopwatchSeconds((prev) => prev + 1);
+        setStopwatchSeconds((prev: number) => prev + 1);
       }, 1000);
     } else {
-      if (stopwatchRef.current) clearInterval(stopwatchRef.current);
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
     }
     return () => {
-      if (stopwatchRef.current) clearInterval(stopwatchRef.current);
+      if (stopwatchRef.current) {
+        clearInterval(stopwatchRef.current);
+        stopwatchRef.current = null;
+      }
     };
   }, [isStopwatchRunning]);
 
-  const handlePomodoroComplete = async () => {
-    setIsActive(false);
-    if (timerRef.current) clearInterval(timerRef.current);
-    
-    const subId = selectedSubjectId || (subjects.length > 0 ? subjects[0].id : 'general');
-    if (!isBreak) {
-      const sessionDurationMin = activeFocusMinutes || focusMinutesDefault;
-      const newSession: StudySession = {
-        id: generateId('sess'),
-        subjectId: subId,
-        durationMs: sessionDurationMin * 60 * 1000,
-        date: getLocalDateString(),
-      };
-      onAddSession(newSession);
-      await updateStreakOnSessionSaved();
-      const updatedGamification = await StorageService.addXP(50, sessionDurationMin);
-      setGamification(updatedGamification);
-      showToast(`🎉 Sessão de ${sessionDurationMin}min concluída! (+50 XP) Hora do descanso.`, 'success');
-      setIsBreak(true);
-      setTimeLeft(breakMinutesDefault * 60);
-    } else {
-      showToast('⚡ Descanso finalizado! Hora de retomar o foco.', 'info');
-      setIsBreak(false);
-      setTimeLeft((activeFocusMinutes || focusMinutesDefault) * 60);
-    }
-  };
-
-  const toggleTimer = () => {
+  const toggleTimer = async () => {
     if (!selectedSubjectId && subjects.length > 0) {
       setSelectedSubjectId(subjects[0].id);
     }
@@ -288,14 +435,62 @@ export const StudyScreen: React.FC<Props> = ({
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsActive(!isActive);
+    const nextIsActive = !isActive;
+    setIsActive(nextIsActive);
+
+    const now = Date.now();
+    const subId = selectedSubjectId || (subjects.length > 0 ? subjects[0].id : undefined);
+
+    if (nextIsActive) {
+      const targetEndTime = now + (timeLeft * 1000);
+      const timerState: ActiveTimerState = {
+        mode: 'pomodoro',
+        isRunning: true,
+        startedAt: now,
+        targetEndTime,
+        remainingSeconds: timeLeft,
+        initialDuration: (activeFocusMinutes || focusMinutesDefault) * 60,
+        subjectId: subId,
+        isBreak
+      };
+      if (appContext?.saveActiveTimer) {
+        await appContext.saveActiveTimer(timerState);
+      } else {
+        await StorageService.saveActiveTimer(timerState);
+      }
+    } else {
+      await NotificationService.cancelTimerNotification();
+      const timerState: ActiveTimerState = {
+        mode: 'pomodoro',
+        isRunning: false,
+        startedAt: now,
+        targetEndTime: undefined,
+        remainingSeconds: timeLeft,
+        initialDuration: (activeFocusMinutes || focusMinutesDefault) * 60,
+        subjectId: subId,
+        isBreak
+      };
+      if (appContext?.saveActiveTimer) {
+        await appContext.saveActiveTimer(timerState);
+      } else {
+        await StorageService.saveActiveTimer(timerState);
+      }
+    }
   };
 
-  const resetTimer = () => {
+  const resetTimer = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsActive(false);
     setIsBreak(false);
     setTimeLeft((activeFocusMinutes || focusMinutesDefault) * 60);
+    await NotificationService.cancelTimerNotification();
+    if (appContext?.resetTimer) {
+      await appContext.resetTimer();
+    } else if (appContext?.saveActiveTimer) {
+      await appContext.saveActiveTimer(null);
+    } else {
+      await StorageService.saveActiveTimer(null);
+    }
   };
 
   const handleSelectPreset = (minutes: number) => {
@@ -310,19 +505,60 @@ export const StudyScreen: React.FC<Props> = ({
     }
   };
 
-  const toggleStopwatch = () => {
+  const toggleStopwatch = async () => {
     if (!stopwatchSubjectId && subjects.length > 0) {
       setStopwatchSubjectId(subjects[0].id);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsStopwatchRunning(!isStopwatchRunning);
+    const nextRunning = !isStopwatchRunning;
+    setIsStopwatchRunning(nextRunning);
+
+    const now = Date.now();
+    const subId = stopwatchSubjectId || (subjects.length > 0 ? subjects[0].id : undefined);
+
+    if (nextRunning) {
+      const timerState: ActiveTimerState = {
+        mode: 'stopwatch',
+        isRunning: true,
+        startedAt: now - (stopwatchSeconds * 1000),
+        remainingSeconds: stopwatchSeconds,
+        initialDuration: 0,
+        subjectId: subId
+      };
+      if (appContext?.saveActiveTimer) {
+        await appContext.saveActiveTimer(timerState);
+      } else {
+        await StorageService.saveActiveTimer(timerState);
+      }
+    } else {
+      const timerState: ActiveTimerState = {
+        mode: 'stopwatch',
+        isRunning: false,
+        startedAt: now - (stopwatchSeconds * 1000),
+        remainingSeconds: stopwatchSeconds,
+        initialDuration: 0,
+        subjectId: subId
+      };
+      if (appContext?.saveActiveTimer) {
+        await appContext.saveActiveTimer(timerState);
+      } else {
+        await StorageService.saveActiveTimer(timerState);
+      }
+    }
   };
 
-  const resetStopwatch = () => {
+  const resetStopwatch = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsStopwatchRunning(false);
     setStopwatchSeconds(0);
     showToast('Cronômetro zerado.', 'info');
+    if (appContext?.resetTimer) {
+      await appContext.resetTimer();
+    } else if (appContext?.saveActiveTimer) {
+      await appContext.saveActiveTimer(null);
+    } else {
+      await StorageService.saveActiveTimer(null);
+    }
   };
 
   const saveAndResetStopwatch = async () => {
@@ -339,6 +575,7 @@ export const StudyScreen: React.FC<Props> = ({
       subjectId: subId,
       durationMs: stopwatchSeconds * 1000,
       date: getLocalDateString(),
+      startTime: new Date().toISOString(),
     };
     onAddSession(newSession);
     await updateStreakOnSessionSaved();
@@ -352,6 +589,13 @@ export const StudyScreen: React.FC<Props> = ({
 
     setIsStopwatchRunning(false);
     setStopwatchSeconds(0);
+    if (appContext?.resetTimer) {
+      await appContext.resetTimer();
+    } else if (appContext?.saveActiveTimer) {
+      await appContext.saveActiveTimer(null);
+    } else {
+      await StorageService.saveActiveTimer(null);
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -1058,7 +1302,7 @@ export const StudyScreen: React.FC<Props> = ({
                 )}
               </View>
             ) : (
-              filteredTasks.sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted)).map(task => {
+              filteredTasks.sort((a: StudyTask, b: StudyTask) => Number(a.isCompleted) - Number(b.isCompleted)).map((task: StudyTask) => {
                 const sub = subjects.find(s => s.id === task.subjectId);
                 return (
                   <View key={task.id} style={[styles.taskRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>

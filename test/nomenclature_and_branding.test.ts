@@ -2,6 +2,8 @@ import './setup_env';
 import fs from 'fs';
 import path from 'path';
 import { AIParsingService, ParsingContext } from '../src/services/AIParsingService';
+import { APP_VERSION } from '../src/utils/version';
+import { AppUpdateService } from '../src/services/AppUpdateService';
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -39,7 +41,7 @@ async function runNomenclatureTests() {
     assert(fs.existsSync(pkgPath), 'package.json exists');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
     assert(pkg.name === 'lumen', `package.json "name" is "lumen" (got: "${pkg.name}")`);
-    assert(pkg.version === '3.3.1', `package.json "version" is "3.3.1" (got: "${pkg.version}")`);
+    assert(pkg.version === '3.4.0', `package.json "version" is "3.4.0" (got: "${pkg.version}")`);
   });
 
   // Test 2: app.json branding
@@ -49,7 +51,7 @@ async function runNomenclatureTests() {
     const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
     assert(appJson.expo.name === 'Lumen', `app.json expo.name is "Lumen" (got: "${appJson.expo.name}")`);
     assert(appJson.expo.slug === 'lumen', `app.json expo.slug is "lumen" (got: "${appJson.expo.slug}")`);
-    assert(appJson.expo.version === '3.3.1', `app.json expo.version is "3.3.1" (got: "${appJson.expo.version}")`);
+    assert(appJson.expo.version === '3.4.0', `app.json expo.version is "3.4.0" (got: "${appJson.expo.version}")`);
   });
 
   // Test 3: strings.xml Android app_name — only valid after expo prebuild
@@ -169,6 +171,19 @@ async function runNomenclatureTests() {
         `File contains Lumen branding: ${path.relative(projectRoot, f)}`
       );
     }
+  });
+
+  // Test 10: Version 3.4.0 alignment across version.ts, package.json, app.json, and AppUpdateService
+  await test('10. Version 3.4.0 alignment across version.ts, package.json, app.json and AppUpdateService', () => {
+    const pkgPath = path.join(projectRoot, 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    const appJsonPath = path.join(projectRoot, 'app.json');
+    const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
+
+    assert(APP_VERSION === '3.4.0', `APP_VERSION is "3.4.0" (got: "${APP_VERSION}")`);
+    assert(pkg.version === '3.4.0', `package.json version is "3.4.0" (got: "${pkg.version}")`);
+    assert(appJson.expo.version === '3.4.0', `app.json expo.version is "3.4.0" (got: "${appJson.expo.version}")`);
+    assert(AppUpdateService.getCurrentVersion() === '3.4.0', `AppUpdateService.getCurrentVersion() is "3.4.0" (got: "${AppUpdateService.getCurrentVersion()}")`);
   });
 
   console.log('================================================================');

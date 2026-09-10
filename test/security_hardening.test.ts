@@ -452,10 +452,11 @@ async function runSecurityTests() {
     assert(p5.major === 3 && p5.minor === 3 && p5.patch === 1, 'refs/tags/ prefix stripped');
 
     // Comparison rules
-    assert(compareSemver('3.3.1-build-54', '3.3.1') > 0, 'v3.3.1-build-54 is newer than 3.3.1 (no build)');
-    assert(compareSemver('3.3.1', '3.3.1-build-54') < 0, '3.3.1 is older than v3.3.1-build-54');
-    assert(compareSemver('3.3.2', '3.3.1-build-54') > 0, 'Patch 3.3.2 is newer than 3.3.1-build-54');
-    assert(compareSemver('3.3.1', 'v3.3.1') === 0, 'Equal versions return 0');
+    assert(compareSemver('3.4.0-build-54', '3.4.0') === 0, 'v3.4.0-build-54 is not superior to official 3.4.0 (no false update)');
+    assert(compareSemver('3.4.0', '3.4.0-build-54') > 0, 'Official 3.4.0 is superior to test build 3.4.0-build-54');
+    assert(compareSemver('3.4.0-build-54', '3.4.0-build-53') > 0, 'Build 54 is newer than build 53');
+    assert(compareSemver('3.4.1', '3.4.0-build-54') > 0, 'Patch 3.4.1 is newer than 3.4.0-build-54');
+    assert(compareSemver('3.4.0', 'v3.4.0') === 0, 'Equal versions return 0');
   });
 
   await test('AppUpdateService.checkForUpdates sanitizes GitHub release data and falls back when no APK asset exists', async () => {
@@ -465,10 +466,10 @@ async function runSecurityTests() {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
-        tag_name: 'v3.4.0-build-12',
-        name: 'Release 3.4.0 <script>alert("xss")</script>',
+        tag_name: 'v3.4.1-build-12',
+        name: 'Release 3.4.1 <script>alert("xss")</script>',
         body: 'Notas de atualização <b>com tags</b> e <iframe src="evil.com"></iframe>',
-        html_url: 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.0',
+        html_url: 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.1',
         assets: [
           { name: 'source.zip', browser_download_url: 'https://github.com/release/source.zip' }
         ]
@@ -478,10 +479,10 @@ async function runSecurityTests() {
     const info = await AppUpdateService.checkForUpdates(true);
     assert(info !== null, 'Update info retrieved');
     assert(info!.hasUpdate === true, 'Update detected');
-    assert(info!.latestVersion === '3.4.0-build-12', 'Version with build extracted');
+    assert(info!.latestVersion === '3.4.1-build-12', 'Version with build extracted');
     assert(!info!.releaseName!.includes('<script>'), 'Release name sanitized');
     assert(!info!.releaseNotes!.includes('<iframe>'), 'Release notes stripped of dangerous tags');
-    assert(info!.downloadUrl === 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.0', 'Fallback to release html_url because no .apk asset exists');
+    assert(info!.downloadUrl === 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.1', 'Fallback to release html_url because no .apk asset exists');
 
     globalThis.fetch = origFetch;
   });

@@ -303,5 +303,39 @@ export const NotificationService = {
       console.warn('Falha ao reconciliar e purgar notificações órfãs:', e);
       return { purgedCount: 0 };
     }
+  },
+
+  async scheduleNotificationAsync(request: Notifications.NotificationRequestInput): Promise<string> {
+    return await Notifications.scheduleNotificationAsync(request);
+  },
+
+  async scheduleTimerNotification(targetEndTime: number, title?: string, body?: string): Promise<string | null> {
+    try {
+      await this.cancelTimerNotification();
+      return await Notifications.scheduleNotificationAsync({
+        identifier: 'lumen_active_pomodoro_completion',
+        content: {
+          title: title || '⏱️ Tempo Concluído!',
+          body: body || 'Seu ciclo de Pomodoro foi finalizado. Parabéns pelo foco!',
+          sound: true,
+          data: { type: 'pomodoro_complete' },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(targetEndTime),
+        },
+      });
+    } catch (e) {
+      console.warn('[NotificationService] Erro ao agendar notificação de timer:', e);
+      return null;
+    }
+  },
+
+  async cancelTimerNotification(): Promise<void> {
+    try {
+      await Notifications.cancelScheduledNotificationAsync('lumen_active_pomodoro_completion');
+    } catch (e) {
+      // Ignored safely
+    }
   }
 };

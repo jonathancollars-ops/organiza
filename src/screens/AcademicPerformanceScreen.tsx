@@ -385,6 +385,24 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
     );
   };
 
+  const handleSyncCurriculum = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const activeIds = (subjects || []).map(s => s.id);
+      const updated = CourseCRService.reconcileWithActiveSubjects(courseData, activeIds);
+      setCourseData(updated);
+      await CourseCRService.saveCourseProgress(updated);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Grade Sincronizada!',
+        'Disciplinas excluídas e matérias fantasmas foram removidas. Seu histórico de matérias concluídas e CR oficial foram rigorosamente preservados.'
+      );
+    } catch (err) {
+      console.warn('Erro ao sincronizar grade:', err);
+      Alert.alert('Erro', 'Não foi possível sincronizar a grade curricular.');
+    }
+  };
+
   const safeSemesters = Array.isArray(courseData?.semesters) ? courseData.semesters : [];
   const safeSubjects = Array.isArray(subjects) ? subjects : [];
 
@@ -404,7 +422,17 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
         <View style={styles.headerButtons}>
           <TouchableOpacity
             style={styles.headerBtn}
+            onPress={handleSyncCurriculum}
+            accessibilityRole="button"
+            accessibilityLabel="Sincronizar Grade"
+          >
+            <Text style={styles.headerBtnText}>🔄 Sincronizar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerBtn}
             onPress={() => setIsTargetModalVisible(true)}
+            accessibilityRole="button"
             accessibilityLabel="Definir Meta de CR"
           >
             <Text style={styles.headerBtnText}>🎯 Meta</Text>
@@ -413,6 +441,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
           <TouchableOpacity
             style={styles.headerBtn}
             onPress={() => setIsImportModalVisible(true)}
+            accessibilityRole="button"
             accessibilityLabel="Importar Histórico ou Fluxograma"
           >
             <Text style={styles.headerBtnText}>📥 Importar</Text>
@@ -670,12 +699,24 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
               <View style={styles.semesterContentCard}>
                 <View style={styles.semesterCardHeader}>
                   <Text style={styles.semesterCardTitle}>{currentSemester.title}</Text>
-                  <TouchableOpacity
-                    style={styles.addSubjectBtn}
-                    onPress={() => setIsAddSubjectModalVisible(true)}
-                  >
-                    <Text style={styles.addSubjectBtnText}>+ Matéria</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <TouchableOpacity
+                      style={[styles.addSubjectBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border, borderWidth: 1 }]}
+                      onPress={handleSyncCurriculum}
+                      accessibilityRole="button"
+                      accessibilityLabel="Sincronizar Grade"
+                    >
+                      <Text style={[styles.addSubjectBtnText, { color: colors.text }]}>🔄 Sincronizar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.addSubjectBtn}
+                      onPress={() => setIsAddSubjectModalVisible(true)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Adicionar Matéria ao Semestre"
+                    >
+                      <Text style={styles.addSubjectBtnText}>+ Matéria</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {(!currentSemester.subjects || currentSemester.subjects.length === 0) ? (

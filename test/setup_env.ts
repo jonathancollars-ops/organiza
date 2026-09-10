@@ -22,6 +22,26 @@ export function setMockFreeDiskStorageBytes(bytes: number) {
   mockFreeDiskStorageBytes = bytes;
 }
 
+export const appStateListeners: ((state: string) => void)[] = [];
+export const mockAppState = {
+  currentState: 'active',
+  addEventListener: (type: string, listener: (state: any) => void) => {
+    if (type === 'change') {
+      appStateListeners.push(listener);
+    }
+    return {
+      remove: () => {
+        const idx = appStateListeners.indexOf(listener);
+        if (idx !== -1) appStateListeners.splice(idx, 1);
+      }
+    };
+  }
+};
+export function triggerAppStateChange(newState: 'active' | 'background' | 'inactive') {
+  mockAppState.currentState = newState;
+  appStateListeners.slice().forEach(listener => listener(newState));
+}
+
 // Hook require for Expo/React-Native modules
 const Module = require('module');
 export const mockReactNative = {
@@ -37,6 +57,12 @@ export const mockReactNative = {
   Modal: 'Modal',
   Dimensions: { get: () => ({ width: 375, height: 812 }) },
   TextInput: 'TextInput',
+  AppState: mockAppState,
+  Share: {
+    share: async (content: any) => ({ action: 'sharedAction' }),
+    sharedAction: 'sharedAction',
+    dismissedAction: 'dismissedAction',
+  },
   Linking: {
     openURL: async () => true,
     canOpenURL: async () => true,
@@ -100,8 +126,23 @@ Module.prototype.require = function (id: string) {
         setOptions: () => {},
         addListener: () => () => {},
       }),
+      useNavigationContainerRef: () => ({
+        navigate: () => {},
+        getCurrentRoute: () => ({ name: 'Agenda' }),
+      }),
+      NavigationContainer: ({ children }: any) => children,
+      DefaultTheme: { dark: false, colors: {} },
+      DarkTheme: { dark: true, colors: {} },
       useRoute: () => ({ params: {} }),
       useIsFocused: () => true,
+    };
+  }
+  if (id === '@react-navigation/bottom-tabs') {
+    return {
+      createBottomTabNavigator: () => ({
+        Navigator: ({ children }: any) => children,
+        Screen: ({ children }: any) => children,
+      }),
     };
   }
   if (id === 'expo-haptics') {
@@ -111,6 +152,13 @@ Module.prototype.require = function (id: string) {
       notificationAsync: async () => {},
       ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
       NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' }
+    };
+  }
+  if (id === 'react-native-safe-area-context') {
+    return {
+      SafeAreaView: 'SafeAreaView',
+      useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+      SafeAreaProvider: 'SafeAreaProvider',
     };
   }
 const fileSystemMock = {
@@ -158,6 +206,11 @@ const fileSystemMock = {
     };
   },
   getContentUriAsync: async (uri: string) => `content://com.lumen.fileprovider/files/${uri.split('/').pop()}`,
+  writeAsStringAsync: async (uri: string, contents: string, options?: any) => {
+    mockFileSystemStore[uri] = { exists: true, isDirectory: false, size: contents.length };
+  },
+  readAsStringAsync: async (uri: string, options?: any) => '',
+  EncodingType: { UTF8: 'utf8', Base64: 'base64' },
 };
 
 const intentLauncherMock = {

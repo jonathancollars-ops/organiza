@@ -408,7 +408,7 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      {/* Header Actions - Asymmetric Dual-Zone layout clear of notch/camera */}
+      {/* Header Actions - Apple HIG Header with Full-Width Title & Tactile Action Toolbar */}
       <View style={styles.header}>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
@@ -425,26 +425,19 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
             onPress={handleSyncCurriculum}
             accessibilityRole="button"
             accessibilityLabel="Sincronizar Grade"
+            activeOpacity={0.7}
           >
             <Text style={styles.headerBtnText}>🔄 Sincronizar</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => setIsTargetModalVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Definir Meta de CR"
-          >
-            <Text style={styles.headerBtnText}>🎯 Meta</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.headerBtn}
+            style={[styles.headerBtn, styles.headerBtnPrimary]}
             onPress={() => setIsImportModalVisible(true)}
             accessibilityRole="button"
             accessibilityLabel="Importar Histórico ou Fluxograma"
+            activeOpacity={0.7}
           >
-            <Text style={styles.headerBtnText}>📥 Importar</Text>
+            <Text style={styles.headerBtnPrimaryText}>📥 Importar</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -790,187 +783,200 @@ export const AcademicPerformanceScreen: React.FC<AcademicPerformanceScreenProps>
           style={styles.modalBackdrop}
         >
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>📥 Importador Acadêmico</Text>
-            <Text style={styles.modalSubtitle}>
-              Cole o texto do seu portal (SIGAA, Sophia, TOTVS) ou fluxograma de matérias
-            </Text>
-
-            {/* Mode Switcher */}
-            <View style={styles.modalTabSwitch}>
-              <TouchableOpacity
-                style={[styles.modalTabBtn, importMode === 'transcript' && styles.modalTabBtnActive]}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setImportMode('transcript');
-                }}
-                disabled={isProcessingDocument}
-              >
-                <Text style={[styles.modalTabBtnText, importMode === 'transcript' && styles.modalTabBtnTextActive]}>
-                  📄 Histórico / CR
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalTabBtn, importMode === 'curriculum' && styles.modalTabBtnActive]}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setImportMode('curriculum');
-                }}
-                disabled={isProcessingDocument}
-              >
-                <Text style={[styles.modalTabBtnText, importMode === 'curriculum' && styles.modalTabBtnTextActive]}>
-                  🗺️ Grade / Fluxograma
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Suggested Academic Prompt Chips */}
-            <View style={styles.promptChipsContainer}>
-              <Text style={[styles.promptChipsLabel, { color: colors.textSecondary }]}>
-                💡 Exemplos de texto para teste rápido:
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <Text style={styles.modalTitle}>📥 Importador Acadêmico</Text>
+              <Text style={styles.modalSubtitle}>
+                Cole o texto do seu portal (SIGAA, Sophia, TOTVS) ou fluxograma de matérias
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptChipsScroll}>
-                {importMode === 'transcript' ? (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setImportInputText(
-                          'Histórico Escolar Oficial:\nCR Acumulado: 8.45\n' +
-                          '1º Semestre 2024:\n' +
-                          '- Cálculo I (4 créditos): 8.5 (Aprovado)\n' +
-                          '- Física I (4 créditos): 9.0 (Aprovado)\n' +
-                          '- Algoritmos e Programação (4 créditos): 9.5 (Aprovado)'
-                        );
-                      }}
-                      activeOpacity={0.7}
-                      accessible={true}
-                      accessibilityRole="button"
-                      accessibilityLabel="Inserir exemplo de histórico escolar"
-                    >
-                      <Text style={[styles.promptChipText, { color: colors.text }]}>📄 Histórico Completo</Text>
-                    </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setImportInputText(
-                          'Boletim Semestral:\n' +
-                          'CR: 7.80\n' +
-                          'Álgebra Linear (4 cr) - Média 8.2\n' +
-                          'Geometria Analítica (3 cr) - Média 7.5\n' +
-                          'Química Geral (3 cr) - Média 8.0'
-                        );
-                      }}
-                      activeOpacity={0.7}
-                      accessible={true}
-                      accessibilityRole="button"
-                      accessibilityLabel="Inserir exemplo de boletim semestral"
-                    >
-                      <Text style={[styles.promptChipText, { color: colors.text }]}>📊 Boletim Rápido</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setImportInputText(
-                          '1º Semestre:\n- Cálculo I (4 créditos)\n- Física I (4 créditos)\n- Introdução à Engenharia (2 créditos)\n\n' +
-                          '2º Semestre:\n- Cálculo II (4 créditos)\n- Física II (4 créditos)\n- Álgebra Linear (4 créditos)\n\n' +
-                          '3º Semestre:\n- Cálculo III (4 créditos)\n- Mecânica Geral (4 créditos)\n- Eletromagnetismo (4 créditos)'
-                        );
-                      }}
-                      activeOpacity={0.7}
-                      accessible={true}
-                      accessibilityRole="button"
-                      accessibilityLabel="Inserir exemplo de grade de engenharia"
-                    >
-                      <Text style={[styles.promptChipText, { color: colors.text }]}>⚙️ Grade Engenharia</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        setImportInputText(
-                          '1º Semestre:\n- Programação I (4 créditos)\n- Circuitos Digitais (4 créditos)\n- Matemática Discreta (4 créditos)\n\n' +
-                          '2º Semestre:\n- Estrutura de Dados (4 créditos)\n- Arquitetura de Computadores (4 créditos)\n- Cálculo para Computação (4 créditos)'
-                        );
-                      }}
-                      activeOpacity={0.7}
-                      accessible={true}
-                      accessibilityRole="button"
-                      accessibilityLabel="Inserir exemplo de grade de computação"
-                    >
-                      <Text style={[styles.promptChipText, { color: colors.text }]}>💻 Grade Computação</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </ScrollView>
-            </View>
-
-            <TextInput
-              style={styles.importTextInput}
-              placeholder={
-                importMode === 'transcript'
-                  ? 'Ex: Cole o texto do histórico escolar contendo o CR e as disciplinas concluídas...'
-                  : 'Ex: Cole a lista de disciplinas por semestre (1º Semestre, 2º Semestre)...'
-              }
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              value={importInputText}
-              onChangeText={setImportInputText}
-              editable={!isProcessingDocument}
-            />
-
-            <View style={{ marginVertical: 12 }}>
-              <TouchableOpacity
-                style={[styles.modalActionSubmit, { backgroundColor: colors.primary, paddingVertical: 14 }]}
-                onPress={handleDocumentUpload}
-                disabled={isProcessingDocument}
-              >
-                {isProcessingDocument ? (
-                  <ActivityIndicator color={getContrastTextColor(colors.primary)} size="small" />
-                ) : (
-                  <Text style={[styles.modalActionSubmitText, { color: getContrastTextColor(colors.primary) }]}>📄 Analisar PDF / Imagem com Lumen AI</Text>
-                )}
-              </TouchableOpacity>
-              <Text style={{ textAlign: 'center', fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-                A IA do Gemini vai ler seu documento e organizar a grade automaticamente.
-              </Text>
-            </View>
-
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={styles.modalActionSecondary}
-                onPress={handleResetToTemplate}
-                disabled={isProcessingDocument}
-              >
-                <Text style={styles.modalActionSecondaryText}>Restaurar Grade Padrão</Text>
-              </TouchableOpacity>
-
-              <View style={styles.modalButtonsRow}>
+              {/* Mode Switcher */}
+              <View style={styles.modalTabSwitch}>
                 <TouchableOpacity
-                  style={styles.modalActionCancel}
+                  style={[styles.modalTabBtn, importMode === 'transcript' && styles.modalTabBtnActive]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setImportMode('transcript');
+                  }}
+                  disabled={isProcessingDocument}
+                >
+                  <Text style={[styles.modalTabBtnText, importMode === 'transcript' && styles.modalTabBtnTextActive]}>
+                    📄 Histórico / CR
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalTabBtn, importMode === 'curriculum' && styles.modalTabBtnActive]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setImportMode('curriculum');
+                  }}
+                  disabled={isProcessingDocument}
+                >
+                  <Text style={[styles.modalTabBtnText, importMode === 'curriculum' && styles.modalTabBtnTextActive]}>
+                    🗺️ Grade / Fluxograma
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Suggested Academic Prompt Chips */}
+              <View style={styles.promptChipsContainer}>
+                <Text style={[styles.promptChipsLabel, { color: colors.textSecondary }]}>
+                  💡 Exemplos de texto para teste rápido:
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promptChipsScroll}>
+                  {importMode === 'transcript' ? (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setImportInputText(
+                            'Histórico Escolar Oficial:\nCR Acumulado: 8.45\n' +
+                            '1º Semestre 2024:\n' +
+                            '- Cálculo I (4 créditos): 8.5 (Aprovado)\n' +
+                            '- Física I (4 créditos): 9.0 (Aprovado)\n' +
+                            '- Algoritmos e Programação (4 créditos): 9.5 (Aprovado)'
+                          );
+                        }}
+                        activeOpacity={0.7}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel="Inserir exemplo de histórico escolar"
+                      >
+                        <Text style={[styles.promptChipText, { color: colors.text }]}>📄 Histórico Completo</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setImportInputText(
+                            'Boletim Semestral:\n' +
+                            'CR: 7.80\n' +
+                            'Álgebra Linear (4 cr) - Média 8.2\n' +
+                            'Geometria Analítica (3 cr) - Média 7.5\n' +
+                            'Química Geral (3 cr) - Média 8.0'
+                          );
+                        }}
+                        activeOpacity={0.7}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel="Inserir exemplo de boletim semestral"
+                      >
+                        <Text style={[styles.promptChipText, { color: colors.text }]}>📊 Boletim Rápido</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setImportInputText(
+                            '1º Semestre:\n- Cálculo I (4 créditos)\n- Física I (4 créditos)\n- Introdução à Engenharia (2 créditos)\n\n' +
+                            '2º Semestre:\n- Cálculo II (4 créditos)\n- Física II (4 créditos)\n- Álgebra Linear (4 créditos)\n\n' +
+                            '3º Semestre:\n- Cálculo III (4 créditos)\n- Mecânica Geral (4 créditos)\n- Eletromagnetismo (4 créditos)'
+                          );
+                        }}
+                        activeOpacity={0.7}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel="Inserir exemplo de grade de engenharia"
+                      >
+                        <Text style={[styles.promptChipText, { color: colors.text }]}>⚙️ Grade Engenharia</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.promptChip, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setImportInputText(
+                            '1º Semestre:\n- Programação I (4 créditos)\n- Circuitos Digitais (4 créditos)\n- Matemática Discreta (4 créditos)\n\n' +
+                            '2º Semestre:\n- Estrutura de Dados (4 créditos)\n- Arquitetura de Computadores (4 créditos)\n- Cálculo para Computação (4 créditos)'
+                          );
+                        }}
+                        activeOpacity={0.7}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel="Inserir exemplo de grade de computação"
+                      >
+                        <Text style={[styles.promptChipText, { color: colors.text }]}>💻 Grade Computação</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </ScrollView>
+              </View>
+
+              <TextInput
+                style={styles.importTextInput}
+                placeholder={
+                  importMode === 'transcript'
+                    ? 'Ex: Cole o texto do histórico escolar contendo o CR e as disciplinas concluídas...'
+                    : 'Ex: Cole a lista de disciplinas por semestre (1º Semestre, 2º Semestre)...'
+                }
+                placeholderTextColor={colors.textSecondary}
+                multiline
+                value={importInputText}
+                onChangeText={setImportInputText}
+                editable={!isProcessingDocument}
+              />
+
+              {/* Botão Full-Width: Analisar PDF / Imagem com Lumen AI */}
+              <View style={styles.aiActionContainer}>
+                <TouchableOpacity
+                  style={[styles.modalActionSubmit, styles.modalActionAIFullWidth]}
+                  onPress={handleDocumentUpload}
+                  disabled={isProcessingDocument}
+                  activeOpacity={0.8}
+                >
+                  {isProcessingDocument ? (
+                    <ActivityIndicator color={getContrastTextColor(colors.primary)} size="small" />
+                  ) : (
+                    <Text style={[styles.modalActionSubmitText, { color: getContrastTextColor(colors.primary) }]}>
+                      📄 Analisar PDF / Imagem com Lumen AI
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.aiActionHelperText}>
+                  A IA do Gemini vai ler seu documento e organizar a grade automaticamente.
+                </Text>
+              </View>
+
+              {/* Linha de Ações: Cancelar (esquerda) e Processar Texto (direita com cor primária) */}
+              <View style={styles.modalPrimaryActionsRow}>
+                <TouchableOpacity
+                  style={[styles.modalActionCancel, { flex: 1 }]}
                   onPress={() => setIsImportModalVisible(false)}
                   disabled={isProcessingDocument}
+                  activeOpacity={0.7}
                 >
                   <Text style={styles.modalActionCancelText}>Cancelar</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.modalActionSubmit}
+                  style={[styles.modalActionSubmit, styles.modalActionSubmitPrimary]}
                   onPress={handleExecuteImport}
                   disabled={isProcessingDocument}
+                  activeOpacity={0.8}
                 >
                   <Text style={styles.modalActionSubmitText}>Processar Texto</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+
+              {/* Ação Secundária: Restaurar Grade Padrão centralizado discretamente abaixo em estilo texto sutil */}
+              <TouchableOpacity
+                style={styles.modalActionSecondaryDiscrete}
+                onPress={handleResetToTemplate}
+                disabled={isProcessingDocument}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalActionSecondaryDiscreteText}>Restaurar Grade Padrão</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1087,30 +1093,28 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       backgroundColor: colors.background,
     },
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: 16,
       paddingTop: 12,
-      paddingBottom: 10,
-      borderBottomWidth: 1,
+      paddingBottom: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.borderSubtle,
       backgroundColor: colors.surface,
+      gap: 10,
     },
     headerTitleContainer: {
-      flex: 1,
-      paddingRight: 12,
-      justifyContent: 'center',
+      width: '100%',
     },
     headerTitle: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: '800',
       color: colors.text,
+      letterSpacing: -0.3,
     },
     headerSubtitle: {
-      fontSize: 11,
+      fontSize: 12,
       color: colors.textSecondary,
       marginTop: 2,
+      letterSpacing: -0.1,
     },
     headerButtons: {
       flexDirection: 'row',
@@ -1118,26 +1122,31 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       gap: 8,
     },
     headerBtn: {
+      flex: 1,
+      minHeight: 40,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
       paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 8,
-      backgroundColor: colors.surfaceHighlight,
-      borderWidth: 1,
-      borderColor: colors.borderSubtle,
+      paddingVertical: 8,
+      borderRadius: 10,
+      backgroundColor: colors.surfaceSubtle,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
     headerBtnText: {
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: '700',
       color: colors.text,
     },
     headerBtnPrimary: {
-      backgroundColor: colors.primary,
+      backgroundColor: colors.primaryLight,
       borderColor: colors.primary,
     },
     headerBtnPrimaryText: {
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: '800',
-      color: getContrastTextColor(colors.primary),
+      color: colors.primary,
     },
     headerBtnSuccess: {
       backgroundColor: colors.primaryLight,
@@ -1635,8 +1644,9 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     modalCard: {
       width: '100%',
       maxWidth: 420,
+      maxHeight: '90%',
       backgroundColor: colors.surface,
-      borderRadius: 16,
+      borderRadius: 20,
       padding: 18,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
@@ -1645,10 +1655,13 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       width: '100%',
       maxWidth: 360,
       backgroundColor: colors.surface,
-      borderRadius: 16,
+      borderRadius: 20,
       padding: 18,
       borderWidth: 1,
       borderColor: colors.borderSubtle,
+    },
+    modalScrollContent: {
+      paddingBottom: 8,
     },
     modalTitle: {
       fontSize: 16,
@@ -1737,6 +1750,32 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       borderColor: colors.border,
       marginBottom: 16,
     },
+    aiActionContainer: {
+      marginVertical: 12,
+    },
+    modalActionAIFullWidth: {
+      width: '100%',
+      minHeight: 48,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    aiActionHelperText: {
+      textAlign: 'center',
+      fontSize: 11,
+      color: colors.textMuted,
+      marginTop: 6,
+    },
+    modalPrimaryActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginTop: 4,
+      marginBottom: 8,
+    },
     modalActionsRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -1745,23 +1784,36 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
     modalButtonsRow: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
+      alignItems: 'center',
       gap: 8,
     },
     modalActionCancel: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 8,
+      minHeight: 44,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceSubtle,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
     },
     modalActionCancelText: {
       fontSize: 13,
       fontWeight: '600',
-      color: colors.textMuted,
+      color: colors.textSecondary,
     },
     modalActionSubmit: {
+      minHeight: 44,
       backgroundColor: colors.primary,
       paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 8,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modalActionSubmitPrimary: {
+      flex: 1,
     },
     modalActionSubmitText: {
       fontSize: 13,
@@ -1775,5 +1827,17 @@ const createStyles = (colors: ReturnType<typeof getThemeColors>, theme: ThemeTyp
       fontSize: 12,
       color: colors.danger,
       fontWeight: '600',
+    },
+    modalActionSecondaryDiscrete: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+      marginTop: 2,
+    },
+    modalActionSecondaryDiscreteText: {
+      fontSize: 12,
+      color: colors.danger,
+      fontWeight: '600',
+      textAlign: 'center',
     },
   });

@@ -12,7 +12,7 @@ import { StorageService } from './storage';
 import { SyncService } from './SyncService';
 import { NotificationService } from './notifications';
 import { LocalAIInferenceService } from './LocalAIInferenceService';
-import { getLocalDateString } from '../utils';
+import { getLocalDateString, getTimeoutSignal } from '../utils';
 
 export { GoogleSheetsConfig };
 
@@ -60,7 +60,7 @@ export class GoogleSheetsService {
       headers: {
         'Cache-Control': 'no-cache',
       },
-      signal: AbortSignal.timeout(15000),
+      signal: getTimeoutSignal(15000),
     });
 
     if (!response.ok) {

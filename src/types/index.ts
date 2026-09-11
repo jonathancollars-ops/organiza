@@ -61,6 +61,7 @@ export interface AppEvent {
   isNotified?: boolean; // Default true, allows disabling notifications
   completedDates?: string[]; // Array of ISO date strings for recurring events check-ins
   subjectId?: string; // Link to a Subject if it's an exam or class
+  location?: string; // Sala, prédio ou link da aula/evento
   
   // Grade Engine
   weight?: number; // Weight in the weighted average

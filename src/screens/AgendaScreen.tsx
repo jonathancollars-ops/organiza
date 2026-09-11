@@ -11,7 +11,7 @@ import {
   GamificationData
 } from '../types';
 import { getThemeColors, getCategoryColor, getContrastTextColor } from '../theme';
-import { getLocalDateString, formatDisplayDate } from '../utils';
+import { getLocalDateString, formatDisplayDate, calculateDaySchedule, DayScheduleSummary, ScheduleTimelineBlock } from '../utils';
 import * as Haptics from 'expo-haptics';
 import { format, parseISO, addDays, getDay } from 'date-fns';
 
@@ -186,6 +186,11 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
       return startDateClean === targetDateClean;
     }).sort((a, b) => (a.startTime || '00:00').localeCompare(b.startTime || '00:00'));
   }, [events, targetDate, subjects, attendances, settings.examWeekMode]);
+
+  // Day Schedule Calculation: Busy Blocks and Free Windows (07:00 to 22:00)
+  const daySchedule = useMemo(() => {
+    return calculateDaySchedule(todaysEvents);
+  }, [todaysEvents]);
 
   // Filter tasks for targetDate
   const todaysTasks = useMemo(() => {
@@ -631,6 +636,160 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
               </View>
             </View>
           )}
+        </View>
+
+        {/* ========================================================= */}
+        {/* 3.1 APPLE HIG: Inset Grouped Card - "Cronograma do Dia" */}
+        {/* ========================================================= */}
+        <View style={[styles.insetCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, marginRight: 6 }}>🗓️</Text>
+              <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Cronograma do Dia</Text>
+            </View>
+            <View style={styles.scheduleCapsulesRow}>
+              <View style={[styles.scheduleCapsule, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                <Text style={[styles.scheduleCapsuleText, { color: colors.textSecondary }]}>
+                  🕒 {daySchedule.totalOccupiedFormatted} ocupadas
+                </Text>
+              </View>
+              <View style={[styles.scheduleCapsule, { backgroundColor: colors.primaryLight, borderColor: colors.primary }]}>
+                <Text style={[styles.scheduleCapsuleText, { color: colors.primary }]}>
+                  🟢 {daySchedule.totalFreeFormatted} livres hoje
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.dayScheduleTimelineContainer}>
+            {daySchedule.blocks.map(block => {
+              if (block.type === 'busy') {
+                const subject = block.subjectId ? subjects.find(s => s.id === block.subjectId) : null;
+                const blockColor = subject?.color || (block.category ? getCategoryColor(block.category as any, theme) : colors.primary);
+                const attRecord = attendances.find(a => a.eventId === block.eventId && a.date === targetDate);
+
+                let attendanceBadgeText = '🎓 Aula';
+                let attendanceBadgeBg = colors.surfaceSubtle;
+                let attendanceBadgeColor = colors.textSecondary;
+
+                if (attRecord) {
+                  if (attRecord.status === 'present') {
+                    attendanceBadgeText = '✓ Presente';
+                    attendanceBadgeBg = colors.successLight;
+                    attendanceBadgeColor = colors.successDark;
+                  } else if (attRecord.status === 'absent') {
+                    attendanceBadgeText = '✗ Falta';
+                    attendanceBadgeBg = colors.dangerLight;
+                    attendanceBadgeColor = colors.dangerDark;
+                  } else if (attRecord.status === 'cancelled') {
+                    attendanceBadgeText = '🚫 Cancelada';
+                    attendanceBadgeBg = colors.surfaceSubtle;
+                    attendanceBadgeColor = colors.textMuted;
+                  } else if (attRecord.status === 'pending') {
+                    attendanceBadgeText = '⏳ Pendente';
+                    attendanceBadgeBg = colors.warningLight;
+                    attendanceBadgeColor = colors.warningDark;
+                  }
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={block.id}
+                    style={[
+                      styles.busyBlockCard,
+                      {
+                        backgroundColor: colors.surfaceSubtle,
+                        borderColor: colors.borderSubtle,
+                        borderLeftColor: blockColor,
+                        borderLeftWidth: 4,
+                      }
+                    ]}
+                    onPress={() => {
+                      if (block.event) {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        onToggleEventCompletion(block.event.id);
+                      }
+                    }}
+                    onLongPress={() => {
+                      if (block.event) {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        onEditEvent(block.event);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.busyBlockHeaderRow}>
+                      <View style={[styles.busyTimeBadge, { backgroundColor: colors.surface }]}>
+                        <Text style={[styles.busyTimeBadgeText, { color: colors.text }]}>
+                          ⏰ {block.startTime} - {block.endTime}
+                        </Text>
+                      </View>
+                      <View style={[styles.busyAttBadge, { backgroundColor: attendanceBadgeBg }]}>
+                        <Text style={[styles.busyAttBadgeText, { color: attendanceBadgeColor }]}>
+                          {attendanceBadgeText}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={[styles.busyBlockTitle, { color: colors.text }]} numberOfLines={1}>
+                      {subject?.name || block.title}
+                    </Text>
+
+                    <View style={styles.busyBlockMetaRow}>
+                      <Text style={[styles.busyBlockLocation, { color: colors.textSecondary }]} numberOfLines={1}>
+                        📍 {block.location || subject?.notes || 'Campus / Sala a definir'}
+                      </Text>
+                      {block.isCompleted && (
+                        <Text style={[styles.busyBlockCompleted, { color: colors.success }]}>
+                          ✓ Concluído
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
+
+              // Free time block
+              return (
+                <View
+                  key={block.id}
+                  style={[
+                    styles.freeBlockPill,
+                    {
+                      backgroundColor: theme === 'light' ? 'rgba(5, 150, 105, 0.08)' : 'rgba(0, 255, 170, 0.08)',
+                      borderColor: theme === 'light' ? 'rgba(5, 150, 105, 0.25)' : 'rgba(0, 255, 170, 0.25)',
+                    }
+                  ]}
+                >
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <View style={styles.freeBlockTimeRow}>
+                      <Text style={[styles.freeBlockTimeText, { color: colors.primary }]}>
+                        🟢 {block.startTime} - {block.endTime} • {block.durationFormatted} livres
+                      </Text>
+                    </View>
+                    <Text style={[styles.freeBlockSubtitle, { color: colors.textSecondary }]}>
+                      Janela para descanso ou estudo focado
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.freeBlockFocusBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onOpenStudy(block.suggestedSubjectId);
+                    }}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Focar na janela livre de ${block.durationFormatted}`}
+                  >
+                    <Text style={[styles.freeBlockFocusBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                      ⏱️ Focar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
         </View>
 
         {/* ========================================================= */}
@@ -1748,6 +1907,112 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     opacity: 0.95,
     marginTop: 2,
     lineHeight: 13,
+  },
+
+  // Cronograma do Dia (Busy & Free Schedule Blocks)
+  scheduleCapsulesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  scheduleCapsule: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  scheduleCapsuleText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  dayScheduleTimelineContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  busyBlockCard: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    marginVertical: 4,
+  },
+  busyBlockHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  busyTimeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  busyTimeBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  busyAttBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  busyAttBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  busyBlockTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  busyBlockMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  busyBlockLocation: {
+    fontSize: 12,
+    flex: 1,
+  },
+  busyBlockCompleted: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  freeBlockPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginVertical: 4,
+  },
+  freeBlockTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  freeBlockTimeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  freeBlockSubtitle: {
+    fontSize: 11,
+  },
+  freeBlockFocusBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  freeBlockFocusBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   // Floating Action Button

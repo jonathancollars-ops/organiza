@@ -367,8 +367,8 @@ async function runTestSuite() {
     const content = fs.readFileSync(serviceFilePath, 'utf8');
 
     // Check that parseAcademicDocument uses 90000ms timeout
-    const has90sTimeout = content.includes('AbortSignal.timeout(90000)');
-    assert(has90sTimeout, 'AIParsingService sets AbortSignal.timeout(90000) for document parsing');
+    const has90sTimeout = content.includes('getTimeoutSignal(90000)') || content.includes('AbortSignal.timeout(90000)');
+    assert(has90sTimeout, 'AIParsingService sets getTimeoutSignal(90000) for document parsing');
   });
 
   await test('Requires API Key for parseAcademicDocument and raises helpful error', async () => {

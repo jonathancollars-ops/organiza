@@ -1,5 +1,5 @@
 import { AIConfig, AIParsingResult, AIParsedItem, AIIntent } from '../types';
-import { getLocalDateString } from '../utils';
+import { getLocalDateString, getTimeoutSignal } from '../utils';
 import { SecuritySanitizer } from './SecuritySanitizer';
 
 export interface ParsingContext {
@@ -287,7 +287,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
             responseMimeType: 'application/json'
           }
         }),
-        signal: AbortSignal.timeout(90000) // 90 segundos para PDFs volumosos
+        signal: getTimeoutSignal(90000) // AbortSignal.timeout(90000) safe fallback for Hermes
       });
 
       if (!response.ok) {
@@ -378,7 +378,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
             responseMimeType: 'application/json'
           }
         }),
-        signal: AbortSignal.timeout(15000)
+        signal: getTimeoutSignal(15000)
       });
 
       if (!response.ok) {
@@ -457,7 +457,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
             { role: 'user', content: `Analise a seguinte mensagem recebida no canal da faculdade:\n\n${wrappedMessage}` }
           ]
         }),
-        signal: AbortSignal.timeout(15000)
+        signal: getTimeoutSignal(15000)
       });
 
       if (!response.ok) {

@@ -395,14 +395,6 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
             </View>
 
             <View style={styles.largeHeaderActions}>
-              {gamification && (
-                <View style={[styles.levelPill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
-                  <Text style={[styles.levelPillText, { color: colors.primary }]}>
-                    Nv. {gamification.level} 🎓
-                  </Text>
-                </View>
-              )}
-
               {onOpenScheduleGrid && (
                 <TouchableOpacity
                   style={[styles.circularActionBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}
@@ -438,6 +430,29 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                   {isMonthCalendarExpanded ? '📅' : '📆'}
                 </Text>
               </TouchableOpacity>
+
+              {onAddNewEvent && (
+                <TouchableOpacity
+                  style={[
+                    styles.circularActionBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      borderColor: colors.primary,
+                    }
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onAddNewEvent();
+                  }}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Adicionar novo compromisso"
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontSize: 20, fontWeight: '700', color: getContrastTextColor(colors.primary), marginTop: -2 }}>
+                    +
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -555,7 +570,7 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                 </View>
 
                 <View style={[styles.timeChip, { backgroundColor: colors.primaryLight }]}>
-                  <Text style={[styles.timeChipText, { color: colors.primary }]}>
+                  <Text style={[styles.timeChipText, { color: colors.primary }]} numberOfLines={1}>
                     {highlightInfo.minutesUntilNext !== null
                       ? `em ${highlightInfo.minutesUntilNext} min`
                       : highlightInfo.activeEvent
@@ -642,11 +657,14 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
         {/* 3.1 APPLE HIG: Inset Grouped Card - "Cronograma do Dia" */}
         {/* ========================================================= */}
         <View style={[styles.insetCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.cardHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, marginRight: 6 }}>🗓️</Text>
-              <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Cronograma do Dia</Text>
+          <View style={styles.scheduleHeaderContainer}>
+            <View style={styles.scheduleHeaderTopRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, marginRight: 6 }}>🗓️</Text>
+                <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Cronograma do Dia</Text>
+              </View>
             </View>
+
             <View style={styles.scheduleCapsulesRow}>
               <View style={[styles.scheduleCapsule, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
                 <Text style={[styles.scheduleCapsuleText, { color: colors.textSecondary }]}>
@@ -751,7 +769,7 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
 
               // Free time block
               return (
-                <View
+                <TouchableOpacity
                   key={block.id}
                   style={[
                     styles.freeBlockPill,
@@ -760,6 +778,13 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                       borderColor: theme === 'light' ? 'rgba(5, 150, 105, 0.25)' : 'rgba(0, 255, 170, 0.25)',
                     }
                   ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onOpenStudy(block.suggestedSubjectId);
+                  }}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Focar na janela livre de ${block.durationFormatted}`}
                 >
                   <View style={{ flex: 1, marginRight: 10 }}>
                     <View style={styles.freeBlockTimeRow}>
@@ -772,21 +797,14 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                     </Text>
                   </View>
 
-                  <TouchableOpacity
+                  <View
                     style={[styles.freeBlockFocusBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onOpenStudy(block.suggestedSubjectId);
-                    }}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Focar na janela livre de ${block.durationFormatted}`}
                   >
                     <Text style={[styles.freeBlockFocusBtnText, { color: getContrastTextColor(colors.primary) }]}>
                       ⏱️ Focar
                     </Text>
-                  </TouchableOpacity>
-                </View>
+                  </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -1369,8 +1387,8 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
           )}
         </View>
 
-        {/* Scroll clearance over floating Liquid Glass tab bar */}
-        <View style={{ height: 120 }} />
+        {/* Scroll clearance over floating Liquid Glass tab bar & FAB */}
+        <View style={{ height: 160 }} />
       </ScrollView>
 
       {/* Floating Action Button (FAB) Permanente em bottom: 90 */}
@@ -1574,18 +1592,25 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 8,
+  },
+  nextClassSubjectContainer: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 6,
   },
   nextClassSubject: {
     fontSize: 17,
     fontWeight: '800',
-    flex: 1,
-    marginRight: 8,
+    letterSpacing: -0.2,
   },
   timeChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   timeChipText: {
     fontSize: 12,
@@ -1799,6 +1824,9 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
 
   // Preserved for backwards compatibility with tests
   subjectBadge: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
@@ -1910,20 +1938,31 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
   },
 
   // Cronograma do Dia (Busy & Free Schedule Blocks)
+  scheduleHeaderContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  scheduleHeaderTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   scheduleCapsulesRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   scheduleCapsule: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
   },
   scheduleCapsuleText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
   dayScheduleTimelineContainer: {

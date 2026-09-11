@@ -74,8 +74,11 @@ async function runGhostNotificationsTestSuite() {
 
   await test('Enriches notification payload with eventId, subjectId, and category', async () => {
     scheduledStore = [];
-    const futureDate = new Date(Date.now() + 2 * 3600 * 1000);
-    const dateStr = futureDate.toISOString().split('T')[0];
+    const futureDate = new Date(Date.now() + 24 * 3600 * 1000);
+    const y = futureDate.getFullYear();
+    const m = String(futureDate.getMonth() + 1).padStart(2, '0');
+    const d = String(futureDate.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
     const hourStr = String(futureDate.getHours()).padStart(2, '0');
     const minStr = String(futureDate.getMinutes()).padStart(2, '0');
 
@@ -104,16 +107,21 @@ async function runGhostNotificationsTestSuite() {
 
   await test('Defaults subjectId and category to empty strings when absent in event', async () => {
     scheduledStore = [];
-    const futureDate = new Date(Date.now() + 3 * 3600 * 1000);
-    const dateStr = futureDate.toISOString().split('T')[0];
+    const futureDate = new Date(Date.now() + 24 * 3600 * 1000);
+    const y = futureDate.getFullYear();
+    const m = String(futureDate.getMonth() + 1).padStart(2, '0');
+    const d = String(futureDate.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+    const hourStr = String(futureDate.getHours()).padStart(2, '0');
+    const minStr = String(futureDate.getMinutes()).padStart(2, '0');
 
     const generalEvent: AppEvent = {
       id: 'evt_general_meeting',
       title: 'Reunião de Alinhamento',
       category: 'Outros',
       date: dateStr,
-      startTime: '16:00',
-      endTime: '17:00',
+      startTime: `${hourStr}:${minStr}`,
+      endTime: `${hourStr}:${minStr}`,
       recurrence: 'none',
       alerts: [30],
       isCompleted: false,

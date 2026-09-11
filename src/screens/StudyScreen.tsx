@@ -746,8 +746,8 @@ export const StudyScreen: React.FC<Props> = ({
         </View>
       )}
 
-      {/* Navigation tabs */}
-      <View style={styles.tabsRow}>
+      {/* Apple HIG Segmented Control tabs */}
+      <View style={[styles.segmentedControlWrap, { backgroundColor: colors.surfaceSubtle }]}>
         {[
           { id: 'pomodoro', label: '🍅 Pomodoro' },
           { id: 'cronometro', label: '⏱️ Cronômetro' },
@@ -758,18 +758,18 @@ export const StudyScreen: React.FC<Props> = ({
             <TouchableOpacity 
               key={t.id}
               style={[
-                styles.tab,
-                isSelected && { borderBottomColor: colors.primary, borderBottomWidth: 3 }
+                styles.segmentBtn,
+                isSelected && [styles.segmentBtnActive, { backgroundColor: colors.surface, borderColor: colors.borderSubtle }]
               ]} 
               onPress={() => {
                 Haptics.selectionAsync();
                 handleTabChange(t.id as any);
               }}
-              activeOpacity={0.7}
+              activeOpacity={0.8}
             >
               <Text style={[
-                styles.tabText,
-                { color: isSelected ? colors.primary : colors.textSecondary, fontWeight: isSelected ? '800' : '600' }
+                styles.segmentText,
+                { color: isSelected ? colors.primary : colors.textSecondary, fontWeight: isSelected ? '700' : '500' }
               ]}>
                 {t.label}
               </Text>
@@ -779,7 +779,7 @@ export const StudyScreen: React.FC<Props> = ({
       </View>
 
       {activeTab === 'pomodoro' ? (
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.text }]}>Matéria em Foco</Text>
             
@@ -797,7 +797,7 @@ export const StudyScreen: React.FC<Props> = ({
                         styles.subjectChip,
                         {
                           backgroundColor: chipBg,
-                          borderWidth: 1,
+                          borderWidth: StyleSheet.hairlineWidth,
                           borderColor: isSelected ? (sub.color || colors.primary) : colors.border
                         }
                       ]}
@@ -877,19 +877,49 @@ export const StudyScreen: React.FC<Props> = ({
             </View>
 
             <View style={styles.timerContainer}>
-              <View style={[
-                styles.statePill,
-                {
-                  backgroundColor: isBreak ? colors.successLight : colors.primaryLight,
-                  borderColor: isBreak ? colors.success : colors.primary
-                }
-              ]}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: isBreak ? colors.success : colors.primary }}>
-                  {isBreak ? `☕ Descanso (${breakMinutesDefault}m)` : `🎯 Foco Total (${activeFocusMinutes}m)`}
-                </Text>
-              </View>
+              {/* Apple Activity Rings Visualizer */}
+              <View style={styles.activityRingsWrap}>
+                <View style={[styles.ringOuter, { borderColor: colors.primaryLight }]}>
+                  <View style={[
+                    styles.ringOuter,
+                    {
+                      borderColor: isBreak ? colors.success : colors.primary,
+                      borderLeftColor: 'transparent',
+                      borderBottomColor: 'transparent',
+                      transform: [{ rotate: `${Math.min(360, Math.round((( (activeFocusMinutes * 60) - timeLeft ) / Math.max(1, (activeFocusMinutes * 60)) ) * 360))}deg` }]
+                    }
+                  ]} />
+                </View>
+                <View style={[styles.ringInner, { borderColor: (colors.info ? `${colors.info}25` : 'rgba(59, 130, 246, 0.2)') }]}>
+                  <View style={[
+                    styles.ringInner,
+                    {
+                      borderColor: colors.info || '#3B82F6',
+                      borderTopColor: 'transparent',
+                      borderRightColor: 'transparent'
+                    }
+                  ]} />
+                </View>
 
-              <Text style={[styles.timerText, { color: colors.text }]}>{formatTime(timeLeft)}</Text>
+                {/* Center Content */}
+                <View style={styles.ringCenter}>
+                  <View style={[
+                    styles.statePill,
+                    {
+                      backgroundColor: isBreak ? colors.successLight : colors.primaryLight,
+                      borderColor: isBreak ? colors.success : colors.primary
+                    }
+                  ]}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: isBreak ? colors.success : colors.primary }}>
+                      {isBreak ? `☕ Descanso` : `🎯 Foco Total`}
+                    </Text>
+                  </View>
+                  <Text style={[styles.timerText, { color: colors.text }]}>{formatTime(timeLeft)}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
+                    {activeFocusMinutes} min
+                  </Text>
+                </View>
+              </View>
               
               <View style={styles.timerControls}>
                 <TouchableOpacity
@@ -902,7 +932,7 @@ export const StudyScreen: React.FC<Props> = ({
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.timerButton, { backgroundColor: colors.surfaceSubtle, borderWidth: 1, borderColor: colors.border }]}
+                  style={[styles.timerButton, { backgroundColor: colors.surfaceSubtle, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }]}
                   onPress={resetTimer}
                   activeOpacity={0.8}
                 >
@@ -1374,29 +1404,88 @@ const getStyles = (colors: any) => StyleSheet.create({
   tabsRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
   tab: { flex: 1, paddingVertical: 13, alignItems: 'center' },
   tabText: { fontSize: 13 },
+  // Apple HIG Segmented Control
+  segmentedControlWrap: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 12,
+    padding: 3,
+    borderRadius: 12,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+  segmentBtnActive: {
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 12,
+    letterSpacing: -0.2,
+  },
   content: { flex: 1, padding: 16 },
   card: {
-    padding: 18,
-    borderRadius: 18,
-    marginBottom: 15,
-    borderWidth: 1,
+    padding: 16,
+    borderRadius: 20,
+    marginBottom: 14,
+    borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  cardTitle: { fontSize: 17, fontWeight: '800', marginBottom: 14 },
-  subjectChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, marginRight: 8 },
-  presetsContainer: { marginBottom: 12 },
-  presetsLabel: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
+  cardTitle: { fontSize: 17, fontWeight: '700', marginBottom: 12 },
+  subjectChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, marginRight: 8 },
+  presetsContainer: { marginBottom: 14 },
+  presetsLabel: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   presetsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  presetChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  statePill: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20, marginBottom: 10, borderWidth: 1 },
-  timerContainer: { alignItems: 'center', paddingVertical: 15 },
-  timerText: { fontSize: 58, fontWeight: '800', marginBottom: 18, fontVariant: ['tabular-nums'], letterSpacing: 2 },
-  timerControls: { flexDirection: 'row', justifyContent: 'center', gap: 10 },
-  timerButton: { paddingHorizontal: 22, paddingVertical: 12, borderRadius: 22 },
+  presetChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
+  statePill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, marginBottom: 8, borderWidth: StyleSheet.hairlineWidth },
+  timerContainer: { alignItems: 'center', paddingVertical: 10 },
+  // Activity Rings
+  activityRingsWrap: {
+    width: 210,
+    height: 210,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  ringOuter: {
+    position: 'absolute',
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    borderWidth: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringInner: {
+    position: 'absolute',
+    width: 174,
+    height: 174,
+    borderRadius: 87,
+    borderWidth: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timerText: { fontSize: 44, fontWeight: '700', marginBottom: 4, fontVariant: ['tabular-nums'], letterSpacing: -1 },
+  timerControls: { flexDirection: 'row', justifyContent: 'center', gap: 12, width: '100%', marginTop: 8 },
+  timerButton: { flex: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   timerButtonText: { fontSize: 14, fontWeight: '700' },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1 },
   addTaskContainer: {

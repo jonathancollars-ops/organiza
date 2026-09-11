@@ -27,6 +27,13 @@ export const Colors = {
     info: '#3B82F6',
     card: '#FFFFFF',
     shadow: 'rgba(0, 0, 0, 0.06)',
+    // Apple HIG Semantic Tokens
+    systemBackground: '#F2F2F7',
+    secondarySystemBackground: '#FFFFFF',
+    tertiarySystemBackground: '#E5E5EA',
+    glassBackground: 'rgba(255, 255, 255, 0.92)',
+    specularBorder: 'rgba(0, 0, 0, 0.08)',
+    hairlineBorder: 'rgba(0, 0, 0, 0.06)',
   },
   dark: {
     background: '#0F1115',
@@ -54,6 +61,13 @@ export const Colors = {
     info: '#60A5FA',
     card: '#181B20',
     shadow: 'rgba(0, 0, 0, 0.4)',
+    // Apple HIG Semantic Tokens
+    systemBackground: '#000000',
+    secondarySystemBackground: '#1C1C1E',
+    tertiarySystemBackground: '#2C2C2E',
+    glassBackground: 'rgba(24, 27, 32, 0.92)',
+    specularBorder: 'rgba(255, 255, 255, 0.12)',
+    hairlineBorder: 'rgba(255, 255, 255, 0.08)',
   },
   amoled: {
     background: '#000000',
@@ -81,7 +95,46 @@ export const Colors = {
     info: '#60A5FA',
     card: '#0A0C0E',
     shadow: 'rgba(0, 0, 0, 0.6)',
+    // Apple HIG Semantic Tokens
+    systemBackground: '#000000',
+    secondarySystemBackground: '#0B0D10',
+    tertiarySystemBackground: '#16191E',
+    glassBackground: 'rgba(10, 12, 14, 0.94)',
+    specularBorder: 'rgba(255, 255, 255, 0.14)',
+    hairlineBorder: 'rgba(255, 255, 255, 0.08)',
   }
+};
+
+export const AppleTokens = {
+  typography: {
+    largeTitle: { fontSize: 34, fontWeight: '700' as const, letterSpacing: 0.37 },
+    title1: { fontSize: 28, fontWeight: '700' as const, letterSpacing: 0.36 },
+    title2: { fontSize: 22, fontWeight: '700' as const, letterSpacing: 0.35 },
+    title3: { fontSize: 20, fontWeight: '600' as const, letterSpacing: 0.38 },
+    headline: { fontSize: 17, fontWeight: '600' as const, letterSpacing: -0.41 },
+    body: { fontSize: 17, fontWeight: '400' as const, letterSpacing: -0.41 },
+    callout: { fontSize: 16, fontWeight: '400' as const, letterSpacing: -0.32 },
+    subhead: { fontSize: 15, fontWeight: '400' as const, letterSpacing: -0.24 },
+    footnote: { fontSize: 13, fontWeight: '400' as const, letterSpacing: -0.08 },
+    caption1: { fontSize: 12, fontWeight: '500' as const, letterSpacing: 0 },
+    caption2: { fontSize: 11, fontWeight: '400' as const, letterSpacing: 0.07 },
+  },
+  radius: {
+    card: 20,
+    squircle: 20,
+    cardInner: 14,
+    pill: 999,
+    button: 12,
+    small: 8,
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 16,
+    lg: 20,
+    xl: 24,
+    xxl: 32,
+  },
 };
 
 export const CategoryColors: Record<EventCategory, string> = {
@@ -102,7 +155,9 @@ export function getCategoryColor(category: string, theme: ThemeType = 'dark'): s
   return CategoryColors[category as EventCategory] || (theme === 'light' ? '#059669' : '#00FFAA');
 }
 
-export const getThemeColors = (theme: ThemeType = 'dark') => Colors[theme] || Colors.dark;
+export type ColorPalette = typeof Colors.light;
+
+export const getThemeColors = (theme: ThemeType = 'dark'): ColorPalette => (Colors[theme] || Colors.dark) as ColorPalette;
 
 /**
  * Retorna cor de texto de alto contraste (#0A0A0A ou #FFFFFF) com base na cor de fundo

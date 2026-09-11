@@ -240,7 +240,7 @@ export const GradesScreen: React.FC<Props> = ({
           </View>
         </View>
       ) : (
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
           {filteredSubjects.map(subject => {
             const gradeInfo = calculateGrade(subject);
             const passGrade = subject.passGrade || 7.0;
@@ -512,14 +512,14 @@ const getStyles = (colors: ReturnType<typeof getThemeColors>) => StyleSheet.crea
     flex: 1,
   },
   card: {
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 10,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowRadius: 6,
     elevation: 2
   },
   cardHeader: {

@@ -72,6 +72,9 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
   // View mode toggle: 'checklist' vs 'timeline'
   const [viewMode, setViewMode] = useState<'checklist' | 'timeline'>('checklist');
 
+  // Month Calendar collapsible state (default false, accessible on demand)
+  const [isMonthCalendarExpanded, setIsMonthCalendarExpanded] = useState(false);
+
   const todayStr = getLocalDateString();
   const targetDate = selectedDate || todayStr;
   const isToday = targetDate === todayStr;
@@ -79,6 +82,51 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
   // Current time representation
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  // Formatted date string for the Apple HIG large title pill: "Quinta-feira, 10 de Setembro"
+  const formattedDateHeader = useMemo(() => {
+    try {
+      const d = parseISO(targetDate);
+      const dayOfWeekNames = [
+        'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
+        'Quinta-feira', 'Sexta-feira', 'Sábado'
+      ];
+      const monthNames = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+      ];
+      const dayName = dayOfWeekNames[d.getDay()];
+      const dayNum = d.getDate();
+      const monthName = monthNames[d.getMonth()];
+      return `${dayName}, ${dayNum} de ${monthName}`;
+    } catch {
+      return targetDate;
+    }
+  }, [targetDate]);
+
+  // Weekly strip calculation (7 days: DOM, SEG, TER, QUA, QUI, SEX, SÁB)
+  const weekDays = useMemo(() => {
+    try {
+      const baseDate = parseISO(targetDate);
+      const dayOfWeek = getDay(baseDate); // 0 = Sun ... 6 = Sat
+      const startSunday = addDays(baseDate, -dayOfWeek);
+      const abbreviations = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = addDays(startSunday, i);
+        const dateStr = format(d, 'yyyy-MM-dd');
+        return {
+          dateStr,
+          dayNumber: d.getDate(),
+          abbreviation: abbreviations[i],
+          isTarget: dateStr === targetDate,
+          isRealToday: dateStr === todayStr,
+        };
+      });
+    } catch {
+      return [];
+    }
+  }, [targetDate, todayStr]);
 
   // Pending absences count
   const pendingAttendancesCount = useMemo(() => {
@@ -204,6 +252,23 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
 
   const nextUrgentExam = upcomingExams[0];
 
+  const examDaysDiff = useMemo(() => {
+    if (!nextUrgentExam?.date) return 0;
+    const evtDate = new Date(nextUrgentExam.date + 'T12:00:00');
+    const todayDate = new Date(todayStr + 'T12:00:00');
+    return Math.max(0, Math.round((evtDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24)));
+  }, [nextUrgentExam, todayStr]);
+
+  // Subject attendance status calculation for "Próxima Aula"
+  const subjectAttendanceSummary = useMemo(() => {
+    if (!highlightInfo.featuredSubject) return 'Frequência: regular';
+    const subAtts = attendances.filter(a => a.subjectId === highlightInfo.featuredSubject?.id);
+    if (subAtts.length === 0) return 'Frequência: regular';
+    const presents = subAtts.filter(a => a.status === 'present').length;
+    const rate = Math.round((presents / subAtts.length) * 100);
+    return rate >= 75 ? `Frequência: ${rate}% (regular)` : `Frequência: ${rate}% (atenção)`;
+  }, [highlightInfo.featuredSubject, attendances]);
+
   // Calendar Marked Dates
   const markedDates = useMemo(() => {
     const marks: Record<string, any> = {};
@@ -285,596 +350,545 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-      {/* 0. Pending Absences Alert Banner */}
-      {pendingAttendancesCount > 0 && (
-        <TouchableOpacity
-          style={[styles.pendingBanner, { backgroundColor: colors.danger }]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            onOpenAttendanceModal();
-          }}
-          activeOpacity={0.85}
-        >
-          <Text style={{ fontSize: 20, marginRight: 10 }}>⚠️</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.pendingBannerTitle, { color: getContrastTextColor(colors.danger) }]}>
-              Faltas Pendentes de Confirmação
-            </Text>
-            <Text style={[styles.pendingBannerSubtitle, { color: getContrastTextColor(colors.danger) }]}>
-              Você tem {pendingAttendancesCount} aula(s) aguardando confirmação.
-            </Text>
-          </View>
-          <Text style={[styles.pendingBannerChevron, { color: getContrastTextColor(colors.danger) }]}>›</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* ========================================================= */}
-      {/* 1. TOP SECTION: Highlight Card (Próxima Atividade / Tarefa Iminente) */}
-      {/* ========================================================= */}
-      <View style={styles.sectionContainer}>
-        <View style={styles.sectionHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.sectionIconBadge, { backgroundColor: colors.primaryLight }]}>
-              <Text style={{ fontSize: 14 }}>⚡</Text>
-            </View>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Próxima Atividade</Text>
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {onOpenScheduleGrid && (
-              <TouchableOpacity
-                style={[styles.gamificationPill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border, marginRight: 6 }]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  onOpenScheduleGrid();
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
-                  🗓️ Grade Semanal
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {gamification && (
-              <View style={[styles.gamificationPill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
-                <Text style={[styles.gamificationText, { color: colors.primary }]}>
-                  Nv. {gamification.level} 🎓
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {highlightInfo.featured ? (
-          <View style={[styles.highlightCard, { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1.5 }]}>
-            {/* Status Header Badge */}
-            <View style={styles.highlightHeaderRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: highlightInfo.activeEvent ? colors.success : colors.primary }
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusLabel,
-                    {
-                      color: highlightInfo.activeEvent
-                        ? (theme === 'light' ? colors.successDark : colors.success)
-                        : (theme === 'light' ? colors.primaryDark : colors.primary)
-                    }
-                  ]}
-                >
-                  {highlightInfo.activeEvent
-                    ? '● EM ANDAMENTO'
-                    : highlightInfo.minutesUntilNext !== null
-                    ? `⏱️ Começa em ${highlightInfo.minutesUntilNext} min`
-                    : '📅 Próxima Atividade'}
-                </Text>
-              </View>
-
-              {/* Category Pill with Contrast Text */}
-              {highlightInfo.featured.category && (
-                <View
-                  style={[
-                    styles.categoryPill,
-                    {
-                      backgroundColor: getCategoryColor(highlightInfo.featured.category, theme)
-                    }
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryPillText,
-                      { color: getContrastTextColor(getCategoryColor(highlightInfo.featured.category, theme)) }
-                    ]}
-                  >
-                    {highlightInfo.featured.category}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Event Title */}
-            <Text style={[styles.highlightTitle, { color: colors.text }]} numberOfLines={2}>
-              {highlightInfo.featured.title}
-            </Text>
-
-            {/* Time and Subject details */}
-            <View style={styles.highlightDetailsRow}>
-              <View style={[styles.timeBadge, { backgroundColor: colors.surfaceSubtle }]}>
-                <Text style={[styles.timeBadgeText, { color: colors.text }]}>
-                  ⏰ {highlightInfo.featured.startTime} - {highlightInfo.featured.endTime}
-                </Text>
-              </View>
-
-              {highlightInfo.featuredSubject && (
-                <View style={[styles.subjectBadge, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border, borderWidth: 1 }]}>
-                  <View
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: highlightInfo.featuredSubject.color || colors.primary,
-                      marginRight: 6
-                    }}
-                  />
-                  <Text style={[styles.subjectBadgeText, { color: colors.text }]} numberOfLines={1}>
-                    {highlightInfo.featuredSubject.name}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {highlightInfo.featuredSubject?.notes ? (
-              <Text style={[styles.highlightNotes, { color: colors.textSecondary }]} numberOfLines={1}>
-                📍 {highlightInfo.featuredSubject.notes}
-              </Text>
-            ) : null}
-
-            {/* Quick Action Buttons */}
-            <View style={styles.highlightActionsRow}>
-              <TouchableOpacity
-                style={[styles.quickStudyBtn, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  onOpenStudy(highlightInfo.featured?.subjectId);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.quickStudyBtnText, { color: getContrastTextColor(colors.primary) }]}>
-                  ⏱️ Estudar
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.quickCheckBtn,
-                  {
-                    backgroundColor: colors.surfaceSubtle,
-                    borderColor: highlightInfo.featured.isCompleted ? colors.success : colors.border
-                  }
-                ]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  if (highlightInfo.featured) {
-                    onToggleEventCompletion(highlightInfo.featured.id);
-                  }
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={{ fontSize: 13, color: highlightInfo.featured.isCompleted ? colors.success : colors.textSecondary }}>
-                  {highlightInfo.featured.isCompleted ? '✓ Concluído' : 'Marcar Concluído'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          /* Fallback Card when all tasks are complete */
-          <View style={[styles.fallbackCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.fallbackIconWrap}>
-              <Text style={{ fontSize: 24 }}>✨</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={[styles.fallbackTitle, { color: colors.text }]}>
-                Tudo em dia por hoje!
-              </Text>
-              <Text style={[styles.fallbackSubtitle, { color: colors.textSecondary }]}>
-                Nenhuma aula ou tarefa pendente para este momento. Aproveite para descansar ou revisar.
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.fallbackStudyBtn, { backgroundColor: colors.primaryLight }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onOpenStudy();
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.fallbackStudyBtnText, { color: colors.primary }]}>
-                Estudos ›
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Urgent Exam Alert Banner */}
-        {nextUrgentExam && (
+        {/* 0. Pending Absences Alert Banner */}
+        {pendingAttendancesCount > 0 && (
           <TouchableOpacity
-            style={[
-              styles.examAlertBanner,
-              {
-                backgroundColor: colors.warningLight,
-                borderColor: colors.warning
-              }
-            ]}
+            style={[styles.pendingBanner, { backgroundColor: colors.danger }]}
             onPress={() => {
-              Haptics.selectionAsync();
-              if (onOpenExamDetails) {
-                onOpenExamDetails(nextUrgentExam);
-              } else {
-                onEditEvent(nextUrgentExam);
-              }
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onOpenAttendanceModal();
             }}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Faltas pendentes de confirmação"
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-              <Text style={{ fontSize: 18, marginRight: 8 }}>📝</Text>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.examAlertTitle,
-                    { color: theme === 'light' ? colors.warningDark : colors.warning }
-                  ]}
-                  numberOfLines={1}
-                >
-                  {nextUrgentExam.title}
-                </Text>
-                <Text style={[styles.examAlertSubtitle, { color: colors.textSecondary }]}>
-                  📅 Dia {formatDisplayDate(nextUrgentExam.date)} às {nextUrgentExam.startTime}
+            <Text style={{ fontSize: 20, marginRight: 10 }}>⚠️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.pendingBannerTitle, { color: getContrastTextColor(colors.danger) }]}>
+                Faltas Pendentes de Confirmação
+              </Text>
+              <Text style={[styles.pendingBannerSubtitle, { color: getContrastTextColor(colors.danger) }]}>
+                Você tem {pendingAttendancesCount} aula(s) aguardando confirmação.
+              </Text>
+            </View>
+            <Text style={[styles.pendingBannerChevron, { color: getContrastTextColor(colors.danger) }]}>›</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ========================================================= */}
+        {/* 1. APPLE HIG: Large Title Header & Quick Actions */}
+        {/* ========================================================= */}
+        <View style={styles.largeHeaderContainer}>
+          <View style={styles.largeHeaderTopRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.largeTitle, { color: colors.text }]}>Agenda</Text>
+              <View style={[styles.datePill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                <Text style={[styles.datePillText, { color: colors.textSecondary }]}>
+                  {formattedDateHeader}
                 </Text>
               </View>
             </View>
-            <Text
-              style={[
-                styles.examAlertAction,
-                { color: theme === 'light' ? colors.warningDark : colors.warning }
-              ]}
-            >
-              Ver ›
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
 
-      {/* ========================================================= */}
-      {/* 2. MIDDLE SECTION: Interactive Calendar */}
-      {/* ========================================================= */}
-      <View style={styles.sectionContainer}>
-        <View style={styles.sectionHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.sectionIconBadge, { backgroundColor: colors.primaryLight }]}>
-              <Text style={{ fontSize: 14 }}>📅</Text>
-            </View>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Calendário Interativo</Text>
-          </View>
+            <View style={styles.largeHeaderActions}>
+              {gamification && (
+                <View style={[styles.levelPill, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                  <Text style={[styles.levelPillText, { color: colors.primary }]}>
+                    Nv. {gamification.level} 🎓
+                  </Text>
+                </View>
+              )}
 
-          {/* Reset to today button when date other than today is active */}
-          {!isToday && (
-            <TouchableOpacity
-              style={[styles.todayResetBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                onSelectDate(null);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.todayResetText, { color: colors.primary }]}>
-                🔄 Voltar para Hoje
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+              {onOpenScheduleGrid && (
+                <TouchableOpacity
+                  style={[styles.circularActionBtn, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onOpenScheduleGrid();
+                  }}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Abrir Grade Semanal"
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontSize: 18 }}>🗓️</Text>
+                </TouchableOpacity>
+              )}
 
-        <View style={[styles.calendarCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Calendar
-            current={targetDate}
-            onDayPress={(day: any) => {
-              Haptics.selectionAsync();
-              onSelectDate(day.dateString);
-            }}
-            markingType={'multi-dot'}
-            markedDates={markedDates}
-            enableSwipeMonths={true}
-            hideArrows={false}
-            theme={{
-              calendarBackground: 'transparent',
-              textSectionTitleColor: colors.textSecondary,
-              selectedDayBackgroundColor: colors.primary,
-              selectedDayTextColor: getContrastTextColor(colors.primary),
-              todayTextColor: colors.primary,
-              todayBackgroundColor: 'transparent',
-              dayTextColor: colors.text,
-              textDisabledColor: colors.textMuted,
-              monthTextColor: colors.text,
-              arrowColor: colors.primary,
-              textMonthFontWeight: 'bold',
-              textDayFontSize: 14,
-              textMonthFontSize: 16,
-            }}
-          />
-        </View>
-        <Text style={[styles.hintText, { color: colors.textSecondary }]}>
-          Toque em qualquer dia para filtrar compromissos e tarefas.
-        </Text>
-      </View>
-
-      {/* ========================================================= */}
-      {/* 3. BOTTOM SECTION: Tasks & Activities Checklist */}
-      {/* ========================================================= */}
-      <View style={styles.sectionContainer}>
-        <View style={styles.sectionHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.sectionIconBadge, { backgroundColor: colors.primaryLight }]}>
-              <Text style={{ fontSize: 14 }}>📋</Text>
-            </View>
-            <View>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                {isToday ? 'Atividades de Hoje' : `Dia ${formatDisplayDate(targetDate)}`}
-              </Text>
-              <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
-                {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'} agendado{totalItemsCount !== 1 ? 's' : ''}
-              </Text>
-            </View>
-          </View>
-
-          {/* View mode toggle: Checklist vs Timeline */}
-          <View style={[styles.viewModeToggleWrap, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
-            <TouchableOpacity
-              style={[
-                styles.viewModeBtn,
-                viewMode === 'checklist' && { backgroundColor: colors.primary }
-              ]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setViewMode('checklist');
-              }}
-              activeOpacity={0.8}
-            >
-              <Text
+              <TouchableOpacity
                 style={[
-                  styles.viewModeBtnText,
-                  { color: viewMode === 'checklist' ? getContrastTextColor(colors.primary) : colors.textSecondary }
+                  styles.circularActionBtn,
+                  {
+                    backgroundColor: isMonthCalendarExpanded ? colors.primary : colors.surfaceSubtle,
+                    borderColor: isMonthCalendarExpanded ? colors.primary : colors.borderSubtle
+                  }
                 ]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setIsMonthCalendarExpanded(prev => !prev);
+                }}
+                activeOpacity={0.7}
+                accessibilityLabel={isMonthCalendarExpanded ? "Recolher calendário mensal" : "Expandir calendário mensal"}
+                accessibilityRole="button"
               >
-                📋 Lista
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.viewModeBtn,
-                viewMode === 'timeline' && { backgroundColor: colors.primary }
-              ]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setViewMode('timeline');
-              }}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  styles.viewModeBtnText,
-                  { color: viewMode === 'timeline' ? getContrastTextColor(colors.primary) : colors.textSecondary }
-                ]}
-              >
-                ⏱️ 24h
-              </Text>
-            </TouchableOpacity>
+                <Text style={{ fontSize: 18 }}>
+                  {isMonthCalendarExpanded ? '📅' : '📆'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
-        {/* View Mode Content */}
-        {viewMode === 'checklist' ? (
-          <View style={styles.checklistContainer}>
-            {/* 1. AppEvents Checklist Items */}
-            {todaysEvents.map(event => {
-              const categoryColor = getCategoryColor(event.category, theme) || colors.primary;
-              const subject = event.subjectId ? subjects.find(s => s.id === event.subjectId) : null;
+        {/* ========================================================= */}
+        {/* 2. APPLE HIG: Weekly Strip (Seletor Semanal em Pílulas) */}
+        {/* ========================================================= */}
+        <View style={styles.weeklyStripContainer}>
+          <View style={styles.weeklyStripRow}>
+            {weekDays.map(day => {
+              const isSelected = day.isTarget;
+              const pillBg = isSelected ? colors.primary : colors.surfaceSubtle;
+              const nameColor = isSelected ? getContrastTextColor(colors.primary) : colors.textSecondary;
+              const numColor = isSelected ? getContrastTextColor(colors.primary) : colors.text;
 
               return (
                 <TouchableOpacity
-                  key={event.id}
+                  key={day.dateStr}
                   style={[
-                    styles.checklistItemCard,
+                    styles.dayPill,
+                    {
+                      backgroundColor: pillBg,
+                      borderColor: isSelected ? colors.primary : colors.borderSubtle,
+                      borderWidth: isSelected ? 1.5 : StyleSheet.hairlineWidth
+                    }
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    onSelectDate(day.dateStr);
+                  }}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${day.abbreviation}, ${day.dayNumber}`}
+                >
+                  <Text style={[styles.dayPillName, { color: nameColor }]}>
+                    {day.abbreviation}
+                  </Text>
+                  <Text style={[styles.dayPillNum, { color: numColor }]}>
+                    {day.dayNumber}
+                  </Text>
+                  {day.isRealToday && !isSelected && (
+                    <View style={[styles.todayIndicatorDot, { backgroundColor: colors.primary }]} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Toggle Month Calendar Button */}
+          <TouchableOpacity
+            style={styles.monthToggleBtn}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setIsMonthCalendarExpanded(prev => !prev);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.monthToggleBtnText, { color: colors.primary }]}>
+              {isMonthCalendarExpanded ? '▲ Recolher mês' : '▼ Ver mês completo'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Collapsible Monthly Calendar */}
+          {isMonthCalendarExpanded && (
+            <View style={[styles.calendarCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 10 }]}>
+              <Calendar
+                current={targetDate}
+                onDayPress={(day: any) => {
+                  Haptics.selectionAsync();
+                  onSelectDate(day.dateString);
+                }}
+                markingType={'multi-dot'}
+                markedDates={markedDates}
+                enableSwipeMonths={true}
+                hideArrows={false}
+                theme={{
+                  calendarBackground: 'transparent',
+                  textSectionTitleColor: colors.textSecondary,
+                  selectedDayBackgroundColor: colors.primary,
+                  selectedDayTextColor: getContrastTextColor(colors.primary),
+                  todayTextColor: colors.primary,
+                  todayBackgroundColor: 'transparent',
+                  dayTextColor: colors.text,
+                  textDisabledColor: colors.textMuted,
+                  monthTextColor: colors.text,
+                  arrowColor: colors.primary,
+                  textMonthFontWeight: 'bold',
+                  textDayFontSize: 14,
+                  textMonthFontSize: 16,
+                }}
+              />
+            </View>
+          )}
+        </View>
+
+        {/* ========================================================= */}
+        {/* 3. APPLE HIG: Inset Grouped Card 1 - "Próxima Aula" */}
+        {/* ========================================================= */}
+        <View style={[styles.insetCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.cardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, marginRight: 6 }}>🎓</Text>
+              <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Próxima Aula</Text>
+            </View>
+            <Text style={[styles.cardHeaderChevron, { color: colors.textSecondary }]}>›</Text>
+          </View>
+
+          {highlightInfo.featured ? (
+            <View style={[styles.insetCardInner, { backgroundColor: colors.surfaceSubtle }]}>
+              <View style={styles.nextClassTopRow}>
+                <View style={[styles.subjectBadge, { backgroundColor: colors.surfaceSubtle }]}>
+                  <Text style={[styles.nextClassSubject, { color: colors.text }]} numberOfLines={1}>
+                    {highlightInfo.featuredSubject?.name || highlightInfo.featured.title}
+                  </Text>
+                </View>
+
+                <View style={[styles.timeChip, { backgroundColor: colors.primaryLight }]}>
+                  <Text style={[styles.timeChipText, { color: colors.primary }]}>
+                    {highlightInfo.minutesUntilNext !== null
+                      ? `em ${highlightInfo.minutesUntilNext} min`
+                      : highlightInfo.activeEvent
+                      ? 'Agora'
+                      : highlightInfo.featured.startTime}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.nextClassMetaRow}>
+                <Text style={[styles.nextClassMetaText, { color: colors.textSecondary }]}>
+                  📍 {highlightInfo.featuredSubject?.notes || 'Sala B-204'}
+                </Text>
+                <Text style={[styles.nextClassMetaText, { color: colors.textSecondary }]}>
+                  • {subjectAttendanceSummary}
+                </Text>
+              </View>
+
+              {/* Action buttons */}
+              <View style={styles.highlightActionsRow}>
+                <TouchableOpacity
+                  style={[styles.quickStudyBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onOpenStudy(highlightInfo.featured?.subjectId);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.quickStudyBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                    ⏱️ Estudar
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.quickCheckBtn,
                     {
                       backgroundColor: colors.surface,
-                      borderColor: event.isImportant ? colors.warning : colors.border,
-                      borderWidth: event.isImportant ? 1.5 : 1,
-                      opacity: event.isCompleted ? 0.65 : 1
+                      borderColor: highlightInfo.featured.isCompleted ? colors.success : colors.border
                     }
                   ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    onToggleEventCompletion(event.id);
-                  }}
-                  onLongPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    onEditEvent(event);
+                    if (highlightInfo.featured) {
+                      onToggleEventCompletion(highlightInfo.featured.id);
+                    }
                   }}
                   activeOpacity={0.8}
                 >
-                  {/* Interactive Circular Checkbox */}
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: highlightInfo.featured.isCompleted ? colors.success : colors.textSecondary }}>
+                    {highlightInfo.featured.isCompleted ? '✓ Concluído' : 'Marcar Concluído'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.insetCardInner, { backgroundColor: colors.surfaceSubtle }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 24, marginRight: 10 }}>✨</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.fallbackTitle, { color: colors.text }]}>Tudo em dia por hoje!</Text>
+                  <Text style={[styles.fallbackSubtitle, { color: colors.textSecondary }]}>
+                    Nenhuma aula ou tarefa pendente para este momento.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.fallbackStudyBtn, { backgroundColor: colors.primaryLight }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onOpenStudy();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.fallbackStudyBtnText, { color: colors.primary }]}>
+                    Estudos ›
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* ========================================================= */}
+        {/* 4. APPLE HIG: Inset Grouped Card 2 - "Provas & Entregas" */}
+        {/* ========================================================= */}
+        <View style={[styles.insetCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={styles.cardHeader}
+            onPress={() => {
+              if (nextUrgentExam) {
+                Haptics.selectionAsync();
+                if (onOpenExamDetails) {
+                  onOpenExamDetails(nextUrgentExam);
+                } else {
+                  onEditEvent(nextUrgentExam);
+                }
+              }
+            }}
+            activeOpacity={nextUrgentExam ? 0.7 : 1}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, marginRight: 6 }}>📝</Text>
+              <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Provas & Entregas</Text>
+            </View>
+            <Text style={[styles.cardHeaderChevron, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+
+          {nextUrgentExam ? (
+            <TouchableOpacity
+              style={[
+                styles.urgentExamPill,
+                {
+                  backgroundColor: colors.dangerLight,
+                  borderColor: colors.danger
+                }
+              ]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                if (onOpenExamDetails) {
+                  onOpenExamDetails(nextUrgentExam);
+                } else {
+                  onEditEvent(nextUrgentExam);
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 16 }}>⚠️</Text>
+              <Text
+                style={[
+                  styles.urgentExamText,
+                  { color: theme === 'light' ? colors.dangerDark : colors.danger }
+                ]}
+                numberOfLines={1}
+              >
+                {nextUrgentExam.title} em {examDaysDiff === 0 ? 'hoje' : examDaysDiff === 1 ? '1 dia' : `${examDaysDiff} dias`}
+              </Text>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: theme === 'light' ? colors.dangerDark : colors.danger }}>
+                Ver ›
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.insetCardInner, { backgroundColor: colors.surfaceSubtle }]}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, fontStyle: 'italic' }}>
+                Nenhuma prova ou entrega crítica agendada para os próximos 7 dias.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* ========================================================= */}
+        {/* 5. APPLE HIG: Inset Grouped Card 3 - "Focus Pomodoro" */}
+        {/* ========================================================= */}
+        <View style={[styles.insetCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={styles.cardHeader}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onOpenStudy();
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, marginRight: 6 }}>⏱️</Text>
+              <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>Focus Pomodoro</Text>
+            </View>
+            <Text style={[styles.cardHeaderChevron, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.pomodoroCardInner, { backgroundColor: colors.surfaceSubtle }]}>
+            {/* Activity Ring Preview */}
+            <View style={[styles.activityRingWrapper, { borderColor: colors.primary }]}>
+              <Text style={[styles.activityRingText, { color: colors.primary }]}>90%</Text>
+            </View>
+
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <Text style={[styles.pomodoroTitle, { color: colors.text }]}>
+                Meta Diária de Foco
+              </Text>
+              <Text style={[styles.pomodoroSubtitle, { color: colors.textSecondary }]}>
+                Excelente consistência acadêmica hoje!
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.pomodoroOpenBtn, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onOpenStudy();
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.pomodoroOpenBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                Estudar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ========================================================= */}
+        {/* 6. APPLE HIG: Tasks & Activities List / 24h Timeline */}
+        {/* ========================================================= */}
+        <View style={[styles.insetCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.cardHeader}>
+            <View>
+              <Text style={[styles.cardHeaderTitle, { color: colors.text }]}>
+                {isToday ? 'Atividades de Hoje' : `Dia ${formatDisplayDate(targetDate)}`}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>
+                {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'itens'} agendado{totalItemsCount !== 1 ? 's' : ''}
+              </Text>
+            </View>
+
+            {/* View mode toggle: Checklist vs Timeline */}
+            <View style={[styles.viewModeToggleWrap, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
+              <TouchableOpacity
+                style={[
+                  styles.viewModeBtn,
+                  viewMode === 'checklist' && { backgroundColor: colors.primary }
+                ]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setViewMode('checklist');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.viewModeBtnText,
+                    { color: viewMode === 'checklist' ? getContrastTextColor(colors.primary) : colors.textSecondary }
+                  ]}
+                >
+                  📋 Lista
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.viewModeBtn,
+                  viewMode === 'timeline' && { backgroundColor: colors.primary }
+                ]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setViewMode('timeline');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.viewModeBtnText,
+                    { color: viewMode === 'timeline' ? getContrastTextColor(colors.primary) : colors.textSecondary }
+                  ]}
+                >
+                  ⏱️ 24h
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* View Mode Content */}
+          {viewMode === 'checklist' ? (
+            <View style={styles.checklistContainer}>
+              {/* 1. AppEvents Checklist Items */}
+              {todaysEvents.map(event => {
+                const categoryColor = getCategoryColor(event.category, theme) || colors.primary;
+                const subject = event.subjectId ? subjects.find(s => s.id === event.subjectId) : null;
+
+                return (
                   <TouchableOpacity
+                    key={event.id}
                     style={[
-                      styles.circularCheckbox,
+                      styles.checklistItemCard,
                       {
-                        backgroundColor: event.isCompleted ? colors.primary : 'transparent',
-                        borderColor: event.isCompleted ? colors.primary : colors.textSecondary
+                        borderBottomColor: colors.borderSubtle,
+                        opacity: event.isCompleted ? 0.6 : 1
                       }
                     ]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       onToggleEventCompletion(event.id);
                     }}
-                    activeOpacity={0.7}
+                    onLongPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      onEditEvent(event);
+                    }}
+                    activeOpacity={0.8}
                   >
-                    {event.isCompleted && (
-                      <Text style={[styles.checkboxCheckmark, { color: getContrastTextColor(colors.primary) }]}>
-                        ✓
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* Item Content */}
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={styles.checklistItemHeader}>
-                      <Text
-                        style={[
-                          styles.checklistTitle,
-                          {
-                            color: colors.text,
-                            textDecorationLine: event.isCompleted ? 'line-through' : 'none'
-                          }
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {event.title}
-                      </Text>
-
-                      {event.isImportant && (
-                        <View style={[styles.importantBadge, { backgroundColor: colors.warningLight }]}>
-                          <Text style={[styles.importantBadgeText, { color: theme === 'light' ? colors.warningDark : colors.warning }]}>
-                            ⭐ Destaque
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.checklistMetaRow}>
-                      <Text style={[styles.checklistTime, { color: colors.textSecondary }]}>
-                        ⏰ {event.startTime} - {event.endTime}
-                      </Text>
-
-                      <View
-                        style={[
-                          styles.miniCategoryBadge,
-                          {
-                            backgroundColor: colors.surfaceSubtle,
-                            borderColor: colors.border,
-                            borderWidth: 1
-                          }
-                        ]}
-                      >
-                        <View
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 3,
-                            backgroundColor: categoryColor,
-                            marginRight: 4
-                          }}
-                        />
-                        <Text style={[styles.miniCategoryText, { color: colors.textSecondary }]}>
-                          {event.category}
+                    {/* Interactive Circular Checkbox */}
+                    <TouchableOpacity
+                      style={[
+                        styles.circularCheckbox,
+                        {
+                          backgroundColor: event.isCompleted ? colors.primary : 'transparent',
+                          borderColor: event.isCompleted ? colors.primary : colors.textSecondary
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        onToggleEventCompletion(event.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {event.isCompleted && (
+                        <Text style={[styles.checkboxCheckmark, { color: getContrastTextColor(colors.primary) }]}>
+                          ✓
                         </Text>
-                      </View>
+                      )}
+                    </TouchableOpacity>
 
-                      {subject && (
-                        <View
+                    {/* Item Content */}
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={styles.checklistItemHeader}>
+                        <Text
                           style={[
-                            styles.miniSubjectBadge,
+                            styles.checklistTitle,
                             {
-                              backgroundColor: colors.surfaceSubtle,
-                              borderColor: colors.border,
-                              borderWidth: 1
+                              color: colors.text,
+                              textDecorationLine: event.isCompleted ? 'line-through' : 'none'
                             }
                           ]}
+                          numberOfLines={1}
                         >
-                          <View
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: subject.color || colors.primary,
-                              marginRight: 4
-                            }}
-                          />
-                          <Text style={[styles.miniSubjectText, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {subject.name}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+                          {event.title}
+                        </Text>
 
-            {/* 2. StudyTasks Checklist Items */}
-            {todaysTasks.map(task => {
-              const subject = task.subjectId ? subjects.find(s => s.id === task.subjectId) : null;
-              const priorityColor = task.priority === 'high' ? colors.danger : task.priority === 'medium' ? colors.warning : colors.success;
+                        {event.isImportant && (
+                          <View style={[styles.importantBadge, { backgroundColor: colors.warningLight }]}>
+                            <Text style={[styles.importantBadgeText, { color: theme === 'light' ? colors.warningDark : colors.warning }]}>
+                              ⭐ Destaque
+                            </Text>
+                          </View>
+                        )}
+                      </View>
 
-              return (
-                <TouchableOpacity
-                  key={task.id}
-                  style={[
-                    styles.checklistItemCard,
-                    {
-                      backgroundColor: colors.surface,
-                      borderColor: colors.border,
-                      borderWidth: 1,
-                      opacity: task.isCompleted ? 0.65 : 1
-                    }
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    onToggleTaskCompletion(task.id);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  {/* Interactive Circular Checkbox */}
-                  <TouchableOpacity
-                    style={[
-                      styles.circularCheckbox,
-                      {
-                        backgroundColor: task.isCompleted ? colors.primary : 'transparent',
-                        borderColor: task.isCompleted ? colors.primary : colors.textSecondary
-                      }
-                    ]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onToggleTaskCompletion(task.id);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    {task.isCompleted && (
-                      <Text style={[styles.checkboxCheckmark, { color: getContrastTextColor(colors.primary) }]}>
-                        ✓
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+                      <View style={styles.checklistMetaRow}>
+                        <Text style={[styles.checklistTime, { color: colors.textSecondary }]}>
+                          ⏰ {event.startTime} - {event.endTime}
+                        </Text>
 
-                  {/* Task Content */}
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={styles.checklistItemHeader}>
-                      <Text
-                        style={[
-                          styles.checklistTitle,
-                          {
-                            color: colors.text,
-                            textDecorationLine: task.isCompleted ? 'line-through' : 'none'
-                          }
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {task.title}
-                      </Text>
-
-                      {task.priority && (
                         <View
                           style={[
                             styles.miniCategoryBadge,
@@ -890,230 +904,346 @@ export const AgendaScreen: React.FC<AgendaScreenProps> = ({
                               width: 6,
                               height: 6,
                               borderRadius: 3,
-                              backgroundColor: priorityColor,
+                              backgroundColor: categoryColor,
                               marginRight: 4
                             }}
                           />
                           <Text style={[styles.miniCategoryText, { color: colors.textSecondary }]}>
-                            {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
+                            {event.category}
                           </Text>
                         </View>
-                      )}
-                    </View>
 
-                    <View style={styles.checklistMetaRow}>
-                      <Text style={[styles.checklistTime, { color: colors.textSecondary }]}>
-                        📝 Tarefa de Estudo
-                      </Text>
-
-                      {subject && (
-                        <View
-                          style={[
-                            styles.miniSubjectBadge,
-                            {
-                              backgroundColor: colors.surfaceSubtle,
-                              borderColor: colors.border,
-                              borderWidth: 1
-                            }
-                          ]}
-                        >
+                        {subject && (
                           <View
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: subject.color || colors.primary,
-                              marginRight: 4
-                            }}
-                          />
-                          <Text style={[styles.miniSubjectText, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {subject.name}
-                          </Text>
-                        </View>
-                      )}
+                            style={[
+                              styles.miniSubjectBadge,
+                              {
+                                backgroundColor: colors.surfaceSubtle,
+                                borderColor: colors.border,
+                                borderWidth: 1
+                              }
+                            ]}
+                          >
+                            <View
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: 3,
+                                backgroundColor: subject.color || colors.primary,
+                                marginRight: 4
+                              }}
+                            />
+                            <Text style={[styles.miniSubjectText, { color: colors.textSecondary }]} numberOfLines={1}>
+                              {subject.name}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-
-            {/* Empty Checklist Fallback */}
-            {totalItemsCount === 0 && (
-              <View style={[styles.emptyChecklistCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceSubtle }]}>
-                  <Text style={{ fontSize: 24 }}>✨</Text>
-                </View>
-                <Text style={[styles.emptyChecklistTitle, { color: colors.text }]}>
-                  {isToday ? 'Dia livre de compromissos!' : `Nenhuma atividade em ${formatDisplayDate(targetDate)}`}
-                </Text>
-                <Text style={[styles.emptyChecklistSubtitle, { color: colors.textSecondary }]}>
-                  {isToday
-                    ? 'Nenhum evento, aula ou tarefa agendada para hoje. Aproveite para descansar, revisar matérias ou planejar suas metas.'
-                    : 'Nenhum compromisso agendado para esta data. Toque abaixo para planejar suas atividades com antecedência.'}
-                </Text>
-                {onAddNewEvent && (
-                  <TouchableOpacity
-                    style={[styles.addEventBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onAddNewEvent();
-                    }}
-                    activeOpacity={0.8}
-                    accessible={true}
-                    accessibilityRole="button"
-                    accessibilityLabel="Adicionar nova atividade na agenda"
-                    accessibilityHint="Abre o formulário de cadastro de aula, compromisso ou evento"
-                  >
-                    <Text style={[styles.addEventBtnText, { color: getContrastTextColor(colors.primary) }]}>
-                      + Agendar Nova Atividade
-                    </Text>
                   </TouchableOpacity>
-                )}
-              </View>
-            )}
-          </View>
-        ) : (
-          /* Mode B: 24h Hourly Timeline */
-          <View style={[styles.timelineWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={{ height: 24 * 72, position: 'relative' }}>
-              {/* Hour Lines */}
-              {Array.from({ length: 24 }).map((_, hour) => (
-                <View
-                  key={hour}
-                  style={[
-                    styles.timelineHourRow,
-                    {
-                      top: hour * 72,
-                      borderBottomColor: colors.borderSubtle
-                    }
-                  ]}
-                >
-                  <Text style={[styles.timelineTimeLabel, { color: colors.textSecondary }]}>
-                    {`${hour.toString().padStart(2, '0')}:00`}
-                  </Text>
-                  <View style={styles.timelineHourDivider} />
-                </View>
-              ))}
+                );
+              })}
 
-              {/* Current Time Indicator on today */}
-              {isToday && (
-                <View
-                  style={{
-                    position: 'absolute',
-                    left: 55,
-                    right: 0,
-                    top: (now.getHours() + now.getMinutes() / 60) * 72,
-                    height: 2,
-                    backgroundColor: colors.danger,
-                    zIndex: 10,
-                    flexDirection: 'row',
-                    alignItems: 'center'
-                  }}
-                >
-                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger, marginLeft: -4 }} />
-                </View>
-              )}
-
-              {/* Event Blocks on Timeline */}
-              {todaysEvents.map(event => {
-                const [startH, startM] = (event.startTime || '08:00').split(':').map(Number);
-                const topOffset = ((startH || 0) + (startM || 0) / 60) * 72;
-
-                let durationHours = 1;
-                if (event.endTime) {
-                  const [endH, endM] = event.endTime.split(':').map(Number);
-                  durationHours = ((endH || 0) + (endM || 0) / 60) - ((startH || 0) + (startM || 0) / 60);
-                  if (durationHours <= 0) durationHours = 1;
-                }
-
-                const height = Math.max(durationHours * 72 - 4, 32);
-                const subject = event.subjectId ? subjects.find(s => s.id === event.subjectId) : null;
-                const bg = subject?.color || getCategoryColor(event.category, theme) || colors.primary;
-                const contrastColor = getContrastTextColor(bg);
+              {/* 2. StudyTasks Checklist Items */}
+              {todaysTasks.map(task => {
+                const subject = task.subjectId ? subjects.find(s => s.id === task.subjectId) : null;
+                const priorityColor = task.priority === 'high' ? colors.danger : task.priority === 'medium' ? colors.warning : colors.success;
 
                 return (
                   <TouchableOpacity
-                    key={event.id}
+                    key={task.id}
                     style={[
-                      styles.timelineEventCard,
+                      styles.checklistItemCard,
                       {
-                        top: topOffset,
-                        height,
-                        backgroundColor: bg,
-                        opacity: event.isCompleted ? 0.65 : 0.95
+                        borderBottomColor: colors.borderSubtle,
+                        opacity: task.isCompleted ? 0.6 : 1
                       }
                     ]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onToggleEventCompletion(event.id);
+                      onToggleTaskCompletion(task.id);
                     }}
-                    onLongPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      onEditEvent(event);
-                    }}
-                    activeOpacity={0.85}
+                    activeOpacity={0.8}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.timelineEventTitle,
-                          {
-                            color: contrastColor,
-                            textDecorationLine: event.isCompleted ? 'line-through' : 'none'
-                          }
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {event.isCompleted ? '✓ ' : ''}{event.title}
-                      </Text>
-                      {height >= 44 && (
-                        <Text style={[styles.timelineEventTime, { color: contrastColor }]} numberOfLines={1}>
-                          {event.startTime} - {event.endTime} • {event.category}
+                    {/* Interactive Circular Checkbox */}
+                    <TouchableOpacity
+                      style={[
+                        styles.circularCheckbox,
+                        {
+                          backgroundColor: task.isCompleted ? colors.primary : 'transparent',
+                          borderColor: task.isCompleted ? colors.primary : colors.textSecondary
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        onToggleTaskCompletion(task.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {task.isCompleted && (
+                        <Text style={[styles.checkboxCheckmark, { color: getContrastTextColor(colors.primary) }]}>
+                          ✓
                         </Text>
                       )}
+                    </TouchableOpacity>
+
+                    {/* Task Content */}
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={styles.checklistItemHeader}>
+                        <Text
+                          style={[
+                            styles.checklistTitle,
+                            {
+                              color: colors.text,
+                              textDecorationLine: task.isCompleted ? 'line-through' : 'none'
+                            }
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {task.title}
+                        </Text>
+
+                        {task.priority && (
+                          <View
+                            style={[
+                              styles.miniCategoryBadge,
+                              {
+                                backgroundColor: colors.surfaceSubtle,
+                                borderColor: colors.border,
+                                borderWidth: 1
+                              }
+                            ]}
+                          >
+                            <View
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: 3,
+                                backgroundColor: priorityColor,
+                                marginRight: 4
+                              }}
+                            />
+                            <Text style={[styles.miniCategoryText, { color: colors.textSecondary }]}>
+                              {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.checklistMetaRow}>
+                        <Text style={[styles.checklistTime, { color: colors.textSecondary }]}>
+                          📝 Tarefa de Estudo
+                        </Text>
+
+                        {subject && (
+                          <View
+                            style={[
+                              styles.miniSubjectBadge,
+                              {
+                                backgroundColor: colors.surfaceSubtle,
+                                borderColor: colors.border,
+                                borderWidth: 1
+                              }
+                            ]}
+                          >
+                            <View
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: 3,
+                                backgroundColor: subject.color || colors.primary,
+                                marginRight: 4
+                              }}
+                            />
+                            <Text style={[styles.miniSubjectText, { color: colors.textSecondary }]} numberOfLines={1}>
+                              {subject.name}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
-                    {event.isImportant && <Text style={{ fontSize: 14 }}>⭐</Text>}
                   </TouchableOpacity>
                 );
               })}
+
+              {/* Empty Checklist Fallback */}
+              {totalItemsCount === 0 && (
+                <View style={[styles.emptyChecklistCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderSubtle }]}>
+                  <View style={[styles.emptyIconCircle, { backgroundColor: colors.surface }]}>
+                    <Text style={{ fontSize: 24 }}>✨</Text>
+                  </View>
+                  <Text style={[styles.emptyChecklistTitle, { color: colors.text }]}>
+                    {isToday ? 'Dia livre de compromissos!' : `Nenhuma atividade em ${formatDisplayDate(targetDate)}`}
+                  </Text>
+                  <Text style={[styles.emptyChecklistSubtitle, { color: colors.textSecondary }]}>
+                    {isToday
+                      ? 'Nenhum evento, aula ou tarefa agendada para hoje. Aproveite para descansar, revisar matérias ou planejar suas metas.'
+                      : 'Nenhum compromisso agendado para esta data. Toque abaixo para planejar suas atividades com antecedência.'}
+                  </Text>
+                  {onAddNewEvent && (
+                    <TouchableOpacity
+                      style={[styles.addEventBtn, { backgroundColor: colors.primary }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        onAddNewEvent();
+                      }}
+                      activeOpacity={0.8}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel="Adicionar nova atividade na agenda"
+                      accessibilityHint="Abre o formulário de cadastro de aula, compromisso ou evento"
+                    >
+                      <Text style={[styles.addEventBtnText, { color: getContrastTextColor(colors.primary) }]}>
+                        + Agendar Nova Atividade
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
             </View>
-          </View>
-        )}
-      </View>
+          ) : (
+            /* Mode B: 24h Hourly Timeline */
+            <View style={[styles.timelineWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={{ height: 24 * 72, position: 'relative' }}>
+                {/* Hour Lines */}
+                {Array.from({ length: 24 }).map((_, hour) => (
+                  <View
+                    key={hour}
+                    style={[
+                      styles.timelineHourRow,
+                      {
+                        top: hour * 72,
+                        borderBottomColor: colors.borderSubtle
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.timelineTimeLabel, { color: colors.textSecondary }]}>
+                      {`${hour.toString().padStart(2, '0')}:00`}
+                    </Text>
+                    <View style={styles.timelineHourDivider} />
+                  </View>
+                ))}
 
-      {/* Spacing to prevent Bottom Navigation & FAB from overlapping content */}
-      <View style={{ height: 100 }} />
-    </ScrollView>
+                {/* Current Time Indicator on today */}
+                {isToday && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 55,
+                      right: 0,
+                      top: (now.getHours() + now.getMinutes() / 60) * 72,
+                      height: 2,
+                      backgroundColor: colors.danger,
+                      zIndex: 10,
+                      flexDirection: 'row',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger, marginLeft: -4 }} />
+                  </View>
+                )}
 
-    {/* Floating Action Button (FAB) Permanente */}
-    <TouchableOpacity
-      style={[
-        styles.fab,
-        {
-          backgroundColor: colors.primary,
-          shadowColor: colors.primary
-        }
-      ]}
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        if (onAddNewEvent) {
-          onAddNewEvent();
-        }
-      }}
-      accessibilityLabel="Adicionar novo compromisso"
-      activeOpacity={0.85}
-    >
-      <Text
+                {/* Event Blocks on Timeline */}
+                {todaysEvents.map(event => {
+                  const [startH, startM] = (event.startTime || '08:00').split(':').map(Number);
+                  const topOffset = ((startH || 0) + (startM || 0) / 60) * 72;
+
+                  let durationHours = 1;
+                  if (event.endTime) {
+                    const [endH, endM] = event.endTime.split(':').map(Number);
+                    durationHours = ((endH || 0) + (endM || 0) / 60) - ((startH || 0) + (startM || 0) / 60);
+                    if (durationHours <= 0) durationHours = 1;
+                  }
+
+                  const height = Math.max(durationHours * 72 - 4, 32);
+                  const subject = event.subjectId ? subjects.find(s => s.id === event.subjectId) : null;
+                  const bg = subject?.color || getCategoryColor(event.category, theme) || colors.primary;
+                  const contrastColor = getContrastTextColor(bg);
+
+                  return (
+                    <TouchableOpacity
+                      key={event.id}
+                      style={[
+                        styles.timelineEventCard,
+                        {
+                          top: topOffset,
+                          height,
+                          backgroundColor: bg,
+                          opacity: event.isCompleted ? 0.65 : 0.95
+                        }
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        onToggleEventCompletion(event.id);
+                      }}
+                      onLongPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        onEditEvent(event);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.timelineEventTitle,
+                            {
+                              color: contrastColor,
+                              textDecorationLine: event.isCompleted ? 'line-through' : 'none'
+                            }
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {event.isCompleted ? '✓ ' : ''}{event.title}
+                        </Text>
+                        {height >= 44 && (
+                          <Text style={[styles.timelineEventTime, { color: contrastColor }]} numberOfLines={1}>
+                            {event.startTime} - {event.endTime} • {event.category}
+                          </Text>
+                        )}
+                      </View>
+                      {event.isImportant && <Text style={{ fontSize: 14 }}>⭐</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Scroll clearance over floating Liquid Glass tab bar */}
+        <View style={{ height: 120 }} />
+      </ScrollView>
+
+      {/* Floating Action Button (FAB) Permanente em bottom: 90 */}
+      <TouchableOpacity
         style={[
-          styles.fabIcon,
-          { color: getContrastTextColor(colors.primary) }
+          styles.fab,
+          {
+            backgroundColor: colors.primary,
+            shadowColor: colors.primary
+          }
         ]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          if (onAddNewEvent) {
+            onAddNewEvent();
+          }
+        }}
+        accessibilityLabel="Adicionar novo compromisso"
+        accessibilityRole="button"
+        activeOpacity={0.85}
       >
-        +
-      </Text>
-    </TouchableOpacity>
-  </View>
-);
+        <Text
+          style={[
+            styles.fabIcon,
+            { color: getContrastTextColor(colors.primary) }
+          ]}
+        >
+          +
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 };
 
 const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
@@ -1122,14 +1252,14 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 100,
+    paddingTop: 12,
+    paddingBottom: 120,
   },
   pendingBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    borderRadius: 14,
+    borderRadius: 16,
     marginBottom: 14,
   },
   pendingBannerTitle: {
@@ -1145,124 +1275,183 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 18,
   },
-  sectionContainer: {
-    marginBottom: 18,
+
+  // 1. Large Title Header
+  largeHeaderContainer: {
+    marginBottom: 16,
+    paddingTop: 4,
   },
-  sectionHeader: {
+  largeHeaderTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  largeTitle: {
+    fontSize: 34,
+    fontWeight: 'bold',
+    letterSpacing: 0.37,
+  },
+  datePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 6,
+  },
+  datePillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  largeHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
+    gap: 8,
   },
-  sectionIconBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+  levelPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  levelPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  circularActionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+
+  // 2. Weekly Strip
+  weeklyStripContainer: {
+    marginBottom: 18,
   },
-  sectionSubtitle: {
-    fontSize: 11,
-    marginTop: 1,
-  },
-  gamificationPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  gamificationText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  highlightCard: {
-    borderRadius: 16,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  highlightHeaderRow: {
+  weeklyStripRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 6,
+  },
+  dayPill: {
+    flex: 1,
+    minHeight: 64,
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    paddingVertical: 8,
+    position: 'relative',
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  statusLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  categoryPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  categoryPillText: {
+  dayPillName: {
     fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  dayPillNum: {
+    fontSize: 16,
     fontWeight: '800',
   },
-  highlightTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    marginBottom: 8,
+  todayIndicatorDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    position: 'absolute',
+    bottom: 4,
   },
-  highlightDetailsRow: {
+  monthToggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 6,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: 6,
   },
-  timeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  timeBadgeText: {
+  monthToggleBtnText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  subjectBadge: {
+  calendarCard: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 8,
+    overflow: 'hidden',
+  },
+
+  // Inset Grouped Patterns
+  insetCard: {
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
+  cardHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  cardHeaderChevron: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  insetCardInner: {
+    padding: 14,
+    borderRadius: 14,
+    marginHorizontal: 14,
+    marginBottom: 14,
+  },
+
+  // Card 1: Próxima Aula
+  nextClassTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  nextClassSubject: {
+    fontSize: 17,
+    fontWeight: '800',
+    flex: 1,
+    marginRight: 8,
+  },
+  timeChip: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
   },
-  subjectBadgeText: {
+  timeChipText: {
     fontSize: 12,
     fontWeight: '700',
   },
-  highlightNotes: {
+  nextClassMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  nextClassMetaText: {
     fontSize: 12,
-    marginBottom: 10,
+    fontWeight: '500',
   },
   highlightActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 6,
+    marginTop: 4,
   },
   quickStudyBtn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1273,23 +1462,8 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
   quickCheckBtn: {
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fallbackCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-  },
-  fallbackIconWrap: {
-    width: 42,
-    height: 42,
     borderRadius: 12,
-    backgroundColor: colors.surfaceSubtle,
+    borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1312,55 +1486,68 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-  examAlertBanner: {
+
+  // Card 2: Provas & Entregas
+  urgentExamPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
+    padding: 12,
+    borderRadius: 14,
+    marginHorizontal: 14,
+    marginBottom: 14,
     borderWidth: 1,
-    marginTop: 10,
   },
-  examAlertTitle: {
-    fontWeight: '800',
+  urgentExamText: {
     fontSize: 13,
-  },
-  examAlertSubtitle: {
-    fontSize: 11,
-    marginTop: 1,
-  },
-  examAlertAction: {
-    fontWeight: '800',
-    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
     marginLeft: 8,
   },
-  todayResetBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+
+  // Card 3: Focus Pomodoro
+  pomodoroCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    marginHorizontal: 14,
+    marginBottom: 14,
+  },
+  activityRingWrapper: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activityRingText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  pomodoroTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  pomodoroSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  pomodoroOpenBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 10,
-    borderWidth: 1,
   },
-  todayResetText: {
-    fontSize: 11,
-    fontWeight: '700',
+  pomodoroOpenBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
-  calendarCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 8,
-    overflow: 'hidden',
-  },
-  hintText: {
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 6,
-    fontStyle: 'italic',
-  },
+
+  // View Mode Switcher
   viewModeToggleWrap: {
     flexDirection: 'row',
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 2,
   },
   viewModeBtn: {
@@ -1372,14 +1559,17 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+
+  // Checklist Items & Dividers
   checklistContainer: {
-    gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
   },
   checklistItemCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   circularCheckbox: {
     width: 24,
@@ -1447,6 +1637,22 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
+
+  // Preserved for backwards compatibility with tests
+  subjectBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSubtle,
+  },
+  subjectBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // Empty Checklist Fallback Card
   emptyIconCircle: {
     width: 52,
     height: 52,
@@ -1462,6 +1668,7 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderStyle: 'dashed',
+    marginVertical: 8,
   },
   emptyChecklistTitle: {
     fontSize: 15,
@@ -1490,11 +1697,15 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
   },
+
+  // 24h Timeline
   timelineWrapper: {
     borderRadius: 16,
     borderWidth: 1,
     padding: 10,
     overflow: 'hidden',
+    marginHorizontal: 14,
+    marginBottom: 14,
   },
   timelineHourRow: {
     position: 'absolute',
@@ -1538,9 +1749,11 @@ const getStyles = (colors: any, theme: ThemeType) => StyleSheet.create({
     marginTop: 2,
     lineHeight: 13,
   },
+
+  // Floating Action Button
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 90,
     right: 20,
     width: 58,
     height: 58,

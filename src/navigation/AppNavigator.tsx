@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../contexts/AppContext';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { StorageService } from '../services/storage';
@@ -32,6 +33,7 @@ const Tab = createBottomTabNavigator();
 export function AppNavigator() {
   const { theme, settings, setSettings, gamification, isInitializing, handleThemeToggle, events, subjects, studySessions, attendances, streak, semesters, setSemesters, refreshData, aiConfig, updateAIConfig } = useApp();
   const colors = getThemeColors(theme);
+  const insets = useSafeAreaInsets();
 
   // Global Modals State
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
@@ -98,7 +100,14 @@ export function AppNavigator() {
   }
 
   const CustomHeader = () => (
-    <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.surface }]}>
+    <View style={[
+      styles.header, 
+      { 
+        borderBottomColor: colors.border, 
+        backgroundColor: colors.surface,
+        paddingTop: insets.top > 0 ? insets.top + (insets.top >= 54 ? 4 : 8) : (Platform.OS === 'ios' ? 48 : 36),
+      }
+    ]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, marginRight: 8 }}>
         <View style={[styles.logoIconBadge, { backgroundColor: colors.primaryLight }]}>
           <Text style={{ fontSize: 16 }}>🎓</Text>
@@ -183,13 +192,40 @@ export function AppNavigator() {
       <StatusBar style={theme === 'light' ? 'dark' : 'light'} backgroundColor="transparent" translucent />
       <NavigationContainer theme={navTheme}>
         <Tab.Navigator
+          screenListeners={{
+            tabPress: () => {
+              Haptics.selectionAsync();
+            }
+          }}
           screenOptions={({ route }) => ({
             header: () => <CustomHeader />,
             tabBarActiveTintColor: colors.primary,
             tabBarInactiveTintColor: colors.textSecondary,
             tabBarStyle: {
-              backgroundColor: colors.surface,
-              borderTopColor: colors.border,
+              position: 'absolute',
+              bottom: insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 14 : 12),
+              left: 16,
+              right: 16,
+              height: 62,
+              borderRadius: 26,
+              backgroundColor: colors.glassBackground || (isDark ? 'rgba(24, 27, 32, 0.92)' : 'rgba(255, 255, 255, 0.94)'),
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: colors.specularBorder || (isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)'),
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: colors.hairlineBorder || (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'),
+              paddingBottom: Platform.OS === 'ios' ? 8 : 6,
+              paddingTop: 8,
+              elevation: 8,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: isDark ? 0.35 : 0.12,
+              shadowRadius: 14,
+            },
+            tabBarLabelStyle: {
+              fontSize: 11,
+              fontWeight: '600',
+              letterSpacing: 0.1,
+              marginTop: 1,
             },
             tabBarIcon: ({ color, size, focused }) => {
               let icon = '';
@@ -198,7 +234,7 @@ export function AppNavigator() {
               else if (route.name === 'Desempenho') icon = '🎯';
               else if (route.name === 'Faltas') icon = '📊';
               else if (route.name === 'Notas') icon = '🎓';
-              return <Text style={{ fontSize: focused ? 24 : 20 }}>{icon}</Text>;
+              return <Text style={{ fontSize: focused ? 22 : 19, opacity: focused ? 1 : 0.8 }}>{icon}</Text>;
             }
           })}
         >
@@ -274,7 +310,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 48,
     paddingBottom: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerRight: {
     flexDirection: 'row',
@@ -284,34 +320,34 @@ const styles = StyleSheet.create({
   logoIconBadge: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
   title: {
     fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontWeight: '700',
+    letterSpacing: -0.4,
   },
   examModeBadge: {
     marginLeft: 8,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   levelHeaderBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   iconBtn: {
     width: 36,
     height: 36,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -134,7 +134,7 @@ Responda APENAS com JSON:
   ]
 }`;
 
-        const rawJson = await AIParsingService.callGemini(criteriaText, apiKey, 'gemini-2.5-flash', prompt);
+        const rawJson = await AIParsingService.callGemini(criteriaText, apiKey, 'gemini-3.6-flash', prompt);
         const cleaned = rawJson.replace(/```json/gi, '').replace(/```/g, '').trim();
         const parsed = JSON.parse(cleaned);
         if (parsed.groups && Array.isArray(parsed.groups)) {

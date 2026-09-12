@@ -190,8 +190,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // Sanitize AI config
       const rawModel = typeof savedAIConfig?.model === 'string' ? savedAIConfig.model.trim() : '';
-      const sanitizedModel = (!rawModel || rawModel.includes('1.5') || rawModel === 'gemini-flash')
-        ? 'gemini-2.5-flash'
+      const sanitizedModel = (!rawModel || rawModel.includes('1.5') || rawModel.includes('2.5') || rawModel === 'gemini-flash')
+        ? 'gemini-3.6-flash'
         : rawModel;
 
       const safeAIConfig: AIConfig = (savedAIConfig && typeof savedAIConfig === 'object')
@@ -203,7 +203,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             enableFallbackToCloud: savedAIConfig.enableFallbackToCloud !== false,
             localModelPath: savedAIConfig.localModelPath
           }
-        : { provider: 'gemini', mode: 'gemini_cloud', apiKey: '', model: 'gemini-2.5-flash', enableFallbackToCloud: true };
+        : { provider: 'gemini', mode: 'gemini_cloud', apiKey: '', model: 'gemini-3.6-flash', enableFallbackToCloud: true };
 
       setTheme(safeTheme);
       setEvents(safeEvents);

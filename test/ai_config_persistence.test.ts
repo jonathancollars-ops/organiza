@@ -34,7 +34,7 @@ async function runTestSuite() {
     provider: 'gemini',
     mode: 'gemini_cloud',
     apiKey: testApiKey,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     enableFallbackToCloud: true,
   };
 
@@ -44,12 +44,12 @@ async function runTestSuite() {
   const initialLoad = await StorageService.getAIConfig();
   assert(initialLoad.apiKey === testApiKey, 'getAIConfig immediately returns saved apiKey');
   assert(initialLoad.provider === 'gemini', 'getAIConfig returns correct provider');
-  assert(initialLoad.model === 'gemini-2.5-flash', 'getAIConfig returns correct model');
+  assert(initialLoad.model === 'gemini-3.6-flash', 'getAIConfig returns correct model');
 
-  // Verify legacy 1.5 auto-migration to 2.5
+  // Verify legacy 1.5 auto-migration to 3.6
   memoryStore['@organiza_ai_config'] = JSON.stringify({ provider: 'gemini', model: 'gemini-1.5-flash', apiKey: '' });
   const migratedConfig = await StorageService.getAIConfig();
-  assert(migratedConfig.model === 'gemini-2.5-flash', 'getAIConfig automatically migrates legacy 1.5 model to gemini-2.5-flash');
+  assert(migratedConfig.model === 'gemini-3.6-flash', 'getAIConfig automatically migrates legacy 1.5 model to gemini-3.6-flash');
 
   // Restore sampleConfig
   await StorageService.saveAIConfig(sampleConfig);

@@ -66,7 +66,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     provider: 'gemini',
     mode: 'cloud',
     apiKey: '',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     enableFallbackToCloud: true
   });
 
@@ -723,7 +723,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     const targetConfig: AIConfig = {
                       ...aiConfig,
                       provider: 'gemini',
-                      model: 'gemini-2.5-flash'
+                      model: 'gemini-3.6-flash'
                     };
                     let success = false;
                     if (typeof onUpdateAIConfig === 'function') {

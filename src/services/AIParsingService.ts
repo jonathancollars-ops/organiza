@@ -71,15 +71,15 @@ export function resolveDocumentMimeType(fileNameOrUri?: string, fallbackMime?: s
 
 /**
  * Normalizes Gemini model names to ensure active, supported models.
- * Automatically migrates deprecated models (like gemini-1.5-flash) to gemini-2.5-flash.
+ * Automatically migrates deprecated models (like gemini-1.5-flash, gemini-2.5-flash) to gemini-3.6-flash.
  */
 export function normalizeGeminiModel(model?: string): string {
   if (!model || typeof model !== 'string') {
-    return 'gemini-2.5-flash';
+    return 'gemini-3.6-flash';
   }
   const clean = model.trim().toLowerCase();
-  if (clean.includes('1.5') || clean === 'gemini-flash' || clean === 'gemini-pro') {
-    return 'gemini-2.5-flash';
+  if (clean.includes('1.5') || clean.includes('2.5') || clean === 'gemini-flash' || clean === 'gemini-pro') {
+    return 'gemini-3.6-flash';
   }
   return model.trim();
 }
@@ -307,12 +307,12 @@ Retorne APENAS o JSON, sem markdown extra.`;
         signal: getTimeoutSignal(90000) // AbortSignal.timeout(90000) safe fallback for Hermes
       });
 
-      // Resilient fallback: if requested model returns 404 or "not found", automatically retry with gemini-2.5-flash
-      if (!response.ok && selectedModel !== 'gemini-2.5-flash') {
+      // Resilient fallback: if requested model returns 404 or "not found", automatically retry with gemini-3.6-flash
+      if (!response.ok && selectedModel !== 'gemini-3.6-flash') {
         const errorPeek = await response.clone().json().catch(() => ({}));
         const peekMsg = errorPeek.error?.message || '';
         if (response.status === 404 || peekMsg.toLowerCase().includes('not found') || peekMsg.toLowerCase().includes('not supported')) {
-          url = buildUrl('gemini-2.5-flash');
+          url = buildUrl('gemini-3.6-flash');
           response = await fetch(url, {
             method: 'POST',
             headers,
@@ -373,7 +373,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
   public static async callGemini(
     rawMessage: string,
     apiKey: string,
-    model: string = 'gemini-2.5-flash',
+    model: string = 'gemini-3.6-flash',
     systemPrompt: string
   ): Promise<string> {
     // If no key is passed, fallback to environment variable (useful for development)
@@ -416,12 +416,12 @@ Retorne APENAS o JSON, sem markdown extra.`;
         signal: getTimeoutSignal(15000)
       });
 
-      // Resilient fallback: if requested model returns 404 or "not found", automatically retry with gemini-2.5-flash
-      if (!response.ok && selectedModel !== 'gemini-2.5-flash') {
+      // Resilient fallback: if requested model returns 404 or "not found", automatically retry with gemini-3.6-flash
+      if (!response.ok && selectedModel !== 'gemini-3.6-flash') {
         const errorPeek = await response.clone().json().catch(() => ({}));
         const peekMsg = errorPeek.error?.message || '';
         if (response.status === 404 || peekMsg.toLowerCase().includes('not found') || peekMsg.toLowerCase().includes('not supported')) {
-          url = buildUrl('gemini-2.5-flash');
+          url = buildUrl('gemini-3.6-flash');
           response = await fetch(url, {
             method: 'POST',
             headers,
@@ -457,7 +457,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
    */
   public static async callGeminiSecureBackend(
     rawMessage: string,
-    model: string = 'gemini-2.5-flash',
+    model: string = 'gemini-3.6-flash',
     systemPrompt: string
   ): Promise<string> {
     const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://api.seubackend.com/v1/parse';

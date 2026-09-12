@@ -11,6 +11,14 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 - **Minor (+0.1.0, ex: 3.2.0)**: Novos recursos, novas telas, funcionalidades adicionais sem quebra de compatibilidade. (Zera o patch).
 - **Major (+1.0.0, ex: 4.0.0)**: Grandes reformulações de arquitetura, redesign completo ou mudanças estruturais profundas. (Zera minor e patch).
 
+## [3.4.2] - 2026-09-12
+### 🤖 Migração para Google Gemini 3.6 Flash
+- **Suporte ao Gemini 3.6 Flash:** Atualização do motor de IA para `gemini-3.6-flash`, solucionando o erro de descontinuação do `gemini-2.5-flash` para novas contas da API Google AI Studio.
+- **Auto-migração Dupla:** Migração automática de configurações antigas com modelos `1.5` ou `2.5` para `gemini-3.6-flash` na inicialização do app.
+- **Fallback Resiliente Atualizado:** Sistema de retry inteligente aponta para `gemini-3.6-flash` como modelo de último recurso em todos os fluxos de PDF e parsing de mensagem.
+
+---
+
 ## [3.4.1] - 2026-09-12
 ### 🤖 Migração para Google Gemini 2.5 Flash
 - **Suporte ao Gemini 2.5 Flash:** Atualização do motor de IA para o novo modelo padrão multiraciocínio `gemini-2.5-flash` na API v1beta do Google AI Studio, solucionando o erro 404 de descontinuação do `gemini-1.5-flash`.

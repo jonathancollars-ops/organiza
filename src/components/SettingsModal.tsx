@@ -11,7 +11,8 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemeType, AppSettings, Semester, BackupData, AIConfig, AppUpdateInfo } from '../types';
@@ -65,7 +66,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     provider: 'gemini',
     mode: 'cloud',
     apiKey: '',
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.5-flash',
     enableFallbackToCloud: true
   });
 
@@ -470,6 +471,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </TouchableOpacity>
 
               <TouchableOpacity
+                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  Linking.openURL('https://github.com/jonathancollars-ops/organiza/releases/latest');
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                  <Text style={{ fontSize: 20, marginRight: 10 }}>🌐</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Baixar APK via GitHub</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 1 }}>Download direto do último instalador (Releases)</Text>
+                  </View>
+                </View>
+                <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '700' }}>↗</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
                 onPress={() => {
                   Haptics.selectionAsync();
@@ -704,7 +723,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     const targetConfig: AIConfig = {
                       ...aiConfig,
                       provider: 'gemini',
-                      model: 'gemini-1.5-flash'
+                      model: 'gemini-2.5-flash'
                     };
                     let success = false;
                     if (typeof onUpdateAIConfig === 'function') {

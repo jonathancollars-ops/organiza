@@ -69,6 +69,21 @@ export function resolveDocumentMimeType(fileNameOrUri?: string, fallbackMime?: s
   return 'application/pdf';
 }
 
+/**
+ * Normalizes Gemini model names to ensure active, supported models.
+ * Automatically migrates deprecated models (like gemini-1.5-flash) to gemini-2.5-flash.
+ */
+export function normalizeGeminiModel(model?: string): string {
+  if (!model || typeof model !== 'string') {
+    return 'gemini-2.5-flash';
+  }
+  const clean = model.trim().toLowerCase();
+  if (clean.includes('1.5') || clean === 'gemini-flash' || clean === 'gemini-pro') {
+    return 'gemini-2.5-flash';
+  }
+  return model.trim();
+}
+
 export class AIParsingService {
   /**
    * Main entry point: Parses a raw message using Google Gemini or OpenAI,
@@ -199,8 +214,9 @@ RESPONDA EXCLUSIVAMENTE COM O SEGUINTE FORMATO JSON:
       throw new Error('No momento, o processamento de documentos suporta apenas o Google Gemini como provedor.');
     }
 
-    const selectedModel = aiConfig.model?.trim() || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent`;
+    const selectedModel = normalizeGeminiModel(aiConfig.model);
+    const buildUrl = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+    let url = buildUrl(selectedModel);
 
     let systemPrompt = '';
     if (mode === 'transcript') {
@@ -259,36 +275,52 @@ Retorne APENAS o JSON, sem markdown extra.`;
     }
 
     const safeMimeType = resolveDocumentMimeType(undefined, mimeType);
+    const requestBody = JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: `Por favor, processe o documento acadêmico em anexo e retorne o JSON estruturado.` },
+            {
+              inline_data: {
+                mime_type: safeMimeType,
+                data: base64Data
+              }
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json'
+      }
+    });
 
     try {
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPrompt }]
-          },
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: `Por favor, processe o documento acadêmico em anexo e retorne o JSON estruturado.` },
-                {
-                  inline_data: {
-                    mime_type: safeMimeType,
-                    data: base64Data
-                  }
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: 'application/json'
-          }
-        }),
+        body: requestBody,
         signal: getTimeoutSignal(90000) // AbortSignal.timeout(90000) safe fallback for Hermes
       });
+
+      // Resilient fallback: if requested model returns 404 or "not found", automatically retry with gemini-2.5-flash
+      if (!response.ok && selectedModel !== 'gemini-2.5-flash') {
+        const errorPeek = await response.clone().json().catch(() => ({}));
+        const peekMsg = errorPeek.error?.message || '';
+        if (response.status === 404 || peekMsg.toLowerCase().includes('not found') || peekMsg.toLowerCase().includes('not supported')) {
+          url = buildUrl('gemini-2.5-flash');
+          response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: requestBody,
+            signal: getTimeoutSignal(90000)
+          });
+        }
+      }
 
       if (!response.ok) {
         const errorJson = await response.json().catch(() => ({}));
@@ -341,13 +373,14 @@ Retorne APENAS o JSON, sem markdown extra.`;
   public static async callGemini(
     rawMessage: string,
     apiKey: string,
-    model: string = 'gemini-1.5-flash',
+    model: string = 'gemini-2.5-flash',
     systemPrompt: string
   ): Promise<string> {
     // If no key is passed, fallback to environment variable (useful for development)
     const effectiveApiKey = apiKey.trim() || process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-    const selectedModel = model.trim() || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent`;
+    const selectedModel = normalizeGeminiModel(model);
+    const buildUrl = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+    let url = buildUrl(selectedModel);
 
     const sanitized = SecuritySanitizer.sanitizeHtml(rawMessage);
     const wrappedMessage = SecuritySanitizer.wrapWithUntrustedDelimiter(sanitized, 'untrusted_content');
@@ -359,27 +392,44 @@ Retorne APENAS o JSON, sem markdown extra.`;
       headers['x-goog-api-key'] = effectiveApiKey;
     }
 
+    const requestBody = JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: `Analise a seguinte mensagem recebida no canal da faculdade:\n\n${wrappedMessage}` }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json'
+      }
+    });
+
     try {
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPrompt }]
-          },
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `Analise a seguinte mensagem recebida no canal da faculdade:\n\n${wrappedMessage}` }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            responseMimeType: 'application/json'
-          }
-        }),
+        body: requestBody,
         signal: getTimeoutSignal(15000)
       });
+
+      // Resilient fallback: if requested model returns 404 or "not found", automatically retry with gemini-2.5-flash
+      if (!response.ok && selectedModel !== 'gemini-2.5-flash') {
+        const errorPeek = await response.clone().json().catch(() => ({}));
+        const peekMsg = errorPeek.error?.message || '';
+        if (response.status === 404 || peekMsg.toLowerCase().includes('not found') || peekMsg.toLowerCase().includes('not supported')) {
+          url = buildUrl('gemini-2.5-flash');
+          response = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: requestBody,
+            signal: getTimeoutSignal(15000)
+          });
+        }
+      }
 
       if (!response.ok) {
         const errorJson = await response.json().catch(() => ({}));
@@ -407,7 +457,7 @@ Retorne APENAS o JSON, sem markdown extra.`;
    */
   public static async callGeminiSecureBackend(
     rawMessage: string,
-    model: string = 'gemini-1.5-flash',
+    model: string = 'gemini-2.5-flash',
     systemPrompt: string
   ): Promise<string> {
     const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://api.seubackend.com/v1/parse';

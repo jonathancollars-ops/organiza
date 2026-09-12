@@ -1248,11 +1248,16 @@ export const StorageService = {
         await AsyncStorage.setItem(AI_CONFIG_KEY, JSON.stringify(sanitized)).catch(() => {});
       }
 
+      let resolvedModel = parsed.model || 'gemini-2.5-flash';
+      if (typeof resolvedModel === 'string' && (resolvedModel.includes('1.5') || resolvedModel === 'gemini-flash')) {
+        resolvedModel = 'gemini-2.5-flash';
+      }
+
       return {
         provider: parsed.provider === 'openai' ? 'openai' : 'gemini',
         mode: parsed.mode || 'local_edge',
         apiKey: secureApiKey || '',
-        model: parsed.model || 'gemini-1.5-flash',
+        model: resolvedModel,
         enableFallbackToCloud: parsed.enableFallbackToCloud !== false,
         localModelPath: parsed.localModelPath
       };
@@ -1262,7 +1267,7 @@ export const StorageService = {
         provider: 'gemini',
         mode: 'local_edge',
         apiKey: secureApiKey || '',
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         enableFallbackToCloud: true
       };
     }

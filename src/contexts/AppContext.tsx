@@ -189,16 +189,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         : { currentStreak: 0, longestStreak: 0, lastStudyDate: '' };
 
       // Sanitize AI config
+      const rawModel = typeof savedAIConfig?.model === 'string' ? savedAIConfig.model.trim() : '';
+      const sanitizedModel = (!rawModel || rawModel.includes('1.5') || rawModel === 'gemini-flash')
+        ? 'gemini-2.5-flash'
+        : rawModel;
+
       const safeAIConfig: AIConfig = (savedAIConfig && typeof savedAIConfig === 'object')
         ? {
             provider: savedAIConfig.provider === 'openai' ? 'openai' : 'gemini',
             mode: savedAIConfig.mode || 'gemini_cloud',
             apiKey: typeof savedAIConfig.apiKey === 'string' ? savedAIConfig.apiKey : '',
-            model: typeof savedAIConfig.model === 'string' ? savedAIConfig.model : 'gemini-1.5-flash',
+            model: sanitizedModel,
             enableFallbackToCloud: savedAIConfig.enableFallbackToCloud !== false,
             localModelPath: savedAIConfig.localModelPath
           }
-        : { provider: 'gemini', mode: 'gemini_cloud', apiKey: '', model: 'gemini-1.5-flash', enableFallbackToCloud: true };
+        : { provider: 'gemini', mode: 'gemini_cloud', apiKey: '', model: 'gemini-2.5-flash', enableFallbackToCloud: true };
 
       setTheme(safeTheme);
       setEvents(safeEvents);

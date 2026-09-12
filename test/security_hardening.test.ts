@@ -466,10 +466,10 @@ async function runSecurityTests() {
     globalThis.fetch = async () => ({
       ok: true,
       json: async () => ({
-        tag_name: 'v3.4.1-build-12',
-        name: 'Release 3.4.1 <script>alert("xss")</script>',
+        tag_name: 'v3.4.2-build-12',
+        name: 'Release 3.4.2 <script>alert("xss")</script>',
         body: 'Notas de atualização <b>com tags</b> e <iframe src="evil.com"></iframe>',
-        html_url: 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.1',
+        html_url: 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.2',
         assets: [
           { name: 'source.zip', browser_download_url: 'https://github.com/release/source.zip' }
         ]
@@ -479,10 +479,10 @@ async function runSecurityTests() {
     const info = await AppUpdateService.checkForUpdates(true);
     assert(info !== null, 'Update info retrieved');
     assert(info!.hasUpdate === true, 'Update detected');
-    assert(info!.latestVersion === '3.4.1-build-12', 'Version with build extracted');
+    assert(info!.latestVersion === '3.4.2-build-12', 'Version with build extracted');
     assert(!info!.releaseName!.includes('<script>'), 'Release name sanitized');
     assert(!info!.releaseNotes!.includes('<iframe>'), 'Release notes stripped of dangerous tags');
-    assert(info!.downloadUrl === 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.1', 'Fallback to release html_url because no .apk asset exists');
+    assert(info!.downloadUrl === 'https://github.com/jonathancollars-ops/organiza/releases/tag/v3.4.2', 'Fallback to release html_url because no .apk asset exists');
 
     globalThis.fetch = origFetch;
   });

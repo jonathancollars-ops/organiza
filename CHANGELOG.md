@@ -11,6 +11,17 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 - **Minor (+0.1.0, ex: 3.2.0)**: Novos recursos, novas telas, funcionalidades adicionais sem quebra de compatibilidade. (Zera o patch).
 - **Major (+1.0.0, ex: 4.0.0)**: Grandes reformulações de arquitetura, redesign completo ou mudanças estruturais profundas. (Zera minor e patch).
 
+## [3.4.1] - 2026-09-12
+### 🤖 Migração para Google Gemini 2.5 Flash
+- **Suporte ao Gemini 2.5 Flash:** Atualização do motor de IA para o novo modelo padrão multiraciocínio `gemini-2.5-flash` na API v1beta do Google AI Studio, solucionando o erro 404 de descontinuação do `gemini-1.5-flash`.
+- **Auto-migração de Configurações:** Migração automática e transparente de chaves e configurações antigas de usuários salvos em storage local do `1.5` para o `2.5`.
+- **Fallback Resiliente:** Sistema de retry inteligente caso um endpoint de modelo retorne indisponibilidade ou modelo não encontrado.
+
+### 🔄 Motor de Atualizações & Download Direto do Instalador
+- **Detecção de Builds SemVer:** Atualização de versão para 3.4.1 garantindo detecção imediata de novas versões no GitHub Releases para usuários na 3.4.0.
+- **Botão Direto de Download do APK:** Novo atalho em Configurações (`🌐 Baixar APK via GitHub`) para download direto no navegador, garantindo fail-safe absoluto contra problemas de rede ou assinaturas.
+- **Hermes Universal AbortSignal:** Resolução completa do erro de timeout com `getTimeoutSignal` em leitura pesada de PDFs acadêmicos.
+
 ---
 
 ## [3.4.0] - 2026-09-09

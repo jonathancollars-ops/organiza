@@ -42,6 +42,71 @@ export function triggerAppStateChange(newState: 'active' | 'background' | 'inact
   appStateListeners.slice().forEach(listener => listener(newState));
 }
 
+export const lastAlertCalls: { title: string; message?: string; buttons?: any[] }[] = [];
+export function clearMockAlertCalls() {
+  lastAlertCalls.length = 0;
+}
+export const mockAlert = {
+  alert: (title: string, message?: string, buttons?: any[]) => {
+    lastAlertCalls.push({ title, message, buttons });
+  }
+};
+
+export const linkingListeners: ((event: { url: string }) => void)[] = [];
+export let initialLinkingUrl: string | null = null;
+export function setInitialLinkingUrl(url: string | null) {
+  initialLinkingUrl = url;
+}
+export function triggerLinkingUrl(url: string) {
+  linkingListeners.slice().forEach(listener => listener({ url }));
+}
+export function clearLinkingListeners() {
+  linkingListeners.length = 0;
+  initialLinkingUrl = null;
+}
+
+export const mockExpoLinking = {
+  parse: (url: string) => {
+    try {
+      let scheme = '';
+      let urlToParse = url;
+      const match = url.match(/^([a-zA-Z0-9+.-]+):\/\/(.*)$/);
+      if (match) {
+        scheme = match[1];
+        urlToParse = `http://${match[2]}`;
+      }
+      const parsed = new URL(urlToParse);
+      const queryParams: Record<string, string> = {};
+      parsed.searchParams.forEach((val, key) => {
+        queryParams[key] = val;
+      });
+      return {
+        scheme: scheme || null,
+        hostname: parsed.hostname,
+        path: parsed.pathname.replace(/^\//, ''),
+        queryParams,
+      };
+    } catch {
+      return { scheme: null, hostname: null, path: null, queryParams: {} };
+    }
+  },
+  addEventListener: (type: string, handler: (event: { url: string }) => void) => {
+    if (type === 'url') {
+      linkingListeners.push(handler);
+    }
+    return {
+      remove: () => {
+        const idx = linkingListeners.indexOf(handler);
+        if (idx !== -1) linkingListeners.splice(idx, 1);
+      }
+    };
+  },
+  getInitialURL: async () => initialLinkingUrl,
+  createURL: (path: string, options?: any) => `lumen://${path}`,
+  openURL: async (url: string) => true,
+  canOpenURL: async (url: string) => true,
+};
+
 // Hook require for Expo/React-Native modules
 const Module = require('module');
 export const mockReactNative = {
@@ -51,7 +116,7 @@ export const mockReactNative = {
   Text: 'Text',
   ScrollView: 'ScrollView',
   TouchableOpacity: 'TouchableOpacity',
-  Alert: { alert: () => {} },
+  Alert: mockAlert,
   StatusBar: { setBarStyle: () => {} },
   ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
@@ -63,10 +128,7 @@ export const mockReactNative = {
     sharedAction: 'sharedAction',
     dismissedAction: 'dismissedAction',
   },
-  Linking: {
-    openURL: async () => true,
-    canOpenURL: async () => true,
-  },
+  Linking: mockExpoLinking,
 };
 
 export const mockReactNativeCalendars = {
@@ -103,6 +165,9 @@ export const mockNotifications = {
 (mockAsyncStorage as any).default = mockAsyncStorage;
 
 Module.prototype.require = function (id: string) {
+  if (id === 'expo-linking') {
+    return mockExpoLinking;
+  }
   if (id === 'expo-secure-store') {
     return mockSecureStoreImpl;
   }

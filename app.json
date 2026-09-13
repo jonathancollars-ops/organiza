@@ -2,10 +2,10 @@
   "expo": {
     "name": "Lumen",
     "slug": "lumen",
-    "version": "3.4.2",
+    "version": "3.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "scheme": "lumen",
     "ios": {
       "supportsTablet": true
     },
@@ -24,6 +24,20 @@
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
         "REQUEST_INSTALL_PACKAGES"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "lumen"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {

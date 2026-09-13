@@ -246,4 +246,38 @@ export class SecuritySanitizer {
     }
     return trimmed;
   }
+
+  /**
+   * Checks if an input string contains common SQL injection patterns.
+   */
+  static containsSqlInjection(input: string): boolean {
+    if (!input || typeof input !== 'string') return false;
+    const sqlPatterns = [
+      /(\b(DROP|DELETE|TRUNCATE|ALTER|CREATE|INSERT|UPDATE)\s+(TABLE|DATABASE|INDEX|FROM|INTO)\b)/i,
+      /(;\s*(DROP|DELETE|TRUNCATE|ALTER|CREATE|INSERT|UPDATE)\b)/i,
+      /(\bUNION\s+(ALL\s+)?SELECT\b)/i,
+      /((\bOR\b|\bAND\b)\s+['"]?1['"]?\s*=\s*['"]?1)/i,
+      /(['"]\s*(\bOR\b|\bAND\b)\s+['"]?[^'"]+['"]?\s*=\s*['"]?[^'"]+['"]?)/i,
+      /(--\s*$|--\s+[a-zA-Z0-9])/i,
+    ];
+    return sqlPatterns.some(pattern => pattern.test(input));
+  }
+
+  /**
+   * Checks if a date string is malformed or represents a bizarre date (e.g. month > 12, day > 31, year > 2100).
+   */
+  static isBizarreDate(dateStr: string | null | undefined): boolean {
+    if (!dateStr || typeof dateStr !== 'string') return false;
+    const trimmed = dateStr.trim();
+    if (!trimmed) return false;
+    const match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) {
+      const year = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10);
+      const day = parseInt(match[3], 10);
+      if (month < 1 || month > 12 || day < 1 || day > 31) return true;
+      if (year < 1900 || year > 2100) return true;
+    }
+    return false;
+  }
 }

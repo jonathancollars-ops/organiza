@@ -12,6 +12,7 @@ import { AppUpdateService } from '../services/AppUpdateService';
 import { NotificationService } from '../services/notifications';
 import { AppUpdateInfo } from '../types';
 import { SwipeableTabContainer } from '../components/SwipeableTabContainer';
+import { useDeepLinkHandler } from '../hooks/useDeepLinkHandler';
 
 // Screens
 import { AgendaScreenWrapper } from '../screens/AgendaScreenWrapper';
@@ -34,6 +35,9 @@ export function AppNavigator() {
   const { theme, settings, setSettings, gamification, isInitializing, handleThemeToggle, events, subjects, studySessions, attendances, streak, semesters, setSemesters, refreshData, aiConfig, updateAIConfig } = useApp();
   const colors = getThemeColors(theme);
   const insets = useSafeAreaInsets();
+
+  // Interceptação de Deep Links (lumen://gemini/...) e integração nativa com Android App Actions
+  useDeepLinkHandler({ onActionExecuted: refreshData });
 
   // Global Modals State
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);

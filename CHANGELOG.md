@@ -11,6 +11,14 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 - **Minor (+0.1.0, ex: 3.2.0)**: Novos recursos, novas telas, funcionalidades adicionais sem quebra de compatibilidade. (Zera o patch).
 - **Major (+1.0.0, ex: 4.0.0)**: Grandes reformulações de arquitetura, redesign completo ou mudanças estruturais profundas. (Zera minor e patch).
 
+## [3.5.0] - 2026-09-13
+### ✨ Integração Nativa com App Oficial do Gemini (App Actions)
+- **Controle por Voz via Gemini:** Integração com Android App Actions e Deep Links. Agora o aplicativo oficial do Gemini pode controlar o Lumen de fora do app.
+- **Registro Simplificado:** Comandos como "Lumen, marcar falta em Cálculo" são interceptados silenciosamente via URL e registrados automaticamente no banco de dados.
+- **Camada de Segurança Fortalecida:** Novo serviço e validações (Zod/Sanitization) para garantir que comandos executados externamente sejam 100% seguros.
+
+---
+
 ## [3.4.2] - 2026-09-12
 ### 🤖 Migração para Google Gemini 3.6 Flash
 - **Suporte ao Gemini 3.6 Flash:** Atualização do motor de IA para `gemini-3.6-flash`, solucionando o erro de descontinuação do `gemini-2.5-flash` para novas contas da API Google AI Studio.

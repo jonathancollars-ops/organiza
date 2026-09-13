@@ -42,8 +42,7 @@ function withAppActions(config) {
   ]);
 
   config = withAndroidManifest(config, async (config) => {
-    const mainApplication = AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults);
-    const mainActivity = AndroidConfig.Manifest.getMainActivityOrThrow(mainApplication);
+    const mainActivity = AndroidConfig.Manifest.getMainActivityOrThrow(config.modResults);
 
     if (!mainActivity['meta-data']) {
       mainActivity['meta-data'] = [];

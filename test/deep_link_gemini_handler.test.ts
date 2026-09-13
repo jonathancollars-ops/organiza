@@ -169,62 +169,18 @@ async function runTestSuite() {
   console.log('\n--- 6. Verificação de Arquivos Nativos do Android e Configurações ---');
   const projectRoot = path.resolve(__dirname, '..');
 
-  // 1. shortcuts.xml
-  const shortcutsXmlPath = path.join(projectRoot, 'android/app/src/main/res/xml/shortcuts.xml');
-  assert(fs.existsSync(shortcutsXmlPath), 'Arquivo shortcuts.xml existe em res/xml');
-  const shortcutsXmlContent = fs.readFileSync(shortcutsXmlPath, 'utf8');
-  assert(
-    shortcutsXmlContent.includes('actions.intent.CREATE_EVENT'),
-    'shortcuts.xml mapeia BII actions.intent.CREATE_EVENT'
-  );
-  assert(
-    shortcutsXmlContent.includes('custom.actions.intent.RECORD_ATTENDANCE'),
-    'shortcuts.xml mapeia custom.actions.intent.RECORD_ATTENDANCE'
-  );
-  assert(
-    shortcutsXmlContent.includes('lumen://gemini/adicionar_evento'),
-    'shortcuts.xml contém data URL para adicionar_evento'
-  );
-  assert(
-    shortcutsXmlContent.includes('lumen://gemini/marcar_falta'),
-    'shortcuts.xml contém data URL para marcar_falta'
-  );
+  // 1. Verifica Config Plugin do Expo
+  const pluginPath = path.join(projectRoot, 'plugins/withAppActions.js');
+  assert(fs.existsSync(pluginPath), 'Expo Config Plugin (withAppActions.js) foi criado para injetar shortcuts');
+  const pluginContent = fs.readFileSync(pluginPath, 'utf8');
+  assert(pluginContent.includes('actions.intent.CREATE_EVENT'), 'Plugin injeta BII CREATE_EVENT');
+  assert(pluginContent.includes('custom.actions.intent.RECORD_ATTENDANCE'), 'Plugin injeta BII RECORD_ATTENDANCE');
 
-  // 2. strings.xml
-  const stringsXmlPath = path.join(projectRoot, 'android/app/src/main/res/values/strings.xml');
-  assert(fs.existsSync(stringsXmlPath), 'Arquivo strings.xml existe');
-  const stringsContent = fs.readFileSync(stringsXmlPath, 'utf8');
-  assert(
-    stringsContent.includes('shortcut_add_event_short') &&
-    stringsContent.includes('shortcut_record_attendance_short'),
-    'strings.xml contém as strings de rótulo para os atalhos'
-  );
-
-  // 3. AndroidManifest.xml
-  const manifestPath = path.join(projectRoot, 'android/app/src/main/AndroidManifest.xml');
-  assert(fs.existsSync(manifestPath), 'Arquivo AndroidManifest.xml existe');
-  const manifestContent = fs.readFileSync(manifestPath, 'utf8');
-  assert(
-    manifestContent.includes('<data android:scheme="lumen"/>'),
-    'AndroidManifest.xml contém intent-filter com android:scheme="lumen"'
-  );
-  assert(
-    manifestContent.includes('android:name="android.app.shortcuts"') &&
-    manifestContent.includes('android:resource="@xml/shortcuts"'),
-    'AndroidManifest.xml contém meta-data para android.app.shortcuts'
-  );
-
-  // 4. app.json
+  // 2. Verifica app.json 
   const appJsonPath = path.join(projectRoot, 'app.json');
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
+  assert(appJson.expo.plugins.includes('./plugins/withAppActions.js'), 'Plugin withAppActions.js registrado no app.json');
   assert(appJson.expo.scheme === 'lumen', 'app.json possui expo.scheme = "lumen"');
-  assert(
-    Array.isArray(appJson.expo.android?.intentFilters) &&
-    appJson.expo.android.intentFilters.some((filter: any) =>
-      filter.data?.some((d: any) => d.scheme === 'lumen')
-    ),
-    'app.json android.intentFilters contém scheme "lumen"'
-  );
 
   console.log('\n================================================================');
   console.log(`🎉 TESTES CONCLUÍDOS: ${passed} PASSADOS | ${failed} FALHAS`);

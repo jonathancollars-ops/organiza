@@ -49,6 +49,7 @@
       }
     },
     "plugins": [
+      "./plugins/withAppActions.js",
       [
         "expo-notifications",
         {

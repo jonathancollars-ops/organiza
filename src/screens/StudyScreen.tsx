@@ -12,11 +12,13 @@ import {
   AppStateStatus
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { Subject, ThemeType, StudyTask, StudySession, StudyStreak, GamificationData, ActiveTimerState } from '../types';
+import { Subject, ThemeType, StudyTask, StudySession, StudyStreak, GamificationData, ActiveTimerState, SavedTimerState } from '../types';
 import { getThemeColors, getContrastTextColor } from '../theme';
 import { generateId, getLocalDateString } from '../utils';
 import { StorageService } from '../services/storage';
 import { NotificationService } from '../services/notifications';
+import { TimerService, toActiveTimerState } from '../services/TimerService';
+import { useTimerAppState } from '../hooks/useTimerAppState';
 import { useApp, AppContextData } from '../contexts/AppContext';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -90,6 +92,30 @@ export const StudyScreen: React.FC<Props> = ({
   const stopwatchRef = useRef<NodeJS.Timeout | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const taskInputRef = useRef<TextInput>(null);
+
+  // Refs de sincronização resiliente contra stale closures no ciclo de vida (AppState)
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+  const timeLeftRef = useRef(timeLeft);
+  timeLeftRef.current = timeLeft;
+  const isBreakRef = useRef(isBreak);
+  isBreakRef.current = isBreak;
+  const activeFocusMinutesRef = useRef(activeFocusMinutes);
+  activeFocusMinutesRef.current = activeFocusMinutes;
+  const focusMinutesDefaultRef = useRef(focusMinutesDefault);
+  focusMinutesDefaultRef.current = focusMinutesDefault;
+  const breakMinutesDefaultRef = useRef(breakMinutesDefault);
+  breakMinutesDefaultRef.current = breakMinutesDefault;
+  const selectedSubjectIdRef = useRef(selectedSubjectId);
+  selectedSubjectIdRef.current = selectedSubjectId;
+  const isStopwatchRunningRef = useRef(isStopwatchRunning);
+  isStopwatchRunningRef.current = isStopwatchRunning;
+  const stopwatchSecondsRef = useRef(stopwatchSeconds);
+  stopwatchSecondsRef.current = stopwatchSeconds;
+  const stopwatchSubjectIdRef = useRef(stopwatchSubjectId);
+  stopwatchSubjectIdRef.current = stopwatchSubjectId;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
   const loadStreak = async () => {
     const s = await StorageService.getStreak();
@@ -191,75 +217,216 @@ export const StudyScreen: React.FC<Props> = ({
     }
   };
 
-  const syncTimerFromTimestamps = useCallback(async () => {
+  const saveCurrentTimerOnBackground = useCallback(async () => {
     try {
-      const currentTimer = appContext?.activeTimer !== undefined
-        ? appContext.activeTimer
-        : await StorageService.getActiveTimer();
-
-      if (!currentTimer) return;
-
+      const isStopwatch = isStopwatchRunningRef.current;
+      const isPomo = isActiveRef.current;
+      const currentTab = activeTabRef.current;
       const now = Date.now();
 
-      if (currentTimer.mode === 'pomodoro') {
-        if (currentTimer.isRunning && currentTimer.targetEndTime) {
-          const remaining = Math.max(0, Math.round((currentTimer.targetEndTime - now) / 1000));
-          if (remaining === 0) {
-            setIsActive(false);
-            setTimeLeft(0);
-            await handlePomodoroComplete(currentTimer.isBreak, currentTimer.subjectId, currentTimer.initialDuration);
-            if (appContext?.saveActiveTimer) {
-              await appContext.saveActiveTimer(null);
-            } else {
-              await StorageService.saveActiveTimer(null);
-            }
-          } else {
-            setTimeLeft(remaining);
-            setIsActive(true);
-            setIsBreak(Boolean(currentTimer.isBreak));
-            if (currentTimer.subjectId) {
-              setSelectedSubjectId(currentTimer.subjectId);
-            }
-            if (!timerRef.current) {
-              timerRef.current = setInterval(() => {
-                setTimeLeft((prev: number) => {
-                  if (prev <= 1) return 0;
-                  return prev - 1;
-                });
-              }, 1000);
+      if (isStopwatch) {
+        const currentSeconds = stopwatchSecondsRef.current;
+        const subId = stopwatchSubjectIdRef.current || undefined;
+        const stateToSave: SavedTimerState = {
+          mode: 'stopwatch',
+          isRunning: true,
+          accumulatedSeconds: currentSeconds,
+          lastSavedTimestamp: now,
+          targetDuration: 0,
+          remainingSeconds: currentSeconds,
+          initialDuration: 0,
+          subjectId: subId,
+          isBreak: false,
+        };
+        await TimerService.saveTimerState(stateToSave);
+        if (appContext?.saveTimerState) {
+          await appContext.saveTimerState(stateToSave);
+        }
+      } else if (isPomo) {
+        const currentSecondsRemaining = timeLeftRef.current;
+        const targetDuration = (activeFocusMinutesRef.current || focusMinutesDefaultRef.current) * 60;
+        const accumulated = Math.max(0, targetDuration - currentSecondsRemaining);
+        const subId = selectedSubjectIdRef.current || undefined;
+        const stateToSave: SavedTimerState = {
+          mode: 'pomodoro',
+          isRunning: true,
+          accumulatedSeconds: accumulated,
+          lastSavedTimestamp: now,
+          targetDuration,
+          remainingSeconds: currentSecondsRemaining,
+          initialDuration: targetDuration,
+          subjectId: subId,
+          isBreak: isBreakRef.current,
+        };
+        await TimerService.saveTimerState(stateToSave);
+        if (appContext?.saveTimerState) {
+          await appContext.saveTimerState(stateToSave);
+        }
+
+        if (!isBreakRef.current) {
+          const targetEndTime = now + (currentSecondsRemaining * 1000);
+          const subName = subjects.find(s => s.id === subId)?.name || 'Estudos';
+          await NotificationService.scheduleTimerNotification(
+            targetEndTime,
+            '⏱️ Ciclo de Estudo Concluído!',
+            `Seu ciclo de Pomodoro de ${subName} foi finalizado. Parabéns pelo foco!`
+          );
+        }
+      } else {
+        if (currentTab === 'cronometro' && stopwatchSecondsRef.current > 0) {
+          const stateToSave: SavedTimerState = {
+            mode: 'stopwatch',
+            isRunning: false,
+            accumulatedSeconds: stopwatchSecondsRef.current,
+            lastSavedTimestamp: now,
+            targetDuration: 0,
+            remainingSeconds: stopwatchSecondsRef.current,
+            initialDuration: 0,
+            subjectId: stopwatchSubjectIdRef.current || undefined,
+            isBreak: false,
+          };
+          await TimerService.saveTimerState(stateToSave);
+          if (appContext?.saveTimerState) {
+            await appContext.saveTimerState(stateToSave);
+          }
+        } else if (currentTab === 'pomodoro') {
+          const targetDuration = (activeFocusMinutesRef.current || focusMinutesDefaultRef.current) * 60;
+          if (timeLeftRef.current < targetDuration) {
+            const accumulated = Math.max(0, targetDuration - timeLeftRef.current);
+            const stateToSave: SavedTimerState = {
+              mode: 'pomodoro',
+              isRunning: false,
+              accumulatedSeconds: accumulated,
+              lastSavedTimestamp: now,
+              targetDuration,
+              remainingSeconds: timeLeftRef.current,
+              initialDuration: targetDuration,
+              subjectId: selectedSubjectIdRef.current || undefined,
+              isBreak: isBreakRef.current,
+            };
+            await TimerService.saveTimerState(stateToSave);
+            if (appContext?.saveTimerState) {
+              await appContext.saveTimerState(stateToSave);
             }
           }
-        } else if (!currentTimer.isRunning) {
-          setTimeLeft(currentTimer.remainingSeconds);
-          setIsActive(false);
-          setIsBreak(Boolean(currentTimer.isBreak));
         }
-      } else if (currentTimer.mode === 'stopwatch') {
-        if (currentTimer.isRunning) {
-          const elapsed = Math.max(0, Math.floor((now - currentTimer.startedAt) / 1000));
+      }
+    } catch (err) {
+      console.warn('[StudyScreen] Erro ao salvar timer ao ir para segundo plano:', err);
+    }
+  }, [appContext, subjects]);
+
+  const syncTimerFromTimestamps = useCallback(async () => {
+    try {
+      await NotificationService.cancelTimerNotification();
+
+      let restored: SavedTimerState | null = null;
+      if (appContext?.restoreTimerState) {
+        restored = await appContext.restoreTimerState();
+      } else {
+        restored = await TimerService.restoreTimerState();
+      }
+
+      if (!restored) {
+        const fallbackActive = appContext?.activeTimer !== undefined
+          ? appContext.activeTimer
+          : await StorageService.getActiveTimer();
+        if (fallbackActive) {
+          restored = TimerService.fromActiveTimerState(fallbackActive);
+        }
+      }
+
+      if (!restored) return;
+
+      if (restored.mode === 'pomodoro') {
+        const targetDuration = restored.targetDuration ?? restored.initialDuration ?? (25 * 60);
+        const remaining = typeof restored.remainingSeconds === 'number'
+          ? restored.remainingSeconds
+          : Math.max(0, targetDuration - (restored.accumulatedSeconds || 0));
+
+        if (remaining <= 0) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          setIsActive(false);
+          setTimeLeft(0);
+          await handlePomodoroComplete(restored.isBreak, restored.subjectId, restored.initialDuration);
+          if (appContext?.clearTimerState) {
+            await appContext.clearTimerState();
+          } else {
+            await TimerService.clearTimerState();
+          }
+        } else if (restored.isRunning) {
+          setTimeLeft(remaining);
+          setIsActive(true);
+          setIsBreak(Boolean(restored.isBreak));
+          if (restored.subjectId) {
+            setSelectedSubjectId(restored.subjectId);
+          }
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+          }
+          timerRef.current = setInterval(() => {
+            setTimeLeft((prev: number) => {
+              if (prev <= 1) return 0;
+              return prev - 1;
+            });
+          }, 1000);
+        } else {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          setTimeLeft(remaining);
+          setIsActive(false);
+          setIsBreak(Boolean(restored.isBreak));
+          if (restored.subjectId) {
+            setSelectedSubjectId(restored.subjectId);
+          }
+        }
+      } else if (restored.mode === 'stopwatch') {
+        const elapsed = typeof restored.accumulatedSeconds === 'number'
+          ? Math.max(0, restored.accumulatedSeconds)
+          : 0;
+
+        if (restored.isRunning) {
           setStopwatchSeconds(elapsed);
           setIsStopwatchRunning(true);
-          if (currentTimer.subjectId) {
-            setStopwatchSubjectId(currentTimer.subjectId);
+          if (restored.subjectId) {
+            setStopwatchSubjectId(restored.subjectId);
           }
-          if (!stopwatchRef.current) {
-            stopwatchRef.current = setInterval(() => {
-              setStopwatchSeconds((prev: number) => prev + 1);
-            }, 1000);
+          if (stopwatchRef.current) {
+            clearInterval(stopwatchRef.current);
           }
+          stopwatchRef.current = setInterval(() => {
+            setStopwatchSeconds((prev: number) => prev + 1);
+          }, 1000);
         } else {
-          setStopwatchSeconds(currentTimer.remainingSeconds);
+          if (stopwatchRef.current) {
+            clearInterval(stopwatchRef.current);
+            stopwatchRef.current = null;
+          }
+          setStopwatchSeconds(elapsed);
           setIsStopwatchRunning(false);
+          if (restored.subjectId) {
+            setStopwatchSubjectId(restored.subjectId);
+          }
         }
       }
     } catch (e) {
       console.warn('[StudyScreen] Erro ao sincronizar timer por timestamps:', e);
     }
-  }, [appContext, subjects, focusMinutesDefault, breakMinutesDefault, isBreak, selectedSubjectId, activeFocusMinutes]);
+  }, [appContext, handlePomodoroComplete]);
+
+  // Sincronização do ciclo de vida do aplicativo (AppState) com o TimerService
+  useTimerAppState({
+    onSaveState: saveCurrentTimerOnBackground,
+    onRestoreState: syncTimerFromTimestamps,
+  });
 
   useEffect(() => {
     loadStreak();
-    syncTimerFromTimestamps();
     return () => {
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
@@ -276,10 +443,10 @@ export const StudyScreen: React.FC<Props> = ({
     };
   }, []);
 
-  // Screen blur cleanup: unconditionally clear timer intervals and clean handles to prevent memory leaks,
-  // while keeping timestamp-based timer state active in AppContext / StorageService.
+  // Screen blur/focus: salva timer ao desfocar a tela e limpa intervals, sincroniza ao focar
   useEffect(() => {
     const unsubscribeBlur = navigation?.addListener?.('blur', () => {
+      saveCurrentTimerOnBackground();
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -302,7 +469,7 @@ export const StudyScreen: React.FC<Props> = ({
       if (unsubscribeBlur) unsubscribeBlur();
       if (unsubscribeFocus) unsubscribeFocus();
     };
-  }, [navigation, syncTimerFromTimestamps]);
+  }, [navigation, saveCurrentTimerOnBackground, syncTimerFromTimestamps]);
 
   // Tab switch handler: unconditionally clear active intervals when moving between tabs
   const handleTabChange = (newTab: 'pomodoro' | 'cronometro' | 'tarefas') => {
@@ -319,32 +486,6 @@ export const StudyScreen: React.FC<Props> = ({
       syncTimerFromTimestamps();
     }
   };
-
-  // AppState background/foreground synchronization & notifications
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'background') {
-        const currentTimer = appContext?.activeTimer !== undefined
-          ? appContext.activeTimer
-          : await StorageService.getActiveTimer();
-        if (currentTimer?.isRunning && currentTimer.mode === 'pomodoro' && currentTimer.targetEndTime) {
-          const subName = subjects.find(s => s.id === currentTimer.subjectId)?.name || 'Estudos';
-          await NotificationService.scheduleTimerNotification(
-            currentTimer.targetEndTime,
-            '⏱️ Ciclo de Estudo Concluído!',
-            `Seu ciclo de Pomodoro de ${subName} foi finalizado. Parabéns pelo foco!`
-          );
-        }
-      } else if (nextAppState === 'active') {
-        await NotificationService.cancelTimerNotification();
-        await syncTimerFromTimestamps();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [appContext, subjects, syncTimerFromTimestamps]);
 
   // Sync selected subjects when subjects array changes
   useEffect(() => {

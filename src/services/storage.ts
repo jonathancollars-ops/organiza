@@ -14,7 +14,8 @@ import {
   AACCActivity,
   GroupProject,
   GamificationData,
-  ActiveTimerState
+  ActiveTimerState,
+  SavedTimerState
 } from '../types';
 import { getCurrentSemesterId, getCurrentSemesterName } from '../utils';
 import { CourseCRService } from './CourseCRService';
@@ -761,12 +762,67 @@ export const StorageService = {
     try {
       if (!timer) {
         await AsyncStorage.removeItem(ACTIVE_TIMER_KEY);
+        try {
+          const { TIMER_STATE_KEY } = require('./TimerService');
+          await AsyncStorage.removeItem(TIMER_STATE_KEY);
+        } catch {}
         return true;
       }
       const jsonValue = JSON.stringify(timer);
-      return await safeSetItem(ACTIVE_TIMER_KEY, jsonValue);
+      const res = await safeSetItem(ACTIVE_TIMER_KEY, jsonValue);
+      try {
+        const { fromActiveTimerState, TIMER_STATE_KEY } = require('./TimerService');
+        const saved = fromActiveTimerState(timer);
+        if (saved) {
+          await safeSetItem(TIMER_STATE_KEY, JSON.stringify(saved));
+        }
+      } catch {}
+      return res;
     } catch (e) {
       console.error('[StorageService] Erro ao salvar activeTimer:', e);
+      return false;
+    }
+  },
+
+  /**
+   * Delegados do TimerService para a arquitetura Timestamp Diff
+   */
+  async getSavedTimerState(): Promise<SavedTimerState | null> {
+    try {
+      const { TimerService } = require('./TimerService');
+      return await TimerService.getTimerState();
+    } catch (e) {
+      console.error('[StorageService] Erro em getSavedTimerState:', e);
+      return null;
+    }
+  },
+
+  async saveTimerState(state: SavedTimerState | null): Promise<boolean> {
+    try {
+      const { TimerService } = require('./TimerService');
+      return await TimerService.saveTimerState(state);
+    } catch (e) {
+      console.error('[StorageService] Erro em saveTimerState:', e);
+      return false;
+    }
+  },
+
+  async restoreTimerState(): Promise<SavedTimerState | null> {
+    try {
+      const { TimerService } = require('./TimerService');
+      return await TimerService.restoreTimerState();
+    } catch (e) {
+      console.error('[StorageService] Erro em restoreTimerState:', e);
+      return null;
+    }
+  },
+
+  async clearTimerState(): Promise<boolean> {
+    try {
+      const { TimerService } = require('./TimerService');
+      return await TimerService.clearTimerState();
+    } catch (e) {
+      console.error('[StorageService] Erro em clearTimerState:', e);
       return false;
     }
   },

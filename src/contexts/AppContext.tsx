@@ -16,8 +16,16 @@ import {
   AppSettings, 
   GamificationData, 
   AIConfig,
-  ActiveTimerState 
+  ActiveTimerState,
+  SavedTimerState 
 } from '../types';
+import { 
+  TimerService, 
+  restoreTimerState as serviceRestoreTimerState, 
+  saveTimerState as serviceSaveTimerState, 
+  clearTimerState as serviceClearTimerState, 
+  toActiveTimerState 
+} from '../services/TimerService';
 
 export interface AppContextData {
   // Theme & Settings
@@ -46,10 +54,14 @@ export interface AppContextData {
   gamification: GamificationData | null;
   setGamification: React.Dispatch<React.SetStateAction<GamificationData | null>>;
 
-  // Active Timer State (Pomodoro & Cronômetro Resilientes)
+  // Active Timer State (Pomodoro & Cronômetro Resilientes - Timestamp Diff)
   activeTimer: ActiveTimerState | null;
   setActiveTimer: React.Dispatch<React.SetStateAction<ActiveTimerState | null>>;
   saveActiveTimer: (timer: ActiveTimerState | null) => Promise<void>;
+  savedTimer: SavedTimerState | null;
+  restoreTimerState: () => Promise<SavedTimerState | null>;
+  saveTimerState: (state: SavedTimerState | null) => Promise<boolean>;
+  clearTimerState: () => Promise<boolean>;
   startTimer: (mode: 'pomodoro' | 'stopwatch', initialDurationSeconds: number, subjectId?: string, isBreak?: boolean) => Promise<void>;
   pauseTimer: () => Promise<void>;
   resumeTimer: () => Promise<void>;
@@ -101,6 +113,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [gamification, setGamification] = useState<GamificationData | null>(null);
   const [activeTimer, setActiveTimer] = useState<ActiveTimerState | null>(null);
+  const [savedTimer, setSavedTimer] = useState<SavedTimerState | null>(null);
   
   // App Lifecycle
   const [isInitializing, setIsInitializing] = useState(true);
@@ -217,8 +230,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setStreak(safeStreak);
       setAiConfig(safeAIConfig);
 
-      let effectiveTimer = savedActiveTimer;
-      if (effectiveTimer) {
+      // Restauração com arquitetura de Timestamp Diff
+      const restoredSaved = await serviceRestoreTimerState().catch(() => null);
+      let effectiveTimer: ActiveTimerState | null = null;
+      if (restoredSaved) {
+        setSavedTimer(restoredSaved);
+        effectiveTimer = toActiveTimerState(restoredSaved);
+      } else if (savedActiveTimer) {
+        effectiveTimer = savedActiveTimer;
         if (effectiveTimer.isRunning && effectiveTimer.mode === 'pomodoro' && effectiveTimer.targetEndTime) {
           const remaining = Math.max(0, Math.round((effectiveTimer.targetEndTime - Date.now()) / 1000));
           effectiveTimer = { ...effectiveTimer, remainingSeconds: remaining };
@@ -226,6 +245,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const elapsed = Math.max(0, Math.floor((Date.now() - effectiveTimer.startedAt) / 1000));
           effectiveTimer = { ...effectiveTimer, remainingSeconds: elapsed };
         }
+        setSavedTimer(TimerService.fromActiveTimerState(effectiveTimer));
       }
       setActiveTimer(effectiveTimer);
     } catch (err) {
@@ -252,10 +272,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await StorageService.saveSettings(updatedSettings);
   };
 
-  // Funções de Controle do Timer Resiliente (Unix Timestamps)
+  // Funções de Controle do Timer Resiliente (Unix Timestamps & Timestamp Diff)
   const saveActiveTimer = async (timer: ActiveTimerState | null) => {
     setActiveTimer(timer);
     await StorageService.saveActiveTimer(timer);
+    setSavedTimer(timer ? TimerService.fromActiveTimerState(timer) : null);
+  };
+
+  const restoreTimerState = async (): Promise<SavedTimerState | null> => {
+    const restored = await serviceRestoreTimerState();
+    setSavedTimer(restored);
+    setActiveTimer(toActiveTimerState(restored));
+    return restored;
+  };
+
+  const saveTimerState = async (state: SavedTimerState | null): Promise<boolean> => {
+    setSavedTimer(state);
+    setActiveTimer(toActiveTimerState(state));
+    return await serviceSaveTimerState(state);
+  };
+
+  const clearTimerState = async (): Promise<boolean> => {
+    setSavedTimer(null);
+    setActiveTimer(null);
+    return await serviceClearTimerState();
   };
 
   const startTimer = async (
@@ -310,7 +350,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const resetTimer = async () => {
-    await saveActiveTimer(null);
+    await clearTimerState();
   };
 
   const toggleEventCompletion = async (eventId: string) => {
@@ -445,6 +485,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     gamification, setGamification,
     activeTimer, setActiveTimer,
     saveActiveTimer,
+    savedTimer,
+    restoreTimerState,
+    saveTimerState,
+    clearTimerState,
     startTimer,
     pauseTimer,
     resumeTimer,

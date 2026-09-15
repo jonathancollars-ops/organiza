@@ -362,6 +362,18 @@ export interface ActiveTimerState {
   isBreak?: boolean;
 }
 
+export interface SavedTimerState {
+  mode: 'pomodoro' | 'stopwatch';
+  isRunning: boolean;
+  accumulatedSeconds: number;
+  lastSavedTimestamp: number;
+  targetDuration?: number;
+  remainingSeconds?: number;
+  initialDuration?: number;
+  subjectId?: string;
+  isBreak?: boolean;
+}
+
 export interface CRSimulationScenario {
   title: string;
   projectedCR: number;

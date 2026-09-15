@@ -8,6 +8,7 @@ import {
 import { StorageService } from '../src/services/storage';
 import { CourseCRService, DEFAULT_CURRICULUM_TEMPLATE } from '../src/services/CourseCRService';
 import { Subject, AppEvent, AttendanceRecord } from '../src/types';
+import { getLocalDateString } from '../src/utils';
 
 let passed = 0;
 let failed = 0;
@@ -149,7 +150,7 @@ async function runTestSuite() {
 
   const resFallbackDate = await GeminiIntegrationService.registrarPresencaFalta('Calculo', 'presenca', 'data-invalida');
   assert(resFallbackDate.success === true, 'Safely falls back to current date (now) when date format is invalid');
-  assert(resFallbackDate.data?.attendance.date === new Date().toISOString().split('T')[0], 'Attendance date matches today (now)');
+  assert(resFallbackDate.data?.attendance.date === getLocalDateString(), 'Attendance date matches today (now)');
 
   const errNotFound = await GeminiIntegrationService.registrarPresencaFalta('Sociologia Jurídica', 'presenca', '2026-09-15');
   assert(errNotFound.success === false, 'Fails with clear message when subject is not found');
@@ -345,22 +346,22 @@ async function runTestSuite() {
   // Data impossível no calendário (31 de Fevereiro)
   const resImpossibleDate = await GeminiIntegrationService.adicionarEvento('Estudar', 'lembrete', '2026-02-31T09:00:00');
   assert(resImpossibleDate.success === true, 'Succeeds with safe fallback for impossible calendar date 2026-02-31 (Rule 2)');
-  assert(resImpossibleDate.data?.event.date === new Date().toISOString().split('T')[0], 'Impossible date safely fell back to today (now)');
+  assert(resImpossibleDate.data?.event.date === getLocalDateString(), 'Impossible date safely fell back to today (now)');
 
   // Data omitida (undefined) em adicionarEvento
   const resOmittedDate = await GeminiIntegrationService.adicionarEvento('Revisão Geral', 'lembrete');
   assert(resOmittedDate.success === true, 'Succeeds with safe fallback when date is omitted (Rule 2)');
-  assert(resOmittedDate.data?.event.date === new Date().toISOString().split('T')[0], 'Omitted date safely fell back to today (now)');
+  assert(resOmittedDate.data?.event.date === getLocalDateString(), 'Omitted date safely fell back to today (now)');
 
   // Data malformada em consultarAgendaDoDia
   const resAgendaMalformed = await GeminiIntegrationService.consultarAgendaDoDia('data-invalida-lixo');
   assert(resAgendaMalformed.success === true, 'consultarAgendaDoDia safely falls back to today for malformed date (Rule 2)');
-  assert(resAgendaMalformed.data?.date === new Date().toISOString().split('T')[0], 'Agenda target date fell back to today (now)');
+  assert(resAgendaMalformed.data?.date === getLocalDateString(), 'Agenda target date fell back to today (now)');
 
   // Data impossível em consultarAgendaDoDia
   const resAgendaImpossible = await GeminiIntegrationService.consultarAgendaDoDia('2026-04-31'); // Abril tem 30 dias
   assert(resAgendaImpossible.success === true, 'consultarAgendaDoDia safely falls back to today for impossible date 2026-04-31 (Rule 2)');
-  assert(resAgendaImpossible.data?.date === new Date().toISOString().split('T')[0], 'Agenda target date fell back to today (now)');
+  assert(resAgendaImpossible.data?.date === getLocalDateString(), 'Agenda target date fell back to today (now)');
 
   console.log('\n================================================================');
   console.log(`GEMINI INTEGRATION SERVICE TEST SUMMARY: ${passed}/${passed + failed} Passed (${failed} Failed)`);

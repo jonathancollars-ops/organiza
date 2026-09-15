@@ -11,6 +11,13 @@ e este projeto adere ao [Versionamento Semântico (SemVer)](https://semver.org/l
 - **Minor (+0.1.0, ex: 3.2.0)**: Novos recursos, novas telas, funcionalidades adicionais sem quebra de compatibilidade. (Zera o patch).
 - **Major (+1.0.0, ex: 4.0.0)**: Grandes reformulações de arquitetura, redesign completo ou mudanças estruturais profundas. (Zera minor e patch).
 
+## [3.5.1] - 2026-09-14
+### 🐛 Correções e Melhorias
+- **Cronômetro e Pomodoro:** Corrigido o problema onde o tempo de estudo era perdido ao fechar o aplicativo ou deixá-lo em segundo plano. Implementada arquitetura de persistência (*Timestamp Diff*) e sincronização com o ciclo de vida do app.
+- **Testes Automatizados:** Adicionadas suítes completas de testes para cobrir o ciclo de vida e garantir que contadores de tempo nunca regridam.
+
+---
+
 ## [3.5.0] - 2026-09-13
 ### ✨ Integração Nativa com App Oficial do Gemini (App Actions)
 - **Controle por Voz via Gemini:** Integração com Android App Actions e Deep Links. Agora o aplicativo oficial do Gemini pode controlar o Lumen de fora do app.
